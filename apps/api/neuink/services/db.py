@@ -8,7 +8,6 @@ def get_client() -> MongoClient:
     global _client
     if _client is None:
         uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/NeuInk")
-        # 直连本地单节点；uuidRepresentation=standard 是较新的推荐
         _client = MongoClient(uri, uuidRepresentation="standard", connect=True)
     return _client
 
