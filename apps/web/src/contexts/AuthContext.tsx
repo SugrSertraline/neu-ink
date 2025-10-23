@@ -1,7 +1,9 @@
 'use client';
 
+import { authApi } from '@/lib/authApi';
+import { BusinessCode } from '@/types/api';
+import { User } from '@/types/user';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { User, authApi, BusinessCode } from '@/lib/api';
 
 interface LoginResult {
   ok: boolean;
@@ -33,17 +35,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true);
       const response = await authApi.login({ username, password });
+      
       // HTTP / 网关层
       if (response?.code === 200) {
         const businessResponse = response.data;
+        
         // 业务层
         if (businessResponse?.code === BusinessCode.SUCCESS) {
           const { token, user: userData } = businessResponse.data;
+          
+          // 只调用一次 setToken
           authApi.setToken(token);
+          
           setUser(userData);
+          
+          console.log('[AuthContext] 登录成功，用户:', userData.username);
           return { ok: true };
         } else {
-          // 登录失败（但请求成功），把后端 message 往上抛
           return {
             ok: false,
             message: businessResponse?.message || '登录失败',
@@ -51,10 +59,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           };
         }
       }
-      // HTTP 非 200
       return { ok: false, message: response?.message || '网络错误，请稍后重试' };
     } catch (error) {
-      console.error('Login failed:', error);
+      console.error('[AuthContext] 登录异常:', error);
       return { ok: false, message: '网络异常或服务器错误，请稍后重试' };
     } finally {
       setIsLoading(false);
@@ -67,7 +74,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
   };
 
-  // 刷新用户信息（这里假设 getCurrentUser 返回的是用户对象）
+  // 刷新用户信息
   const refreshUser = async () => {
     try {
       const response = await authApi.getCurrentUser();

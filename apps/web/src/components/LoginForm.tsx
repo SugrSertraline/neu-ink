@@ -4,65 +4,27 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { useAuth } from '@/contexts/AuthContext';
 import { Loader2 } from 'lucide-react';
-import { toast } from 'sonner'                           // 新的
 
 interface LoginFormProps {
-  onSuccess?: () => void;
+  onSubmit: (username: string, password: string) => Promise<void>;
+  error?: string;
+  isSubmitting?: boolean;
 }
 
-// 兼容：AuthContext.login 既可能返回 boolean，也可能返回 { ok, message }
-function parseLoginResult(result: unknown): { ok: boolean; message?: string } {
-  if (typeof result === 'boolean') return { ok: result };
-  if (result && typeof result === 'object' && 'ok' in result) {
-    const r = result as { ok: boolean; message?: string };
-    return { ok: !!r.ok, message: r.message };
-  }
-  return { ok: false, message: '登录失败，请稍后重试' };
-}
-
-export function LoginForm({ onSuccess }: LoginFormProps) {
+export function LoginForm({ onSubmit, error, isSubmitting = false }: LoginFormProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const { login } = useAuth();
 
   const handleSubmit = async (e: React.FormEvent) => {
-  e.preventDefault();
-
-  if (!username || !password) {
-    setError('请输入用户名和密码');
-    return;
-  }
-
-  setIsSubmitting(true);
-  setError('');
-
-  try {
-    const res = await login(username.trim(), password);
-    const { ok, message } = parseLoginResult(res);
-
-    if (ok) {
-      setError('');
-      toast.success('登录成功', { description: '欢迎回来！' });
-      onSuccess?.();
-    } else {
-      const msg = message || '用户名或密码错误';
-      setError(msg);
-      toast.error('登录失败', { description: msg });
+    e.preventDefault();
+    
+    if (!username || !password) {
+      return;
     }
-  } catch {
-    const msg = '登录失败，请稍后重试';
-    setError(msg);
-    toast.error('网络或服务器异常', { description: msg });
-  } finally {
-    setIsSubmitting(false);
-  }
-};
 
+    await onSubmit(username.trim(), password);
+  };
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
@@ -87,6 +49,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                   disabled={isSubmitting}
                   className="w-full"
                   autoComplete="username"
+                  required
                 />
               </div>
 
@@ -103,6 +66,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                   disabled={isSubmitting}
                   className="w-full"
                   autoComplete="current-password"
+                  required
                 />
               </div>
 
@@ -112,7 +76,7 @@ export function LoginForm({ onSuccess }: LoginFormProps) {
                 </div>
               )}
 
-              <Button type="submit" disabled={isSubmitting} className="w-full">
+              <Button type="submit" disabled={isSubmitting || !username || !password} className="w-full">
                 {isSubmitting ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />

@@ -4,30 +4,44 @@ import React from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
+import { useRouter } from 'next/navigation';
+import { useTabStore } from '@/stores/useTabStore';
+import { Library, ArrowRight } from 'lucide-react';
 
 export function Dashboard() {
   const { user, isAdmin, logout } = useAuth();
+  const router = useRouter();
+  const { addTab, setActiveTab } = useTabStore();
 
   const handleLogout = () => {
     logout();
   };
 
+  const goToLibrary = () => {
+    // 添加论文库标签页并激活
+    addTab({
+      id: 'library',
+      type: 'library',
+      title: '论文库',
+      path: '/library'
+    });
+    setActiveTab('library');
+    
+    // 跳转到论文库页面
+    router.push('/library');
+  };
+
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-4xl mx-auto space-y-8">
-        {/* 头部 */}
-        <div className="flex justify-between items-center">
-          <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              {isAdmin ? '管理员控制台' : '用户控制台'}
-            </h1>
-            <p className="text-gray-600 mt-2">
-              欢迎回来，{user?.nickname || user?.username}！
-            </p>
-          </div>
-          <Button onClick={handleLogout} variant="outline">
-            退出登录
-          </Button>
+    <div className="h-full overflow-auto bg-gray-50 dark:bg-gray-900">
+      <div className="p-8 max-w-7xl mx-auto">
+        {/* 页面标题 */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
+            {isAdmin ? '管理员控制台' : '用户控制台'}
+          </h1>
+          <p className="text-gray-600 dark:text-gray-400">
+            欢迎回来，{user?.nickname || user?.username}！
+          </p>
         </div>
 
         {/* 状态卡片 */}
@@ -82,12 +96,17 @@ export function Dashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-2 text-sm text-gray-600">
+              <div className="space-y-2 text-sm text-gray-600 mb-4">
                 <div>• 个人论文库</div>
                 <div>• 论文搜索</div>
                 <div>• 笔记管理</div>
                 <div>• 阅读进度</div>
               </div>
+              <Button onClick={goToLibrary} className="w-full">
+                <Library className="w-4 h-4 mr-2" />
+                进入论文库
+                <ArrowRight className="w-4 h-4 ml-2" />
+              </Button>
             </CardContent>
           </Card>
         </div>

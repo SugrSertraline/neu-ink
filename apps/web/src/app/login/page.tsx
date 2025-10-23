@@ -1,0 +1,90 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/contexts/AuthContext';
+import { Loader2 } from 'lucide-react';
+import { LoginForm } from '@/components/LoginForm';
+import { toast } from 'sonner';
+
+function parseLoginResult(result: unknown): { ok: boolean; message?: string } {
+  if (typeof result === 'boolean') return { ok: result };
+  if (result && typeof result === 'object' && 'ok' in result) {
+    const r = result as { ok: boolean; message?: string };
+    return { ok: !!r.ok, message: r.message };
+  }
+  return { ok: false, message: '登录失败，请稍后重试' };
+}
+
+export default function LoginPage() {
+  const { isAuthenticated, isLoading, login } = useAuth();
+  const router = useRouter();
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (!isLoading && isAuthenticated) {
+      router.replace('/');
+    }
+  }, [isAuthenticated, isLoading, router]); 
+  
+
+  const handleLogin = async (username: string, password: string) => {
+    setIsSubmitting(true);
+    setError('');
+
+    try {
+      console.log('[LoginPage] 开始登录，用户名:', username);
+      const res = await login(username, password);
+      const { ok, message } = parseLoginResult(res);
+
+      console.log('[LoginPage] 登录返回结果:', { ok, message });
+
+      if (ok) {
+        toast.success('登录成功', { description: '欢迎回来！' });
+                
+        const hasCookie = document.cookie.split(';').some(c => c.trim().startsWith('auth_token='));
+        
+        if (hasCookie) {
+          const cookieValue = document.cookie
+            .split('; ')
+            .find(row => row.startsWith('auth_token='))
+            ?.split('=')[1];
+        }
+        
+        // 延迟 500ms
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        router.push('/');
+      } else {
+        const msg = message || '用户名或密码错误';
+        setError(msg);
+        toast.error('登录失败', { description: msg });
+      }
+    } catch (err) {
+      const msg = '登录失败，请稍后重试';
+      setError(msg);
+      toast.error('网络或服务器异常', { description: msg });
+      console.error('[LoginPage] 登录错误:', err);
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-blue-600" />
+          <p className="text-gray-600 dark:text-gray-400">正在验证身份...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (isAuthenticated) {
+    return null;
+  }
+
+  return <LoginForm onSubmit={handleLogin} error={error} isSubmitting={isSubmitting} />;
+}
