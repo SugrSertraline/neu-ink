@@ -7,7 +7,7 @@ _client = None
 def get_client() -> MongoClient:
     global _client
     if _client is None:
-        uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/NeuInk")
+        uri = os.getenv("MONGO_URI", "mongodb://localhost:27017")
         _client = MongoClient(uri, uuidRepresentation="standard", connect=True)
     return _client
 
@@ -17,9 +17,8 @@ def get_db():
     """
     if "db" not in g:
         client = get_client()
-        # 若 URI 中带库名（NeuInk），优先使用；否则回退 NeuInk
-        default = client.get_default_database()  # 由 URI 决定
-        g.db = default if default is not None else client["NeuInk"]
+        # 直接使用 NeuInk 数据库
+        g.db = client["NeuInk"]
     return g.db
 
 def get_user_col():
