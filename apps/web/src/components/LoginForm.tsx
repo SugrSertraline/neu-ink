@@ -10,9 +10,10 @@ interface LoginFormProps {
   onSubmit: (username: string, password: string) => Promise<void>;
   error?: string;
   isSubmitting?: boolean;
+  onSkip?: () => void;
 }
 
-export function LoginForm({ onSubmit, error, isSubmitting = false }: LoginFormProps) {
+export function LoginForm({ onSubmit, error, isSubmitting = false, onSkip }: LoginFormProps) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
 
@@ -86,6 +87,17 @@ export function LoginForm({ onSubmit, error, isSubmitting = false }: LoginFormPr
                   '登录'
                 )}
               </Button>
+
+              {onSkip && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={onSkip}
+                  className="w-full"
+                >
+                  跳过登录
+                </Button>
+              )}
             </form>
 
             <div className="mt-6 text-center text-sm text-gray-600">

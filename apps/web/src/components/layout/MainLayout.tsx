@@ -12,11 +12,18 @@ interface MainLayoutProps {
 export default function MainLayout({ children }: MainLayoutProps) {
   const { isAuthenticated } = useAuth();
 
-  // 未登录时不显示布局
+  // 未登录时只显示内容，不显示侧边栏和Tab栏
   if (!isAuthenticated) {
-    return <>{children}</>;
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <main className="flex-1 overflow-hidden">
+          {children}
+        </main>
+      </div>
+    );
   }
 
+  // 已登录时显示完整布局
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
       {/* 侧边栏 */}

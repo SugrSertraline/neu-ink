@@ -322,12 +322,16 @@ export interface Note {
 
 // API响应类型
 export interface PaperListResponse {
-  papers: Paper[];
-  pagination: {
-    page: number;
-    limit: number;
-    total: number;
-    totalPages: number;
+  code: number;  // 业务状态码
+  message: string;
+  data: {
+    papers: Paper[];
+    pagination: {
+      page: number;
+      pageSize: number;
+      total: number;
+      totalPages: number;
+    };
   };
 }
 
@@ -344,6 +348,7 @@ export interface PaperFilters {
   rating?: string;
   page?: number;
   limit?: number;
+  pageSize?: number;
   sort?: string;
 }
 

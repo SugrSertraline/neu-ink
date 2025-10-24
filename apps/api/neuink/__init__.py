@@ -17,6 +17,10 @@ def create_app():
                 "http://localhost:3000",
                 "http://127.0.0.1:3000",
                 "http://localhost:3001",  # 如果前端运行在其他端口
+                "http://localhost:3002",
+                "http://127.0.0.1:3002",
+                "http://localhost:8000",
+                "http://127.0.0.1:8000",
             ],
             "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
             "allow_headers": ["Content-Type", "Authorization"],

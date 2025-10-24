@@ -33,6 +33,7 @@ class BusinessCode:
     TOKEN_INVALID = 1008          # Token无效
     TOKEN_EXPIRED = 1009          # Token已过期
     OLD_PASSWORD_WRONG = 1010     # 旧密码错误
+    UNKNOWN_ERROR = 1998          # 未知错误
     INTERNAL_ERROR = 1999         # 服务器内部错误
     
     # 论文相关 2000-2099

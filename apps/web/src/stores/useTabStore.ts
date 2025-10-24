@@ -2,14 +2,15 @@
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
 
-export type TabType = 'dashboard' | 'library' | 'paper' | 'settings';
+// ✅ 添加 'public-library' 类型
+export type TabType = 'dashboard' | 'library' | 'paper' | 'settings' | 'public-library';
 
 export interface Tab {
   id: string;
   type: TabType;
   title: string;
   path: string;
-  data?: any; // 可存储额外数据，如paper的id等
+  data?: any;
 }
 
 interface TabContextType {
@@ -17,7 +18,6 @@ interface TabContextType {
   activeTabId: string | null;
   loadingTabId: string | null;
   
-  // Actions
   addTab: (tab: Tab) => void;
   removeTab: (tabId: string) => void;
   setActiveTab: (tabId: string) => void;
@@ -51,13 +51,11 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const removeTab = useCallback((tabId: string) => {
-    // 不能删除首页
     if (tabId === 'dashboard') return;
     
     setTabs(currentTabs => {
       const newTabs = currentTabs.filter(tab => tab.id !== tabId);
       
-      // 如果删除的是当前活跃的tab，需要切换到其他tab
       if (activeTabId === tabId) {
         const currentIndex = currentTabs.findIndex(tab => tab.id === tabId);
         let newActiveTabId: string;

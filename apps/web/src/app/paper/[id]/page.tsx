@@ -4,16 +4,19 @@ import React from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import { useTabStore } from '@/stores/useTabStore';
 import { usePaperApi } from '@/lib/paperApi';
+import { useAuth } from '@/contexts/AuthContext';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { ArrowLeft, Loader2, FileText, Calendar, User, Tag } from 'lucide-react';
+import { ArrowLeft, Loader2, FileText, Calendar, User, Tag, LogIn } from 'lucide-react';
 import { toast } from 'sonner';
+import MainLayout from '@/components/layout/MainLayout';
 
 export default function PaperPage() {
   const params = useParams();
   const router = useRouter();
   const { setActiveTab } = useTabStore();
   const { paperApi } = usePaperApi();
+  const { isAuthenticated, isLoading } = useAuth();
   
   const [paper, setPaper] = React.useState<any>(null);
   const [loading, setLoading] = React.useState(true);
@@ -22,6 +25,13 @@ export default function PaperPage() {
   const paperId = params.id as string;
 
   React.useEffect(() => {
+    // 检查是否已登录
+    if (!isLoading && !isAuthenticated) {
+      setError('请先登录后查看论文详情');
+      setLoading(false);
+      return;
+    }
+
     const loadPaper = async () => {
       try {
         setLoading(true);
@@ -40,13 +50,13 @@ export default function PaperPage() {
       }
     };
 
-    if (paperId) {
+    if (paperId && isAuthenticated) {
       loadPaper();
     }
-  }, [paperId, paperApi]);
+  }, [paperId, paperApi, isAuthenticated, isLoading]);
 
   const handleBack = () => {
-    router.push('/library');
+    router.push('/');
   };
 
   if (loading) {
@@ -65,14 +75,31 @@ export default function PaperPage() {
       <div className="flex items-center justify-center h-full">
         <Card className="w-96">
           <CardHeader>
-            <CardTitle className="text-red-600">加载失败</CardTitle>
-            <CardDescription>{error || '论文不存在'}</CardDescription>
+            <CardTitle className="text-red-600">
+              {error?.includes('请先登录') ? '需要登录' : '加载失败'}
+            </CardTitle>
+            <CardDescription>
+              {error || '论文不存在'}
+            </CardDescription>
           </CardHeader>
-          <CardContent>
-            <Button onClick={handleBack} className="w-full">
-              <ArrowLeft className="w-4 h-4 mr-2" />
-              返回论文库
-            </Button>
+          <CardContent className="space-y-3">
+            {error?.includes('请先登录') ? (
+              <>
+                <Button onClick={() => router.push('/login')} className="w-full">
+                  <LogIn className="w-4 h-4 mr-2" />
+                  前往登录
+                </Button>
+                <Button variant="outline" onClick={handleBack} className="w-full">
+                  <ArrowLeft className="w-4 h-4 mr-2" />
+                  返回首页
+                </Button>
+              </>
+            ) : (
+              <Button onClick={handleBack} className="w-full">
+                <ArrowLeft className="w-4 h-4 mr-2" />
+                返回首页
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -80,13 +107,14 @@ export default function PaperPage() {
   }
 
   return (
-    <div className="h-full overflow-auto bg-gray-50 dark:bg-gray-900 p-6">
+    <MainLayout>
+      <div className="h-full overflow-auto bg-gray-50 dark:bg-gray-900 p-6">
       <div className="max-w-4xl mx-auto">
         {/* 顶部导航 */}
         <div className="mb-6">
           <Button variant="outline" onClick={handleBack} className="mb-4">
             <ArrowLeft className="w-4 h-4 mr-2" />
-            返回论文库
+            返回首页
           </Button>
           
           <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
@@ -177,7 +205,8 @@ export default function PaperPage() {
             论文阅读和笔记功能正在开发中，敬请期待！目前您可以查看论文的基本信息和解析状态。
           </p>
         </div>
+        </div>
       </div>
-    </div>
+    </MainLayout>
   );
 }

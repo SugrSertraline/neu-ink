@@ -4,7 +4,7 @@ import { authApi } from '@/lib/authApi';
 import { BusinessCode } from '@/types/api';
 import { User } from '@/types/user';
 import React, { createContext, useContext, useEffect, useState } from 'react';
-
+import { useRouter } from 'next/navigation'; 
 interface LoginResult {
   ok: boolean;
   message?: string;
@@ -24,6 +24,7 @@ interface AuthContextType {
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter(); 
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
@@ -36,22 +37,29 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(true);
       const response = await authApi.login({ username, password });
       
+      // ✅ 添加日志：查看完整响应
+      console.log('[AuthContext] HTTP响应:', JSON.stringify(response, null, 2));
+      console.log('[AuthContext] BusinessCode.SUCCESS值:', BusinessCode.SUCCESS);
+      
       // HTTP / 网关层
       if (response?.code === 200) {
         const businessResponse = response.data;
+        
+        // ✅ 添加日志：查看业务响应
+        console.log('[AuthContext] 业务响应:', JSON.stringify(businessResponse, null, 2));
+        console.log('[AuthContext] 业务code比较:', businessResponse?.code, '===', BusinessCode.SUCCESS, '?', businessResponse?.code === BusinessCode.SUCCESS);
         
         // 业务层
         if (businessResponse?.code === BusinessCode.SUCCESS) {
           const { token, user: userData } = businessResponse.data;
           
-          // 只调用一次 setToken
           authApi.setToken(token);
-          
           setUser(userData);
           
           console.log('[AuthContext] 登录成功，用户:', userData.username);
           return { ok: true };
         } else {
+          console.log('[AuthContext] 业务层失败，返回消息');
           return {
             ok: false,
             message: businessResponse?.message || '登录失败',
@@ -59,6 +67,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           };
         }
       }
+      console.log('[AuthContext] HTTP层失败');
       return { ok: false, message: response?.message || '网络错误，请稍后重试' };
     } catch (error) {
       console.error('[AuthContext] 登录异常:', error);
@@ -67,11 +76,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setIsLoading(false);
     }
   };
+  
 
   // 登出
-  const logout = () => {
-    authApi.clearToken();
-    setUser(null);
+  const logout = async () => {
+    try {
+      // 调用后端登出API
+      await authApi.logout();
+    } catch (error) {
+      console.error('Logout API call failed:', error);
+    } finally {
+      // 无论API调用是否成功，都清除本地状态
+      authApi.clearToken();
+      setUser(null);
+      // 跳转到登录页面
+      router.push('/login');
+    }
   };
 
   // 刷新用户信息

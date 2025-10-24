@@ -86,7 +86,8 @@ class PaperService:
         page: int = 1,
         page_size: int = 20,
         sort_by: str = "createdAt",
-        sort_order: str = "desc"
+        sort_order: str = "desc",
+        search: Optional[str] = None
     ) -> Dict[str, Any]:
         """
         获取论文列表
@@ -98,6 +99,7 @@ class PaperService:
             page_size: 每页数量
             sort_by: 排序字段
             sort_order: 排序顺序（asc/desc）
+            search: 搜索关键词
             
         Returns:
             业务响应
@@ -106,14 +108,23 @@ class PaperService:
             skip = (page - 1) * page_size
             sort_direction = -1 if sort_order == "desc" else 1
             
-            papers, total = self.paper_model.find_all(
-                is_public=is_public,
-                created_by=user_id if not is_public else None,
-                skip=skip,
-                limit=page_size,
-                sort_by=sort_by,
-                sort_order=sort_direction
-            )
+            # 如果有搜索关键词，使用搜索方法
+            if search:
+                papers, total = self.paper_model.search(
+                    keyword=search,
+                    is_public=is_public,
+                    skip=skip,
+                    limit=page_size
+                )
+            else:
+                papers, total = self.paper_model.find_all(
+                    is_public=is_public,
+                    created_by=user_id if not is_public else None,
+                    skip=skip,
+                    limit=page_size,
+                    sort_by=sort_by,
+                    sort_order=sort_direction
+                )
             
             total_pages = (total + page_size - 1) // page_size
             
@@ -315,6 +326,105 @@ class PaperService:
             return {
                 "code": BusinessCode.UNKNOWN_ERROR,
                 "message": f"获取统计信息失败: {str(e)}",
+                "data": None
+            }
+    
+    def get_user_papers(
+        self,
+        user_id: str,
+        page: int = 1,
+        page_size: int = 20,
+        sort_by: str = "createdAt",
+        sort_order: str = "desc",
+        search: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        获取用户个人论文列表
+        包括公开论文和用户添加到个人库的论文
+        
+        Args:
+            user_id: 用户ID
+            page: 页码
+            page_size: 每页数量
+            sort_by: 排序字段
+            sort_order: 排序顺序（asc/desc）
+            search: 搜索关键词
+            
+        Returns:
+            业务响应
+        """
+        try:
+            skip = (page - 1) * page_size
+            sort_direction = -1 if sort_order == "desc" else 1
+            
+            # 如果有搜索关键词，使用搜索方法
+            if search:
+                # 搜索公开论文和用户个人论文
+                public_papers, public_total = self.paper_model.search(
+                    keyword=search,
+                    is_public=True,
+                    skip=skip,
+                    limit=page_size
+                )
+                
+                # TODO: 搜索用户个人库中的论文
+                # 这里需要实现用户个人库的搜索功能
+                user_papers, user_total = [], 0
+                
+                # 合并结果（去重）
+                all_papers = public_papers.copy()
+                seen_ids = {paper.get("id") for paper in public_papers}
+                
+                for paper in user_papers:
+                    if paper.get("id") not in seen_ids:
+                        all_papers.append(paper)
+                        seen_ids.add(paper.get("id"))
+                
+                total = public_total + user_total
+            else:
+                # 获取所有公开论文
+                public_papers, public_total = self.paper_model.find_all(
+                    is_public=True,
+                    skip=skip,
+                    limit=page_size,
+                    sort_by=sort_by,
+                    sort_order=sort_direction
+                )
+                
+                # TODO: 获取用户个人库中的论文
+                # 这里需要实现获取用户个人库的功能
+                user_papers, user_total = [], 0
+                
+                # 合并结果（去重）
+                all_papers = public_papers.copy()
+                seen_ids = {paper.get("id") for paper in public_papers}
+                
+                for paper in user_papers:
+                    if paper.get("id") not in seen_ids:
+                        all_papers.append(paper)
+                        seen_ids.add(paper.get("id"))
+                
+                total = public_total + user_total
+            
+            total_pages = (total + page_size - 1) // page_size
+            
+            return {
+                "code": BusinessCode.SUCCESS,
+                "message": "获取用户论文列表成功",
+                "data": {
+                    "papers": all_papers,
+                    "pagination": {
+                        "page": page,
+                        "pageSize": page_size,
+                        "total": total,
+                        "totalPages": total_pages
+                    }
+                }
+            }
+        except Exception as e:
+            return {
+                "code": BusinessCode.UNKNOWN_ERROR,
+                "message": f"获取用户论文列表失败: {str(e)}",
                 "data": None
             }
 

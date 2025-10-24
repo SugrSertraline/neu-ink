@@ -6,7 +6,8 @@ import {
   Library,
   Settings,
   Loader2,
-  CheckSquare
+  CheckSquare,
+  BookOpen  // ✅ 添加这个图标
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTabStore } from '@/stores/useTabStore';
@@ -17,7 +18,7 @@ import { cn } from '@/lib/utils';
 export default function Sidebar() {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin, isAuthenticated } = useAuth();
 
   const {
     tabs,
@@ -28,7 +29,6 @@ export default function Sidebar() {
     setLoading
   } = useTabStore();
 
-  // 监听路径变化，自动清除 loading 状态
   React.useEffect(() => {
     if (loadingTabId) {
       const targetTab = tabs.find(t => t.id === loadingTabId);
@@ -47,24 +47,26 @@ export default function Sidebar() {
     label: string,
     explicitPath?: string
   ) => {
-    // 如果是清单功能，显示即将推出提示
     if (id === 'checklist') {
-      // 暂不导航，仅显示提示
       return;
     }
 
     const existingTab = tabs.find(t => t.id === id);
 
-    // 显式路径优先；否则按类型推导
-    const path =
-      explicitPath
-      ?? (type === 'dashboard'
-        ? '/'
-        : (type === 'paper'
-          ? `/paper/${id}`
-          : `/${String(type)}`));
+    // ✅ 添加明确的路由映射
+    const routeMap: Record<string, string> = {
+      'public-library': '/',
+      'library': '/library',
+      'settings': '/settings'
+    };
 
-    // 已在当前路径：只需要激活 tab
+    // 优先使用 routeMap，其次是 explicitPath，最后是默认推导
+    const path = routeMap[id] ?? explicitPath ?? (
+      type === 'dashboard'
+        ? '/'
+        : (type === 'paper' ? `/paper/${id}` : `/${String(type)}`)
+    );
+
     if (pathname === path) {
       if (existingTab) {
         setActiveTab(id);
@@ -76,11 +78,9 @@ export default function Sidebar() {
       return;
     }
 
-    // 设置加载状态
     setLoading(true, id);
     
     try {
-      // 正常导航
       if (existingTab) {
         setActiveTab(id);
       } else {
@@ -101,19 +101,20 @@ export default function Sidebar() {
     label,
     icon: Icon,
     activeColor = 'blue',
+    badge,  // ✅ 添加 badge 属性
     children
   }: {
-    id: 'dashboard' | 'library' | 'settings' | string;
-    type: 'dashboard' | 'library' | 'settings';
+    id: string;
+    type: TabType;
     label: string;
     icon: any;
-    activeColor?: 'blue' | 'indigo' | 'cyan' | 'slate';
+    activeColor?: 'blue' | 'indigo' | 'cyan' | 'slate' | 'purple';  // ✅ 添加 purple
+    badge?: string;  // ✅ 添加 badge 类型
     children?: React.ReactNode;
   }) => {
     const isActive = activeTabId === id;
     const isLoading = loadingTabId === id;
 
-    // 基于主题色的配色方案
     const colorMap = {
       blue: {
         gradient: 'from-blue-600 to-blue-700',
@@ -130,6 +131,11 @@ export default function Sidebar() {
       slate: {
         gradient: 'from-slate-600 to-slate-700',
         shadow: 'shadow-slate-500/20'
+      },
+      // ✅ 添加 purple 配色
+      purple: {
+        gradient: 'from-purple-600 to-purple-700',
+        shadow: 'shadow-purple-500/20'
       }
     };
 
@@ -148,12 +154,10 @@ export default function Sidebar() {
           isLoading && "opacity-75 cursor-wait"
         )}
       >
-        {/* Active 指示器 */}
         {isActive && (
           <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-white rounded-r-full shadow-lg" />
         )}
 
-        {/* Loading 或 Icon */}
         {isLoading ? (
           <Loader2 className="w-5 h-5 animate-spin" />
         ) : (
@@ -165,6 +169,18 @@ export default function Sidebar() {
         )}
 
         <span className="flex-1 text-left">{label}</span>
+
+        {/* ✅ 添加 badge 显示 */}
+        {badge && (
+          <span className={cn(
+            "px-2 py-0.5 text-xs rounded-full",
+            isActive 
+              ? "bg-white/20 text-white" 
+              : "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"
+          )}>
+            {badge}
+          </span>
+        )}
 
         {children}
 
@@ -193,21 +209,26 @@ export default function Sidebar() {
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto flex flex-col">
         {/* 主要功能区 */}
         <div className="space-y-1.5">
+          {/* 公共论文库菜单 - 所有用户都可以看到 */}
           <NavButton
-            id="dashboard"
-            type="dashboard"
-            label="首页"
-            icon={Home}
-            activeColor="blue"
+            id="public-library"
+            type="public-library"
+            label="论文库"
+            icon={BookOpen}
+            activeColor="purple"
+            badge={isAdmin ? "管理" : undefined}  // 管理员显示"管理"标识
           />
 
-          <NavButton
-            id="library"
-            type="library"
-            label="论文库"
-            icon={Library}
-            activeColor="indigo"
-          />
+          {/* 已登录用户显示个人论文库 */}
+          {isAuthenticated && (
+            <NavButton
+              id="library"
+              type="library"
+              label="我的论文库"
+              icon={Library}
+              activeColor="indigo"
+            />
+          )}
 
           <NavButton
             id="checklist"
@@ -227,19 +248,43 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* 用户信息 */}
-        <div className="flex-1 space-y-1.5 min-h-0">
-          <div className="p-3 bg-white/50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
-            <div className="text-sm">
-              <div className="font-medium text-gray-900 dark:text-gray-100">
-                {user?.nickname || user?.username}
-              </div>
-              <div className="text-gray-500 dark:text-gray-400">
-                {isAdmin ? '管理员' : '普通用户'}
+        {/* 用户信息 - 只有已登录用户显示 */}
+        {isAuthenticated && (
+          <div className="flex-1 space-y-1.5 min-h-0">
+            <div className="p-3 bg-white/50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700">
+              <div className="text-sm">
+                <div className="font-medium text-gray-900 dark:text-gray-100">
+                  {user?.nickname || user?.username}
+                </div>
+                <div className="text-gray-500 dark:text-gray-400">
+                  {isAdmin ? '管理员' : '普通用户'}
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
+
+        {/* 未登录用户显示登录提示 */}
+        {!isAuthenticated && (
+          <div className="flex-1 space-y-1.5 min-h-0">
+            <div className="p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <div className="text-sm text-center">
+                <div className="font-medium text-blue-900 dark:text-blue-100 mb-1">
+                  未登录
+                </div>
+                <div className="text-blue-700 dark:text-blue-300 text-xs mb-2">
+                  登录后可使用更多功能
+                </div>
+                <button
+                  onClick={() => router.push('/login')}
+                  className="w-full px-2 py-1 bg-blue-600 text-white rounded text-xs hover:bg-blue-700 transition-colors"
+                >
+                  立即登录
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* 分割线 */}
         <div className="relative py-3">

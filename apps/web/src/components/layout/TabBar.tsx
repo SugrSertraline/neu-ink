@@ -1,21 +1,35 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { X, Home, Library, Settings, FileText, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import {
+  X,
+  Home,
+  Library,
+  Settings,
+  FileText,
+  Loader2,
+  ChevronLeft,
+  ChevronRight,
+  BookOpen  // ✅ 添加 BookOpen 图标
+} from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useTabStore, Tab } from '@/stores/useTabStore';
+import { useAuth } from '@/contexts/AuthContext';
 import { cn } from '@/lib/utils';
 
 const iconMap: Record<Tab['type'], React.ReactNode> = {
   dashboard: <Home className="w-4 h-4" />,
   library: <Library className="w-4 h-4" />,
+  'public-library': <BookOpen className="w-4 h-4" />,  
   settings: <Settings className="w-4 h-4" />,
-  paper: <FileText className="w-4 h-4" />,
+  paper: <FileText className="w-4 h-4" />
 };
+
 
 export default function TabBar() {
   const router = useRouter();
   const pathname = usePathname();
+  const { isAuthenticated } = useAuth();
   const { tabs, activeTabId, setActiveTab, removeTab, loadingTabId, setLoading } = useTabStore();
   const [showLeftGradient, setShowLeftGradient] = useState(false);
   const [showRightGradient, setShowRightGradient] = useState(false);
@@ -202,6 +216,11 @@ export default function TabBar() {
     
     removeTab(tab.id);
   };
+
+  // 未登录时不显示TabBar
+  if (!isAuthenticated) {
+    return null;
+  }
 
   return (
     <div className="h-12 flex items-center px-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 gap-2">
