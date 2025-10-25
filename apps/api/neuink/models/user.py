@@ -4,7 +4,7 @@
 from typing import Dict, Any, Optional, List
 from neuink.services.db import get_user_col
 from neuink.utils.common import generate_id, get_current_time
-
+from neuink.config.constants import ADMIN_USERNAME
 
 class UserModel:
     """用户数据访问层"""

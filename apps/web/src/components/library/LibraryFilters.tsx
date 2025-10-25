@@ -103,10 +103,10 @@ export default function LibraryFilters({
           <select
             value={filterPriority}
             onChange={(e) => onPriorityChange(e.target.value)}
-            className="px-3 py-2 h-10 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors min-w-[80px]"
+            className="px-3 py-2 h-10 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors min-w-20"
           >
             <option value="all">全部</option>
-            <option value="high">高</option>
+            <option value="high">高</ option>
             <option value="medium">中</option>
             <option value="low">低</option>
           </select>

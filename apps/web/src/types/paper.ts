@@ -292,6 +292,41 @@ export interface Paper {
   updatedAt: string;
 }
 
+// 论文内容类型（用于阅读器）
+export interface PaperContent {
+  metadata: PaperMetadata;
+  abstract?: {
+    en?: string;
+    zh?: string;
+  };
+  keywords?: string[];
+  sections: Section[];
+  references: Reference[];
+  blockNotes?: BlockNote[];
+  checklistNotes?: ChecklistNote[];
+}
+
+// 段落笔记类型
+export interface BlockNote {
+  id: string;
+  blockId: string;
+  content: string;
+  tags?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+// 清单笔记类型
+export interface ChecklistNote {
+  id: string;
+  checklistId: string;
+  checklistPath: string;
+  content: string;
+  tags?: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
 // 用户-论文关联
 export interface UserPaper {
   id: string;

@@ -53,10 +53,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         if (businessResponse?.code === BusinessCode.SUCCESS) {
           const { token, user: userData } = businessResponse.data;
           
+          // 检查 userData 是否存在
+          if (!userData) {
+            console.error('[AuthContext] 用户数据为空:', businessResponse);
+            return {
+              ok: false,
+              message: '登录响应数据异常',
+              businessCode: businessResponse?.code,
+            };
+          }
+          
           authApi.setToken(token);
           setUser(userData);
           
-          console.log('[AuthContext] 登录成功，用户:', userData.username);
+          console.log('[AuthContext] 登录成功，用户:', userData);
+          console.log('[AuthContext] 用户名:', userData.username);
           return { ok: true };
         } else {
           console.log('[AuthContext] 业务层失败，返回消息');
@@ -98,9 +109,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUser = async () => {
     try {
       const response = await authApi.getCurrentUser();
-      if (response?.code === 200) {
+      console.log('[AuthContext] 刷新用户信息响应:', response);
+      
+      if (response?.code === 200 && response?.data) {
+        // getCurrentUser 直接返回用户数据（单层结构）
         setUser(response.data);
       } else {
+        console.error('[AuthContext] 刷新用户信息失败:', response);
         authApi.clearToken();
         setUser(null);
       }

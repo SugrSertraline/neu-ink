@@ -10,7 +10,7 @@ import {
   Loader2,
   ChevronLeft,
   ChevronRight,
-  BookOpen  // ✅ 添加 BookOpen 图标
+  BookOpen
 } from 'lucide-react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useTabStore, Tab } from '@/stores/useTabStore';
@@ -37,6 +37,18 @@ export default function TabBar() {
   const [startX, setStartX] = useState(0);
   const [scrollLeft, setScrollLeft] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // ✅ 过滤标签页：未登录时只显示公共论文库相关的标签页
+  const visibleTabs = React.useMemo(() => {
+    if (isAuthenticated) {
+      return tabs;
+    }
+    // 未登录时只显示公共论文库和论文详情（如果是从公共库打开的）
+    return tabs.filter(tab => 
+      tab.type === 'public-library' || 
+      (tab.type === 'paper' && tab.path.includes('public'))
+    );
+  }, [tabs, isAuthenticated]);
 
   // 当活跃标签改变时，自动滚动到可见区域
   useEffect(() => {
@@ -79,7 +91,7 @@ export default function TabBar() {
         window.removeEventListener('resize', checkScroll);
       };
     }
-  }, [tabs]);
+  }, [visibleTabs]); // ✅ 改为监听 visibleTabs
 
   // 鼠标滚轮横向滚动
   useEffect(() => {
@@ -87,12 +99,10 @@ export default function TabBar() {
     if (!container) return;
 
     const handleWheel = (e: WheelEvent) => {
-      // 如果已经在横向滚动，或者按住了 Shift 键
       if (Math.abs(e.deltaX) > 0 || e.shiftKey) {
-        return; // 让浏览器默认处理
+        return;
       }
       
-      // 将纵向滚动转换为横向滚动
       if (Math.abs(e.deltaY) > 0) {
         e.preventDefault();
         container.scrollLeft += e.deltaY;
@@ -123,7 +133,7 @@ export default function TabBar() {
     if (!isDragging || !scrollContainerRef.current) return;
     e.preventDefault();
     const x = e.pageX - scrollContainerRef.current.offsetLeft;
-    const walk = (x - startX) * 2; // 滚动速度倍数
+    const walk = (x - startX) * 2;
     scrollContainerRef.current.scrollLeft = scrollLeft - walk;
   };
 
@@ -185,16 +195,16 @@ export default function TabBar() {
   const onCloseTab = async (e: React.MouseEvent, tab: Tab) => {
     e.stopPropagation();
     
-    if (tab.id === 'dashboard') return;
+    if (tab.id === 'dashboard' || tab.id === 'public-library') return; // ✅ 公共论文库标签页不可关闭
     
     if (tab.id === activeTabId) {
-      const currentIndex = tabs.findIndex(t => t.id === tab.id);
+      const currentIndex = visibleTabs.findIndex(t => t.id === tab.id); // ✅ 使用 visibleTabs
       let targetTab: Tab | null = null;
       
       if (currentIndex > 0) {
-        targetTab = tabs[currentIndex - 1];
-      } else if (tabs.length > 1) {
-        targetTab = tabs[currentIndex + 1];
+        targetTab = visibleTabs[currentIndex - 1];
+      } else if (visibleTabs.length > 1) {
+        targetTab = visibleTabs[currentIndex + 1];
       }
       
       if (targetTab) {
@@ -216,11 +226,6 @@ export default function TabBar() {
     
     removeTab(tab.id);
   };
-
-  // 未登录时不显示TabBar
-  if (!isAuthenticated) {
-    return null;
-  }
 
   return (
     <div className="h-12 flex items-center px-4 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 gap-2">
@@ -250,7 +255,8 @@ export default function TabBar() {
             msOverflowStyle: 'none',
           }}
         >
-          {tabs.map((tab) => {
+          {/* ✅ 使用 visibleTabs 而不是 tabs */}
+          {visibleTabs.map((tab) => {
             const isActive = tab.id === activeTabId;
             const isLoading = loadingTabId === tab.id;
             const baseBtn =
@@ -285,7 +291,8 @@ export default function TabBar() {
 
                   {isActive && !isLoading && <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />}
 
-                  {tab.id !== 'dashboard' && (
+                  {/* ✅ 公共论文库标签页不可关闭 */}
+                  {tab.id !== 'dashboard' && tab.id !== 'public-library' && (
                     <X
                       onClick={(e) => onCloseTab(e, tab)}
                       className={cn(

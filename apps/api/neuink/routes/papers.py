@@ -253,6 +253,46 @@ def get_paper(paper_id):
         return internal_error_response(f"服务器错误: {str(e)}")
 
 
+@bp.route("/<paper_id>/content", methods=["GET"])
+@login_required
+def get_paper_content(paper_id):
+    """
+    获取论文内容（用于阅读器）
+    """
+    try:
+        user_id = g.current_user["user_id"]
+        is_admin = g.current_user.get("is_admin", False)
+
+        # 调用服务层
+        paper_service = get_paper_service()
+        result = paper_service.get_paper_by_id(paper_id, user_id)
+
+        if result["code"] == BusinessCode.SUCCESS:
+            paper = result["data"]
+            
+            # 构建论文内容对象
+            content = {
+                "metadata": paper.get("metadata", {}),
+                "abstract": paper.get("abstract"),
+                "keywords": paper.get("keywords", []),
+                "sections": paper.get("sections", []),
+                "references": paper.get("references", []),
+                "blockNotes": paper.get("blockNotes", []),
+                "checklistNotes": paper.get("checklistNotes", [])
+            }
+            
+            return success_response(content, result["message"])
+        elif result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        elif result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        else:
+            return internal_error_response(result["message"])
+
+    except Exception as e:
+        return internal_error_response(f"服务器错误: {str(e)}")
+
+
 @bp.route("", methods=["POST"])
 @login_required
 @admin_required
@@ -303,8 +343,7 @@ def update_paper(paper_id):
             return bad_request_response("更新数据不能为空")
 
         user_id = g.current_user["user_id"]
-        username = g.current_user["username"]
-        is_admin = username == "admin"
+        is_admin = g.current_user.get("is_admin", False)
 
         # 调用服务层
         paper_service = get_paper_service()
@@ -332,8 +371,7 @@ def delete_paper(paper_id):
     """
     try:
         user_id = g.current_user["user_id"]
-        username = g.current_user["username"]
-        is_admin = username == "admin"
+        is_admin = g.current_user.get("is_admin", False)
 
         # 调用服务层
         paper_service = get_paper_service()

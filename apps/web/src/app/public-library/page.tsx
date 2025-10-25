@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTabStore } from '@/stores/useTabStore';
 import { usePaperApi } from '@/lib/paperApi';
+import { useRouter } from 'next/navigation'; // ✅ 添加 useRouter
 import type { PaperListItem, PaperFilters } from '@/types/paper';
 
 // 组件
@@ -17,6 +18,7 @@ import CreatePaperDialog from '@/components/library/CreatePaperDialog';
 type ViewMode = 'card' | 'table' | 'compact';
 
 export default function LibraryPage() {
+  const router = useRouter(); // ✅ 添加 router
   const { isAuthenticated, isAdmin } = useAuth();
   const { addTab, setActiveTab } = useTabStore();
   const { paperApi, paperCache } = usePaperApi();
@@ -51,6 +53,9 @@ export default function LibraryPage() {
   // 分页状态
   const [currentPage, setCurrentPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(20);
+
+  // ✅ 添加登录提示状态
+  const [showLoginHint, setShowLoginHint] = React.useState(false);
 
   // 搜索防抖
   React.useEffect(() => {
@@ -96,54 +101,94 @@ export default function LibraryPage() {
         response = await paperApi.getPublicPapers(filters);
       }
 
-      if (response.code === 200 && response.data.code === 0) {
+      console.log('[PublicLibrary] 完整API响应:', response);
+      
+      // 检查响应是否为空或无效
+      if (!response || typeof response !== 'object') {
+        console.error('[PublicLibrary] 无效的API响应:', response);
+        setError('服务器响应无效');
+        return;
+      }
+      
+      if (response.code === 200 && response.data && response.data.code === 0) {
         // 使用后端返回的实际数据
         const papersData = response.data.data.papers;
         const pagination = response.data.data.pagination;
         
+        console.log('[PublicLibrary] 获取到的论文数据:', papersData);
+        console.log('[PublicLibrary] 分页信息:', pagination);
+        
+        // 检查数据是否为数组
+        if (!Array.isArray(papersData)) {
+          console.error('[PublicLibrary] 论文数据不是数组:', papersData);
+          setError('数据格式错误：论文列表不是数组');
+          return;
+        }
+        
         // 转换为 PaperListItem 格式
-        const papersList: PaperListItem[] = papersData.map((paper: any) => ({
-          id: paper.id,
-          isPublic: paper.isPublic,
-          createdBy: paper.createdBy,
-          createdAt: paper.createdAt,
-          updatedAt: paper.updatedAt,
-          parseStatus: paper.parseStatus,
+        const papersList: PaperListItem[] = papersData.map((paper: any, index: number) => {
+          console.log(`[PublicLibrary] 处理论文 ${index}:`, paper);
           
-          // 论文元数据
-          title: paper.metadata?.title || '未知标题',
-          titleZh: paper.metadata?.titleZh,
-          shortTitle: paper.metadata?.shortTitle,
-          authors: paper.metadata?.authors || [],
-          publication: paper.metadata?.publication,
-          year: paper.metadata?.year,
-          date: paper.metadata?.date,
-          doi: paper.metadata?.doi,
-          articleType: paper.metadata?.articleType,
-          sciQuartile: paper.metadata?.sciQuartile,
-          casQuartile: paper.metadata?.casQuartile,
-          ccfRank: paper.metadata?.ccfRank,
-          impactFactor: paper.metadata?.impactFactor,
-          tags: paper.metadata?.tags || [],
+          // 确保 parseStatus 有默认值
+          const parseStatus = paper.parseStatus || {
+            status: 'completed',
+            progress: 100,
+            message: '论文已就绪'
+          };
           
-          // 用户个性化数据（暂时为空，后续从用户论文关联中获取）
-          readingStatus: undefined,
-          priority: undefined,
-          remarks: undefined,
-          readingPosition: undefined,
-          totalReadingTime: undefined,
-          lastReadTime: undefined,
-        }));
+          // 确保 metadata 存在
+          const metadata = paper.metadata || {};
+          
+          return {
+            id: paper.id || `paper-${index}`,
+            isPublic: paper.isPublic !== false, // 默认为 true
+            createdBy: paper.createdBy || 'unknown',
+            createdAt: paper.createdAt || new Date().toISOString(),
+            updatedAt: paper.updatedAt || new Date().toISOString(),
+            parseStatus: parseStatus,
+            
+            // 论文元数据
+            title: metadata.title || '未知标题',
+            titleZh: metadata.titleZh,
+            shortTitle: metadata.shortTitle,
+            authors: metadata.authors || [],
+            publication: metadata.publication,
+            year: metadata.year,
+            date: metadata.date,
+            doi: metadata.doi,
+            articleType: metadata.articleType,
+            sciQuartile: metadata.sciQuartile,
+            casQuartile: metadata.casQuartile,
+            ccfRank: metadata.ccfRank,
+            impactFactor: metadata.impactFactor,
+            tags: metadata.tags || [],
+            
+            // 用户个性化数据（暂时为空，后续从用户论文关联中获取）
+            readingStatus: undefined,
+            priority: undefined,
+            remarks: undefined,
+            readingPosition: undefined,
+            totalReadingTime: undefined,
+            lastReadTime: undefined,
+          };
+        });
 
+        console.log('[PublicLibrary] 转换后的论文列表:', papersList);
+        console.log('[PublicLibrary] 论文数量:', papersList.length);
+        
         setPapers(papersList);
-        setTotalCount(pagination.total);
+        setTotalCount(pagination?.total || papersList.length);
         
         // 提取年份
         const years = Array.from(new Set(papersList.map(p => p.year).filter(Boolean)))
           .sort((a, b) => (b || 0) - (a || 0));
         setAvailableYears(years);
+      } else {
+        console.error('[PublicLibrary] API响应错误:', response);
+        setError(response?.data?.message || response?.message || '获取论文列表失败');
       }
     } catch (err: any) {
+      console.error('[PublicLibrary] 加载论文列表异常:', err);
       setError(err?.message || '加载失败');
     } finally {
       setLoading(false);
@@ -151,19 +196,24 @@ export default function LibraryPage() {
   }, [
     debouncedSearchTerm, filterStatus, filterPriority, filterType,
     filterSciQuartile, filterCasQuartile, filterCcfRank, filterYear,
-    currentPage, pageSize, isAdmin, paperApi
+    currentPage, pageSize, isAdmin, isAuthenticated, paperApi
   ]);
 
   React.useEffect(() => {
     loadPapers();
   }, [loadPapers]);
 
-  // 打开论文
+  // ✅ 优化后的打开论文函数
   const openPaper = async (paper: PaperListItem) => {
     // 检查是否已登录
     if (!isAuthenticated) {
-      // 未登录则跳转到登录页面
-      window.location.href = '/login';
+      // ✅ 显示登录提示
+      setShowLoginHint(true);
+      
+      // ✅ 3秒后自动跳转到登录页面
+      setTimeout(() => {
+        router.push('/login');
+      }, 2000);
       return;
     }
     
@@ -206,6 +256,15 @@ export default function LibraryPage() {
 
   // 添加论文到个人库
   const handleAddToLibrary = async (paperId: string) => {
+    // ✅ 检查是否已登录
+    if (!isAuthenticated) {
+      setShowLoginHint(true);
+      setTimeout(() => {
+        router.push('/login');
+      }, 2000);
+      return;
+    }
+
     try {
       const response = await paperApi.addToUserLibrary(paperId);
       if (response.code === 200) {
@@ -235,6 +294,41 @@ export default function LibraryPage() {
 
   return (
     <div className="flex flex-col h-full">
+      {/* ✅ 登录提示浮层 */}
+      {showLoginHint && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-xl max-w-md mx-4 animate-in fade-in zoom-in duration-200">
+            <div className="text-center">
+              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Library className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              </div>
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+                需要登录
+              </h3>
+              <p className="text-gray-600 dark:text-gray-400 mb-4">
+                查看论文详情需要登录账号
+              </p>
+              <p className="text-sm text-gray-500 dark:text-gray-500 mb-4">
+                即将跳转到登录页面...
+              </p>
+              <div className="flex gap-3 justify-center">
+                <Button
+                  variant="outline"
+                  onClick={() => setShowLoginHint(false)}
+                >
+                  取消
+                </Button>
+                <Button
+                  onClick={() => router.push('/login')}
+                >
+                  立即登录
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* 顶部固定区域 */}
       <div className="flex-none bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
         <div className="p-6 pb-4 space-y-4">
@@ -247,6 +341,12 @@ export default function LibraryPage() {
               <p className="text-gray-600 dark:text-gray-400">
                 {isAdmin ? '管理和浏览所有论文' : isAuthenticated ? '浏览公共论文库' : '浏览公共论文库（无需登录）'} • 共 {totalCount} 篇论文
               </p>
+              {/* ✅ 未登录时显示提示 */}
+              {!isAuthenticated && (
+                <p className="text-sm text-blue-600 dark:text-blue-400 mt-1">
+                  💡 登录后可查看论文详情和管理个人论文库
+                </p>
+              )}
             </div>
             <div className="flex items-center gap-3">
               {isAdmin && (
@@ -320,7 +420,7 @@ export default function LibraryPage() {
                 </p>
               )}
               {isAdmin && (
-                <Button>
+                <Button onClick={() => setShowCreateDialog(true)}>
                   <Plus className="w-4 h-4 mr-2" />
                   添加论文
                 </Button>
@@ -339,7 +439,8 @@ export default function LibraryPage() {
                       onClick={() => openPaper(paper)}
                       onEdit={isAdmin ? () => handleEditPaper(paper) : undefined}
                       onDelete={isAdmin ? () => handleDeletePaper(paper.id) : undefined}
-                      onAddToLibrary={!isAdmin ? () => handleAddToLibrary(paper.id) : undefined}
+                      onAddToLibrary={(!isAdmin && isAuthenticated) ? () => handleAddToLibrary(paper.id) : undefined}
+                      showLoginRequired={!isAuthenticated} // ✅ 传递未登录状态
                     />
                   ))}
                 </div>
@@ -351,7 +452,7 @@ export default function LibraryPage() {
                     <div
                       key={paper.id}
                       onClick={() => openPaper(paper)}
-                      className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow cursor-pointer"
+                      className="flex items-center justify-between p-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow cursor-pointer group"
                     >
                       <div className="flex-1 min-w-0">
                         <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate">
@@ -362,6 +463,12 @@ export default function LibraryPage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-2 ml-4">
+                        {/* ✅ 未登录时显示登录提示标签 */}
+                        {!isAuthenticated && (
+                          <span className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+                            点击登录查看
+                          </span>
+                        )}
                         {paper.sciQuartile && paper.sciQuartile !== '无' && (
                           <span className="text-xs px-2 py-1 bg-red-50 text-red-700 rounded">
                             {paper.sciQuartile}
@@ -392,6 +499,18 @@ export default function LibraryPage() {
           )}
         </div>
       </div>
+
+      {/* 创建论文对话框 */}
+      {showCreateDialog && (
+        <CreatePaperDialog
+          open={showCreateDialog}
+          onClose={() => setShowCreateDialog(false)}
+          onSuccess={() => {
+            setShowCreateDialog(false);
+            loadPapers();
+          }}
+        />
+      )}
 
       {/* 编辑论文对话框 */}
       {showEditDialog && editingPaper && (

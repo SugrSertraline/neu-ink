@@ -7,7 +7,7 @@ import {
   Settings,
   Loader2,
   CheckSquare,
-  BookOpen  // ✅ 添加这个图标
+  BookOpen
 } from 'lucide-react';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTabStore } from '@/stores/useTabStore';
@@ -45,22 +45,27 @@ export default function Sidebar() {
     id: string,
     type: TabType,
     label: string,
+    requiresAuth: boolean = false, // ✅ 新增参数：是否需要登录
     explicitPath?: string
   ) => {
+    // ✅ 检查是否需要登录
+    if (requiresAuth && !isAuthenticated) {
+      router.push('/login');
+      return;
+    }
+
     if (id === 'checklist') {
       return;
     }
 
     const existingTab = tabs.find(t => t.id === id);
 
-    // ✅ 添加明确的路由映射
     const routeMap: Record<string, string> = {
       'public-library': '/',
       'library': '/library',
       'settings': '/settings'
     };
 
-    // 优先使用 routeMap，其次是 explicitPath，最后是默认推导
     const path = routeMap[id] ?? explicitPath ?? (
       type === 'dashboard'
         ? '/'
@@ -101,19 +106,22 @@ export default function Sidebar() {
     label,
     icon: Icon,
     activeColor = 'blue',
-    badge,  // ✅ 添加 badge 属性
+    badge,
+    requiresAuth = false, // ✅ 新增属性
     children
   }: {
     id: string;
     type: TabType;
     label: string;
     icon: any;
-    activeColor?: 'blue' | 'indigo' | 'cyan' | 'slate' | 'purple';  // ✅ 添加 purple
-    badge?: string;  // ✅ 添加 badge 类型
+    activeColor?: 'blue' | 'indigo' | 'cyan' | 'slate' | 'purple';
+    badge?: string;
+    requiresAuth?: boolean; // ✅ 新增属性
     children?: React.ReactNode;
   }) => {
     const isActive = activeTabId === id;
     const isLoading = loadingTabId === id;
+    const isDisabled = requiresAuth && !isAuthenticated; // ✅ 判断是否禁用
 
     const colorMap = {
       blue: {
@@ -132,7 +140,6 @@ export default function Sidebar() {
         gradient: 'from-slate-600 to-slate-700',
         shadow: 'shadow-slate-500/20'
       },
-      // ✅ 添加 purple 配色
       purple: {
         gradient: 'from-purple-600 to-purple-700',
         shadow: 'shadow-purple-500/20'
@@ -143,18 +150,20 @@ export default function Sidebar() {
 
     return (
       <button
-        onClick={() => handleNavClick(id, type, label)}
+        onClick={() => handleNavClick(id, type, label, requiresAuth)}
         disabled={isLoading}
         className={cn(
           "relative w-full flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-300 text-sm font-medium group overflow-hidden",
           "focus:outline-none focus-visible:outline-none focus:ring-0",
-          isActive
+          isActive && !isDisabled
             ? `bg-linear-to-r ${colors.gradient} text-white shadow-lg ${colors.shadow} scale-[1.02]`
+            : isDisabled
+            ? "text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-60"
             : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:shadow-md hover:scale-[1.02]",
           isLoading && "opacity-75 cursor-wait"
         )}
       >
-        {isActive && (
+        {isActive && !isDisabled && (
           <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-white rounded-r-full shadow-lg" />
         )}
 
@@ -163,15 +172,21 @@ export default function Sidebar() {
         ) : (
           <Icon className={cn(
             "w-5 h-5 transition-all duration-300",
-            isActive ? "scale-110" : "group-hover:scale-110",
+            isActive && !isDisabled ? "scale-110" : "group-hover:scale-110",
             id === 'settings' && isActive && "rotate-90"
           )} />
         )}
 
         <span className="flex-1 text-left">{label}</span>
 
-        {/* ✅ 添加 badge 显示 */}
-        {badge && (
+        {/* ✅ 未登录时显示锁定图标 */}
+        {isDisabled && (
+          <span className="text-xs text-gray-400 dark:text-gray-600">
+            需登录
+          </span>
+        )}
+
+        {badge && !isDisabled && (
           <span className={cn(
             "px-2 py-0.5 text-xs rounded-full",
             isActive 
@@ -184,7 +199,7 @@ export default function Sidebar() {
 
         {children}
 
-        {isActive && !isLoading && (
+        {isActive && !isLoading && !isDisabled && (
           <div className="w-2 h-2 bg-white rounded-full animate-pulse" />
         )}
       </button>
@@ -209,35 +224,39 @@ export default function Sidebar() {
       <nav className="flex-1 p-4 space-y-2 overflow-y-auto flex flex-col">
         {/* 主要功能区 */}
         <div className="space-y-1.5">
-          {/* 公共论文库菜单 - 所有用户都可以看到 */}
+          {/* ✅ 公共论文库 - 所有用户都可以访问 */}
           <NavButton
             id="public-library"
             type="public-library"
             label="论文库"
             icon={BookOpen}
             activeColor="purple"
-            badge={isAdmin ? "管理" : undefined}  // 管理员显示"管理"标识
+            badge={isAdmin ? "管理" : undefined}
+            requiresAuth={false} // 不需要登录
           />
 
-          {/* 已登录用户显示个人论文库 */}
-          {isAuthenticated && (
-            <NavButton
-              id="library"
-              type="library"
-              label="我的论文库"
-              icon={Library}
-              activeColor="indigo"
-            />
-          )}
+          {/* ✅ 个人论文库 - 需要登录 */}
+          <NavButton
+            id="library"
+            type="library"
+            label="我的论文库"
+            icon={Library}
+            activeColor="indigo"
+            requiresAuth={true} // 需要登录
+          />
 
+          {/* ✅ 清单管理 - 需要登录 */}
           <NavButton
             id="checklist"
             type="library"
             label="清单管理"
             icon={CheckSquare}
             activeColor="cyan"
+            requiresAuth={true} // 需要登录
           >
-            <span className="text-xs text-gray-400 ml-auto">即将推出</span>
+            {isAuthenticated && (
+              <span className="text-xs text-gray-400 ml-auto">即将推出</span>
+            )}
           </NavButton>
         </div>
 
@@ -293,7 +312,7 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* 设置 - 固定在底部 */}
+        {/* ✅ 设置 - 需要登录 */}
         <div className="space-y-1.5">
           <NavButton
             id="settings"
@@ -301,6 +320,7 @@ export default function Sidebar() {
             label="设置"
             icon={Settings}
             activeColor="slate"
+            requiresAuth={true} // 需要登录
           />
         </div>
       </nav>

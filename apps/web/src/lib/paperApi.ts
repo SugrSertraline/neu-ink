@@ -52,12 +52,19 @@ export class PaperApi {
     });
 
     // 调用 /papers/all 端点，需要管理员权限
+    console.log('[PaperApi] 请求所有论文，参数:', filters);
+    console.log('[PaperApi] 请求URL:', `/papers/all?${searchParams.toString()}`);
     return this.client.get(`/papers/all?${searchParams.toString()}`);
   }
 
   // 获取论文详情
   async getPaper(paperId: string): Promise<ApiResponse<Paper>> {
     return this.client.get(`/papers/${paperId}`);
+  }
+
+  // 获取论文内容（用于阅读器）
+  async getPaperContent(paperId: string): Promise<ApiResponse<any>> {
+    return this.client.get(`/papers/${paperId}/content`);
   }
 
   // 创建论文（管理员或用户）

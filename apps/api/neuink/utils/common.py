@@ -63,10 +63,16 @@ def success_response(data: Any = None, message: str = ResponseMessage.SUCCESS) -
     Returns:
         (响应字典, 状态码)
     """
+    business_response = {
+        "code": 0,  # BusinessCode.SUCCESS
+        "message": message or ResponseMessage.SUCCESS,
+        "data": data
+    }
+    
     return jsonify(create_response(
         code=ResponseCode.SUCCESS,
-        message=message,
-        data=data
+        message=message or ResponseMessage.SUCCESS,
+        data=business_response
     )), ResponseCode.SUCCESS
 
 

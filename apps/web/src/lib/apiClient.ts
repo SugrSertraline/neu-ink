@@ -81,8 +81,30 @@ class ApiClient {
     };
 
     try {
+      console.log('[ApiClient] 请求URL:', url);
+      console.log('[ApiClient] 请求配置:', config);
+      
       const response = await fetch(url, config);
-      const data = await response.json();
+      
+      console.log('[ApiClient] 响应状态:', response.status, response.statusText);
+      
+      // 检查响应是否为空
+      const responseText = await response.text();
+      console.log('[ApiClient] 响应原始文本:', responseText);
+      
+      if (!responseText) {
+        throw new Error('服务器返回空响应');
+      }
+      
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseError) {
+        console.error('[ApiClient] JSON解析失败:', parseError);
+        throw new Error('响应格式错误：无法解析JSON');
+      }
+      
+      console.log('[ApiClient] 解析后的数据:', data);
 
       if (!response.ok) {
         throw new Error(data.message || `HTTP ${response.status}: ${response.statusText}`);
@@ -90,7 +112,7 @@ class ApiClient {
 
       return data;
     } catch (error) {
-      console.error('API Request failed:', error);
+      console.error('[ApiClient] API请求失败:', error);
       throw error;
     }
   }

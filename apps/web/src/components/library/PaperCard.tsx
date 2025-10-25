@@ -11,10 +11,11 @@ import { useAuth } from '@/contexts/AuthContext';
 
 interface PaperCardProps {
   paper: PaperListItem;
-  onClick: () => void;
-  onEdit?: () => void;
-  onDelete?: () => void;
-  onAddToLibrary?: () => void;
+  onClick: () => void | Promise<void>;
+  onEdit?: () => void | Promise<void>;
+  onDelete?: () => void | Promise<void>;
+  onAddToLibrary?: () => void | Promise<void>;
+  showLoginRequired?: boolean;
 }
 
 // 获取状态徽章
@@ -65,15 +66,22 @@ function getQuartileColor(quartile: string) {
   }
 }
 
-export default function PaperCard({ 
-  paper, 
-  onClick, 
+export default function PaperCard({
+  paper,
+  onClick,
   onEdit,
   onDelete,
   onAddToLibrary,
+  showLoginRequired = false,
 }: PaperCardProps) {
   const { isAdmin } = useAuth();
-  
+  const guard =
+    (fn?: () => void | Promise<void>) =>
+      async (e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (showLoginRequired) return; // 未登录时直接拦截
+        await fn?.();
+      };
   return (
     <div
       className={cn(
@@ -90,20 +98,19 @@ export default function PaperCard({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onAddToLibrary();
-                  }}
+                  onClick={guard(onAddToLibrary)} // ✅ 使用 guard
                   className="h-8 w-8 p-0"
                 >
                   <FolderPlus className="w-4 h-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>添加到个人库</TooltipContent>
+              <TooltipContent>
+                {showLoginRequired ? '请先登录后使用' : '添加到个人库'}
+              </TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
-        
+
         {onEdit && (
           <TooltipProvider>
             <Tooltip>
@@ -111,20 +118,18 @@ export default function PaperCard({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEdit();
-                  }}
+                  onClick={guard(onEdit)} // ✅
                   className="h-8 w-8 p-0"
                 >
                   <Edit className="w-4 h-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>编辑</TooltipContent>
+              <TooltipContent>{showLoginRequired ? '请先登录后使用' : '编辑'}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
-        
+
+
         {onDelete && isAdmin && (
           <TooltipProvider>
             <Tooltip>
@@ -132,16 +137,13 @@ export default function PaperCard({
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDelete();
-                  }}
+                  onClick={guard(onDelete)} // ✅
                   className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
                 >
                   <Trash2 className="w-4 h-4" />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent>删除</TooltipContent>
+              <TooltipContent>{showLoginRequired ? '请先登录后使用' : '删除'}</TooltipContent>
             </Tooltip>
           </TooltipProvider>
         )}
@@ -152,18 +154,18 @@ export default function PaperCard({
         <h3 className="font-semibold text-lg line-clamp-2 transition-colors group-hover:text-blue-600 dark:group-hover:text-blue-400">
           {paper.title}
         </h3>
-        {paper.parseStatus.status === 'parsing' && (
+        {paper.parseStatus && paper.parseStatus.status === 'parsing' && (
           <Loader2 className="w-5 h-5 animate-spin text-blue-500 shrink-0" />
         )}
-        {paper.parseStatus.status === 'failed' && (
+        {paper.parseStatus && paper.parseStatus.status === 'failed' && (
           <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
         )}
       </div>
 
       {/* 作者和年份 */}
       <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-        {paper.authors && paper.authors.length > 0 
-          ? paper.authors.map(a => a.name).join(', ') 
+        {paper.authors && paper.authors.length > 0
+          ? paper.authors.map(a => a.name).join(', ')
           : '未知作者'}
         {paper.year && ` · ${paper.year}`}
       </p>
@@ -223,8 +225,8 @@ export default function PaperCard({
             <span>{Math.round(paper.readingPosition * 100)}%</span>
           </div>
           <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-            <div 
-              className="bg-blue-600 h-1.5 rounded-full transition-all duration-300" 
+            <div
+              className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
               style={{ width: `${paper.readingPosition * 100}%` }}
             />
           </div>

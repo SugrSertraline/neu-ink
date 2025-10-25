@@ -1,11 +1,12 @@
 """
 用户相关路由 - 只负责HTTP处理
 """
-from flask import Blueprint, request, g
+from flask import Blueprint, jsonify, request, g
+from neuink.config.constants import ResponseCode
 from neuink.services.userService import get_user_service
 from neuink.utils.auth import login_required, admin_required
 from neuink.utils.common import (
-    success_response, created_response, bad_request_response,
+    create_response, success_response, created_response, bad_request_response,
     unauthorized_response, not_found_response, conflict_response,
     internal_error_response, validate_required_fields
 )
@@ -31,30 +32,56 @@ def login():
         if error_msg:
             return bad_request_response(error_msg)
         
-        # 清理输入数据（去除首尾空格）
+        # 清理输入数据
         username = data["username"].strip()
         password = data["password"].strip()
         
         print(f"清理后数据: username='{username}', password='{password}'")
         
-        # 调用Service处理业务逻辑，Service现在返回嵌套的业务状态
+        # 调用Service处理业务逻辑
         result = user_service.login(username, password)
         
-        # 无论登录成功还是失败，都返回200状态码，业务状态在data中
-        return success_response(result, "请求处理完成")
+        # ✅ 返回标准两层嵌套结构
+        return jsonify(create_response(
+            code=ResponseCode.SUCCESS,
+            message="请求处理完成",
+            data=result
+        )), ResponseCode.SUCCESS
         
     except Exception as e:
         print(f"Exception异常: {str(e)}")
         import traceback
         traceback.print_exc()
-        # 即使是异常，也返回200 + 业务错误码
+        
         from neuink.config.constants import BusinessCode, BusinessMessage
         error_result = {
             "code": BusinessCode.INTERNAL_ERROR,
             "message": BusinessMessage.INTERNAL_ERROR,
             "data": None
         }
-        return success_response(error_result, "请求处理完成")
+        return jsonify(create_response(
+            code=ResponseCode.SUCCESS,
+            message="请求处理完成",
+            data=error_result
+        )), ResponseCode.SUCCESS
+
+@bp.route("/logout", methods=["POST"])
+@login_required
+def logout():
+    """用户登出"""
+    try:
+        # 在JWT无状态认证中，登出主要在前端清除token
+        # 后端可以记录登出事件用于审计
+        user_id = g.current_user["user_id"]
+        print(f"用户 {user_id} 登出")
+        
+        # 返回成功响应
+        return success_response(None, "登出成功")
+        
+    except Exception as e:
+        # 即使登出过程中出现错误，也不应该阻止用户登出
+        print(f"登出过程中出现错误: {str(e)}")
+        return success_response(None, "登出成功")
 
 
 @bp.route("/current", methods=["GET"])

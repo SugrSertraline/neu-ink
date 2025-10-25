@@ -10,26 +10,22 @@ from functools import wraps
 from flask import request, jsonify, current_app, g
 from neuink.config.constants import ResponseCode, ResponseMessage, JWT_ALGORITHM, ADMIN_USERNAME
 
+# neuink/utils/auth.py
+
 def generate_token(user_data: Dict[str, Any]) -> str:
-    """
-    生成JWT token
-    
-    Args:
-        user_data: 用户数据，包含 id, username 等
-    
-    Returns:
-        JWT token字符串
-    """
     secret_key = os.getenv("JWT_SECRET_KEY", "default-secret")
     expires_in = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES", "3600"))
-    
+
+    # 根据你现在的管理员判定逻辑：用户名等于 ADMIN_USERNAME 就是管理员
+    is_admin = user_data.get("username") == ADMIN_USERNAME
+
     payload = {
         "user_id": user_data["id"],
         "username": user_data["username"],
-        "exp": datetime.utcnow() + timedelta(seconds=expires_in),
-        "iat": datetime.utcnow()
+        "is_admin": is_admin,            # 新增：把权限放进 token
+        "exp": datetime.utcnow() + timedelta(seconds=expires_in),  # ✓ 修复
+        "iat": datetime.utcnow()  # ✓ 修复
     }
-    
     return jwt.encode(payload, secret_key, algorithm=JWT_ALGORITHM)
 
 def verify_token(token: str) -> Optional[Dict[str, Any]]:
@@ -116,8 +112,8 @@ def admin_required(f):
                 "data": None
             }), ResponseCode.UNAUTHORIZED
         
-        # 检查是否为管理员
-        if user_info.get("username") != ADMIN_USERNAME:
+        # ✓ 优先检查 token 中的 is_admin 字段，回退到用户名检查
+        if not user_info.get("is_admin", False):
             return jsonify({
                 "code": ResponseCode.FORBIDDEN,
                 "message": ResponseMessage.FORBIDDEN,
