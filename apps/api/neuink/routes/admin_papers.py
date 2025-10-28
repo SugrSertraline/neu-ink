@@ -1,0 +1,184 @@
+"""
+管理员论文库接口
+负责公共论文的增删改查及统计。
+"""
+from flask import Blueprint, request, g
+
+from ..services.paperService import get_paper_service
+from ..utils.auth import login_required, admin_required
+from ..utils.common import (
+    success_response,
+    bad_request_response,
+    validate_required_fields,
+    internal_error_response,
+)
+from ..config.constants import BusinessCode
+
+bp = Blueprint("admin_papers", __name__)
+
+
+def _parse_pagination_args():
+    page = int(request.args.get("page", 1))
+    page_size = min(int(request.args.get("pageSize", 20)), 100)
+    return page, page_size
+
+
+def _parse_sort_args():
+    return request.args.get("sortBy", "createdAt"), request.args.get("sortOrder", "desc")
+
+
+def _parse_admin_filters():
+    """
+    管理端筛选项：是否公开、解析状态等。
+    可根据业务继续补充。
+    """
+    filters = {}
+    if request.args.get("isPublic") is not None:
+        filters["isPublic"] = request.args.get("isPublic").lower() == "true"
+    if request.args.get("parseStatus"):
+        filters["parseStatus"] = request.args["parseStatus"]
+    if request.args.get("year"):
+        filters["year"] = request.args.get("year", type=int)
+    if request.args.get("articleType"):
+        filters["articleType"] = request.args["articleType"]
+    if request.args.get("tag"):
+        filters["tag"] = request.args["tag"]
+    # 若后续需要按创建者过滤，可接受 createdBy 查询参数。
+    if request.args.get("createdBy"):
+        filters["createdBy"] = request.args["createdBy"]
+    return filters
+
+
+@bp.route("", methods=["GET"])
+@login_required
+@admin_required
+def list_admin_papers():
+    """
+    管理员查看自己管理范围内的论文。
+    默认仅返回本人创建的条目，如需查看他人创建的论文，可在 filters 中扩展。
+    """
+    try:
+        page, page_size = _parse_pagination_args()
+        sort_by, sort_order = _parse_sort_args()
+        search = request.args.get("search")
+        filters = _parse_admin_filters()
+
+        service = get_paper_service()
+        result = service.get_admin_papers(
+            user_id=g.current_user["user_id"],
+            page=page,
+            page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            search=search,
+            filters=filters,
+        )
+
+        if result["code"] != BusinessCode.SUCCESS:
+            return bad_request_response(result["message"])
+        return success_response(result["data"], result["message"])
+    except ValueError:
+        return bad_request_response("无效的参数格式")
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("", methods=["POST"])
+@login_required
+@admin_required
+def create_paper():
+    """
+    管理员创建公共论文。
+    """
+    try:
+        data = request.get_json()
+        required = ["metadata"]
+        error_msg = validate_required_fields(data, required)
+        if error_msg:
+            return bad_request_response(error_msg)
+        if not data.get("metadata", {}).get("title"):
+            return bad_request_response("论文标题不能为空")
+
+        service = get_paper_service()
+        result = service.create_paper(data, g.current_user["user_id"])
+
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>", methods=["PUT"])
+@login_required
+@admin_required
+def update_paper(paper_id):
+    """
+    管理员更新公共论文。
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return bad_request_response("更新数据不能为空")
+
+        service = get_paper_service()
+        result = service.update_paper(
+            paper_id=paper_id,
+            update_data=data,
+            user_id=g.current_user["user_id"],
+            is_admin=True,
+        )
+
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>", methods=["DELETE"])
+@login_required
+@admin_required
+def delete_paper(paper_id):
+    """
+    管理员删除公共论文。
+    """
+    try:
+        service = get_paper_service()
+        result = service.delete_paper(
+            paper_id=paper_id,
+            user_id=g.current_user["user_id"],
+            is_admin=True,
+        )
+
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(None, result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/statistics", methods=["GET"])
+@login_required
+@admin_required
+def get_statistics():
+    """
+    管理员统计信息。
+    """
+    try:
+        service = get_paper_service()
+        result = service.get_statistics()
+
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")

@@ -382,3 +382,4 @@ export interface PaperListItem extends PaperMetadata {
   totalReadingTime?: number;
   lastReadTime?: string;
 }
+export type PaperListData = PaperListResponse['data'];

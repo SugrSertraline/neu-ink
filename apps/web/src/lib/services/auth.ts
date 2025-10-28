@@ -1,5 +1,5 @@
 // lib/services/auth.ts
-import { callAndNormalize, isSuccess } from '../http';
+import { AuthAwareResult, callAndNormalize, isSuccess } from '../http';
 import { apiClient } from '../http';
 import type { UnifiedResult } from '@/types/api';
 import { BusinessCode } from '@/types/api';
@@ -10,7 +10,7 @@ export const authService = {
   setToken: (token: string) => apiClient.setToken(token),
   clearToken: () => apiClient.clearToken(),
 
-  async login(payload: LoginRequest): Promise<UnifiedResult<LoginResponse>> {
+  async login(payload: LoginRequest): Promise<AuthAwareResult<LoginResponse>> {
     const uni = await callAndNormalize<LoginResponse>(apiClient.post('/users/login', payload));
     if (isSuccess(uni) && uni.data?.token) {
       // 只有业务成功才写入 token
@@ -19,7 +19,7 @@ export const authService = {
     return uni;
   },
 
-  getCurrentUser(): Promise<UnifiedResult<User>> {
+  getCurrentUser(): Promise<AuthAwareResult<User>> {
     return callAndNormalize<User>(apiClient.get('/users/current'));
   },
 

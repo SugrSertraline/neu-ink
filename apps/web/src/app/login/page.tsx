@@ -7,66 +7,43 @@ import { Loader2 } from 'lucide-react';
 import { LoginForm } from '@/components/LoginForm';
 import { toast } from 'sonner';
 
-function parseLoginResult(result: unknown): { ok: boolean; message?: string } {
-  if (typeof result === 'boolean') return { ok: result };
-  if (result && typeof result === 'object' && 'ok' in result) {
-    const r = result as { ok: boolean; message?: string };
-    return { ok: !!r.ok, message: r.message };
-  }
-  return { ok: false, message: '登录失败，请稍后重试' };
-}
-
 export default function LoginPage() {
   const { isAuthenticated, isLoading, login } = useAuth();
   const router = useRouter();
   const [error, setError] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  // 已登录则跳转首页（避免停留在登录页）
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
+      router.replace('/');
     }
-  }, [isAuthenticated, isLoading, router]); 
-  
+  }, [isAuthenticated, isLoading, router]);
 
   const handleLogin = async (username: string, password: string) => {
     setIsSubmitting(true);
     setError('');
-  
+
     try {
-      const res = await login(username, password);
-      
-      // ✅ 添加这行：查看原始返回值
-      
-      
-      const { ok, message } = parseLoginResult(res);
-  
-      
-  
-      if (ok) {
-        
+      const res = await login(username, password); // LoginResult: { ok, message? }
+
+      if (res.ok) {
         toast.success('登录成功', { description: '欢迎回来！' });
-        
-        setTimeout(() => {
-          
-          window.location.href = '/';
-        }, 500);
+        // 使用 router.replace 避免历史回退到登录页；如需强刷可改成 window.location.href='/'
+        router.replace('/');
       } else {
-        
-        const msg = message || '用户名或密码错误';
+        const msg = (res.message && String(res.message).trim()) || '用户名或密码错误';
         setError(msg);
         toast.error('登录失败', { description: msg });
       }
     } catch (err) {
-      
       const msg = '登录失败，请稍后重试';
       setError(msg);
       toast.error('网络或服务器异常', { description: msg });
-      
     } finally {
       setIsSubmitting(false);
     }
   };
-  
 
   if (isLoading) {
     return (
@@ -79,13 +56,11 @@ export default function LoginPage() {
     );
   }
 
-  if (isAuthenticated) {
-    return null;
-  }
+  // 这里的 useEffect 已处理已登录跳转，所以可直接返回 null 或者 skeleton
+  if (isAuthenticated) return null;
 
   const handleSkipLogin = () => {
-    // 跳过登录，直接返回首页
-    window.location.href = '/';
+    router.replace('/');
   };
 
   return (

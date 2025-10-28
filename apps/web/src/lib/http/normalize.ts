@@ -8,15 +8,16 @@ import {
 } from '@/types/api';
 import { apiClient } from './client';
 
-// 类型守卫：判断 data 是否为业务包裹
 function isBusinessEnvelope<T = any>(data: any): data is BusinessResponse<T> {
-  return data && typeof data === 'object'
-    && typeof data.code === 'number'
-    && typeof data.message === 'string'
-    && 'data' in data;
+  return (
+    data &&
+    typeof data === 'object' &&
+    typeof data.code === 'number' &&
+    typeof data.message === 'string' &&
+    'data' in data
+  );
 }
 
-// 归一化：ApiResponse<T | BusinessResponse<T>> -> UnifiedResult<T>
 export function normalize<T = any>(res: ApiResponse<T | BusinessResponse<T>>): UnifiedResult<T> {
   const topCode = (res.code ?? ResponseCode.SUCCESS) as number;
   const topMessage = res.message ?? '';
@@ -42,7 +43,7 @@ export function normalize<T = any>(res: ApiResponse<T | BusinessResponse<T>>): U
   };
 }
 
-function shouldResetAuth(topCode: number, bizCode?: number, errMsg?: string) {
+export function shouldResetAuth(topCode: number, bizCode?: number, errMsg?: string) {
   if (topCode === ResponseCode.UNAUTHORIZED) return true;
   if (bizCode === BusinessCode.TOKEN_INVALID || bizCode === BusinessCode.TOKEN_EXPIRED) return true;
 
@@ -51,39 +52,50 @@ function shouldResetAuth(topCode: number, bizCode?: number, errMsg?: string) {
     if (
       s.includes('401') ||
       s.includes('unauthorized') ||
-      (s.includes('token') && (s.includes('invalid') || s.includes('expired') || s.includes('过期') || s.includes('无效')))
-    ) return true;
+      (s.includes('token') &&
+        (s.includes('invalid') ||
+          s.includes('expired') ||
+          s.includes('过期') ||
+          s.includes('无效')))
+    ) {
+      return true;
+    }
   }
   return false;
 }
 
-function resetAuthAndRedirect() {
-  try { apiClient.clearToken(); } catch {}
-  if (typeof window !== 'undefined') {
-    const from = encodeURIComponent(window.location.pathname + window.location.search);
-    window.location.href = `/login?from=${from}`;
+function markAuthReset(target: unknown) {
+  try {
+    apiClient.clearToken();
+  } catch {
+    /* noop */
+  }
+  if (target && typeof target === 'object') {
+    Object.assign(target as Record<string, unknown>, { authReset: true });
   }
 }
+export type AuthAwareResult<T> = UnifiedResult<T> & { authReset?: boolean };
 
-// 包装器：请求 + 归一化 + 401/Token失效防抖处理
-export async function callAndNormalize<T>(p: Promise<ApiResponse<any>>): Promise<UnifiedResult<T>> {
+export async function callAndNormalize<T>(
+  p: Promise<ApiResponse<any>>,
+): Promise<AuthAwareResult<T>> {
   try {
     const res = await p;
-    const uni = normalize<T>(res);
+    const uni = normalize<T>(res) as UnifiedResult<T> & { authReset?: boolean };
+
     if (shouldResetAuth(uni.topCode, uni.bizCode)) {
-      resetAuthAndRedirect();
+      markAuthReset(uni);
     }
     return uni;
   } catch (err: any) {
     const msg = err?.message || String(err);
     if (shouldResetAuth(ResponseCode.UNAUTHORIZED, undefined, msg)) {
-      resetAuthAndRedirect();
+      markAuthReset(err);
     }
     throw err;
   }
 }
 
-// 对外通用工具
 export function isSuccess(res: UnifiedResult<any>) {
   return res.topCode === ResponseCode.SUCCESS && res.bizCode === BusinessCode.SUCCESS;
 }
