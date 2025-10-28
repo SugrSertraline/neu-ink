@@ -10,7 +10,7 @@ from ..utils.common import (
     success_response,
     bad_request_response,
     validate_required_fields,
-    internal_error_response,  # 修正：原为 internal_server_error_response
+    internal_error_response, 
 )
 from ..config.constants import BusinessCode
 
@@ -235,10 +235,11 @@ def get_paper(paper_id):
     """
     try:
         user_id = g.current_user["user_id"]
+        is_admin = g.current_user.get("role") == "admin"
 
         # 调用服务层
         paper_service = get_paper_service()
-        result = paper_service.get_paper_by_id(paper_id, user_id)
+        result = paper_service.get_paper_by_id(paper_id, user_id, is_admin)
 
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
@@ -261,26 +262,24 @@ def get_paper_content(paper_id):
     """
     try:
         user_id = g.current_user["user_id"]
-        is_admin = g.current_user.get("is_admin", False)
+        is_admin = g.current_user.get("role") == "admin"
 
         # 调用服务层
         paper_service = get_paper_service()
-        result = paper_service.get_paper_by_id(paper_id, user_id)
+        result = paper_service.get_paper_by_id(paper_id, user_id, is_admin)
 
         if result["code"] == BusinessCode.SUCCESS:
             paper = result["data"]
-            
+
             # 构建论文内容对象
             content = {
                 "metadata": paper.get("metadata", {}),
                 "abstract": paper.get("abstract"),
                 "keywords": paper.get("keywords", []),
                 "sections": paper.get("sections", []),
-                "references": paper.get("references", []),
-                "blockNotes": paper.get("blockNotes", []),
-                "checklistNotes": paper.get("checklistNotes", [])
+                "references": paper.get("references", [])
             }
-            
+
             return success_response(content, result["message"])
         elif result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])

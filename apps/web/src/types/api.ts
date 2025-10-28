@@ -1,3 +1,6 @@
+// types/api.ts
+// —— 唯一真源：HTTP与业务码表、通用响应/统一返回体 ——
+
 // HTTP 响应状态码（外层）
 export enum ResponseCode {
   SUCCESS = 200,
@@ -12,28 +15,27 @@ export enum ResponseCode {
 
 // 业务状态码（data 内层，与后端 BusinessCode 保持一致）
 export enum BusinessCode {
-  SUCCESS = 0,                    // ✅ 业务成功（后端是 0）
-  
+  SUCCESS = 0,                   
   // 用户认证相关 1000-1099
-  LOGIN_FAILED = 1001,            // 登录失败
-  ACCOUNT_DISABLED = 1002,        // 账号被禁用
-  PASSWORD_EXPIRED = 1003,        // 密码已过期
-  INVALID_PARAMS = 1004,          // 参数错误
-  USER_NOT_FOUND = 1005,          // 用户不存在
-  USER_EXISTS = 1006,             // 用户已存在
-  PERMISSION_DENIED = 1007,       // 权限不足
-  TOKEN_INVALID = 1008,           // Token无效
-  TOKEN_EXPIRED = 1009,           // Token已过期
-  OLD_PASSWORD_WRONG = 1010,      // 旧密码错误
-  INTERNAL_ERROR = 1999,          // 服务器内部错误
-  
+  LOGIN_FAILED = 1001,
+  ACCOUNT_DISABLED = 1002,
+  PASSWORD_EXPIRED = 1003,
+  INVALID_PARAMS = 1004,
+  USER_NOT_FOUND = 1005,
+  USER_EXISTS = 1006,
+  PERMISSION_DENIED = 1007,
+  TOKEN_INVALID = 1008,
+  TOKEN_EXPIRED = 1009,
+  OLD_PASSWORD_WRONG = 1010,
+  INTERNAL_ERROR = 1999,
+
   // 论文相关 2000-2099
   PAPER_NOT_FOUND = 2001,
   PAPER_CREATION_FAILED = 2002,
   PAPER_UPDATE_FAILED = 2003,
   PAPER_DELETE_FAILED = 2004,
   INVALID_PAPER_DATA = 2005,
-  
+
   // 笔记相关 3000-3099
   NOTE_NOT_FOUND = 3001,
   NOTE_CREATION_FAILED = 3002,
@@ -53,4 +55,14 @@ export interface BusinessResponse<T = any> {
   code: BusinessCode;  // 业务状态码
   message: string;
   data: T;
+}
+
+// 统一后的前端可用返回体
+export interface UnifiedResult<T = any> {
+  topCode: number;         // 顶层 code（等同 HTTP 语义）
+  topMessage: string;      // 顶层 message
+  bizCode: number;         // 业务 code（没有业务层时为 0）
+  bizMessage: string;      // 业务 message（没有业务层时与顶层一致）
+  data: T;                 // 真实数据载荷
+  raw: ApiResponse<any>;   // 原始响应（便于调试）
 }

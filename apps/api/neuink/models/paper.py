@@ -31,10 +31,10 @@ class PaperModel:
     def create(self, paper_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         创建新论文
-        
+
         Args:
             paper_data: 论文数据
-            
+
         Returns:
             创建的论文数据
         """

@@ -103,7 +103,7 @@ def get_current_user():
 @bp.route("/", methods=["POST"])
 @admin_required
 def create_user():
-    """创建新用户"""
+    """创建新用户（仅管理员；可指定 role，默认 user）"""
     try:
         user_service = get_user_service()  # ✅ 在函数内获取
         data = request.get_json()
@@ -113,11 +113,17 @@ def create_user():
         error_msg = validate_required_fields(data, ["username", "password", "nickname"])
         if error_msg:
             return bad_request_response(error_msg)
+
+        # role 可选；如果不传，默认 user。此路由已是管理员保护。
+        role = (data.get("role") or "user").lower()
+        operator_role = g.current_user.get("role", "user")
         
         user = user_service.create_user(
-            data["username"], 
-            data["password"], 
-            data["nickname"]
+            data["username"].strip(), 
+            data["password"].strip(), 
+            data["nickname"].strip(),
+            role=role,
+            operator_role=operator_role
         )
         return created_response(user, "用户创建成功")
         
@@ -169,3 +175,28 @@ def change_password():
         return bad_request_response(str(e))
     except Exception as e:
         return internal_error_response(f"修改密码失败: {str(e)}")
+
+
+@bp.route("/<user_id>/role", methods=["PATCH"])
+@admin_required
+def change_role(user_id: str):
+    """变更用户角色（仅管理员）"""
+    try:
+        user_service = get_user_service()
+        data = request.get_json() or {}
+        error_msg = validate_required_fields(data, ["role"])
+        if error_msg:
+            return bad_request_response(error_msg)
+
+        operator_id = g.current_user["user_id"]
+        updated_user = user_service.change_user_role(
+            target_user_id=user_id,
+            new_role=(data.get("role") or "").lower(),
+            operator_id=operator_id
+        )
+        return success_response(updated_user, "角色更新成功")
+
+    except ValueError as e:
+        return bad_request_response(str(e))
+    except Exception as e:
+        return internal_error_response(f"角色更新失败: {str(e)}")

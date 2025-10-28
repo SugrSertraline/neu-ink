@@ -11,8 +11,7 @@ export default function SettingsPage() {
   const { logout } = useAuth();
 
   return (
-    <MainLayout>
-      <div className="h-full overflow-auto bg-gray-50 dark:bg-gray-900">
+    <div className="h-full overflow-auto bg-gray-50 dark:bg-gray-900">
       <div className="p-8 max-w-4xl mx-auto">
         {/* 页面标题 */}
         <div className="mb-8">
@@ -59,8 +58,7 @@ export default function SettingsPage() {
           <p>NeuInk v1.0.0</p>
           <p>智能论文阅读与共享平台</p>
         </div>
-        </div>
       </div>
-    </MainLayout>
+    </div>
   );
 }

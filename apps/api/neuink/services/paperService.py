@@ -45,34 +45,35 @@ class PaperService:
                 "data": None
             }
 
-    def get_paper_by_id(self, paper_id: str, user_id: Optional[str] = None) -> Dict[str, Any]:
+    def get_paper_by_id(self, paper_id: str, user_id: Optional[str] = None, is_admin: bool = False) -> Dict[str, Any]:
         """
         获取论文详情
-        
+
         Args:
             paper_id: 论文ID
             user_id: 当前用户ID（用于权限检查）
-            
+            is_admin: 是否为管理员
+
         Returns:
             业务响应
         """
         paper = self.paper_model.find_by_id(paper_id)
-        
+
         if not paper:
             return {
                 "code": BusinessCode.PAPER_NOT_FOUND,
                 "message": "论文不存在",
                 "data": None
             }
-        
-        # 权限检查：私有论文只能创建者查看
-        if not paper["isPublic"] and user_id and paper["createdBy"] != user_id:
+
+        # 权限检查：私有论文只能创建者或管理员查看
+        if not paper["isPublic"] and not is_admin and user_id and paper["createdBy"] != user_id:
             return {
                 "code": BusinessCode.PERMISSION_DENIED,
                 "message": "无权访问此论文",
                 "data": None
             }
-        
+
         return {
             "code": BusinessCode.SUCCESS,
             "message": "获取论文成功",

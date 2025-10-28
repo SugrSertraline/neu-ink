@@ -24,7 +24,6 @@ export default function LoginPage() {
 
   useEffect(() => {
     if (!isLoading && isAuthenticated) {
-      console.log('[LoginPage] 用户已登录');
     }
   }, [isAuthenticated, isLoading, router]); 
   
@@ -34,36 +33,35 @@ export default function LoginPage() {
     setError('');
   
     try {
-      console.log('[LoginPage] 开始登录，用户名:', username);
       const res = await login(username, password);
       
       // ✅ 添加这行：查看原始返回值
-      console.log('[LoginPage] 原始返回值:', JSON.stringify(res, null, 2));
+      
       
       const { ok, message } = parseLoginResult(res);
   
-      console.log('[LoginPage] 解析后结果:', { ok, message });
+      
   
       if (ok) {
-        console.log('[LoginPage] 登录成功，准备跳转');
+        
         toast.success('登录成功', { description: '欢迎回来！' });
         
         setTimeout(() => {
-          console.log('[LoginPage] 执行跳转');
+          
           window.location.href = '/';
         }, 500);
       } else {
-        console.log('[LoginPage] 登录失败:', message);
+        
         const msg = message || '用户名或密码错误';
         setError(msg);
         toast.error('登录失败', { description: msg });
       }
     } catch (err) {
-      console.log('[LoginPage] 捕获异常:', err);
+      
       const msg = '登录失败，请稍后重试';
       setError(msg);
       toast.error('网络或服务器异常', { description: msg });
-      console.error('[LoginPage] 登录错误:', err);
+      
     } finally {
       setIsSubmitting(false);
     }

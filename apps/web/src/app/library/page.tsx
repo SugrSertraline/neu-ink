@@ -53,8 +53,7 @@ export default function LibraryPage() {
 
   // 已登录用户显示个人论文库（暂时显示开发中提示）
   return (
-    <MainLayout>
-      <div className="h-full overflow-auto bg-gray-50 dark:bg-gray-900 p-6">
+    <div className="h-full overflow-auto bg-gray-50 dark:bg-gray-900 p-6">
       <div className="max-w-4xl mx-auto">
         <div className="mb-6">
           <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">
@@ -105,8 +104,7 @@ export default function LibraryPage() {
             </div>
           </CardContent>
         </Card>
-        </div>
       </div>
-    </MainLayout>
+    </div>
   );
 }

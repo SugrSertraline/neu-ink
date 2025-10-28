@@ -51,11 +51,9 @@ export default function CreatePaperDialog({
     try {
       if (activeTab === 'manual') {
         // 处理手动创建
-        console.log('手动创建论文:', formData);
         // 这里调用API创建论文
       } else {
         // 处理Markdown上传
-        console.log('上传Markdown:', { file: markdownFile, meta: markdownMeta });
         // 这里调用API上传Markdown
       }
       

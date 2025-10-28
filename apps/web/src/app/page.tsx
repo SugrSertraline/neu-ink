@@ -6,9 +6,5 @@ import MainLayout from '@/components/layout/MainLayout';
 
 export default function Home() {
   // 首页直接显示公共论文库，无需登录
-  return (
-    <MainLayout>
-      <PublicLibraryPage />
-    </MainLayout>
-  );
+  return <PublicLibraryPage />;
 }

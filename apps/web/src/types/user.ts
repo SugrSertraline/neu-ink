@@ -1,27 +1,31 @@
-// 用户类型定义
+// types/user.ts
+export enum Role {
+  ADMIN = "admin",
+  USER = "user",
+}
+
+export enum UserStatus {
+  ACTIVE = "active",
+  INACTIVE = "inactive",
+  SUSPENDED = "suspended",
+}
+
 export interface User {
   id: string;
   username: string;
   nickname: string;
+  role: Role;           // 与后端一致
   createdAt: string;
   updatedAt: string;
+  // status?: UserStatus; // 后端返回后再打开
 }
 
-// 登录请求参数
 export interface LoginRequest {
   username: string;
   password: string;
 }
 
-// 登录响应数据（内层 data 字段）
 export interface LoginResponse {
   token: string;
   user: User;
-}
-
-// 用户状态枚举（可选，与后端保持一致）
-export enum UserStatus {
-  ACTIVE = "active",
-  INACTIVE = "inactive",
-  SUSPENDED = "suspended",
 }

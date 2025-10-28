@@ -2,7 +2,6 @@
 
 import React, { createContext, useContext, useState, useCallback } from 'react';
 
-// ✅ 添加 'public-library' 类型
 export type TabType = 'dashboard' | 'library' | 'paper' | 'settings' | 'public-library';
 
 export interface Tab {
@@ -28,16 +27,17 @@ interface TabContextType {
 
 const TabContext = createContext<TabContextType | undefined>(undefined);
 
+// ✅ 修改默认标签为公共论文库
 const DEFAULT_TAB: Tab = {
-  id: 'dashboard',
-  type: 'dashboard',
-  title: '首页',
+  id: 'public-library',
+  type: 'public-library',
+  title: '论文库',
   path: '/',
 };
 
 export function TabProvider({ children }: { children: React.ReactNode }) {
   const [tabs, setTabs] = useState<Tab[]>([DEFAULT_TAB]);
-  const [activeTabId, setActiveTabId] = useState<string>('dashboard');
+  const [activeTabId, setActiveTabId] = useState<string>('public-library'); // ✅ 修改默认激活标签
   const [loadingTabId, setLoadingTabId] = useState<string | null>(null);
 
   const addTab = useCallback((tab: Tab) => {
@@ -51,7 +51,8 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const removeTab = useCallback((tabId: string) => {
-    if (tabId === 'dashboard') return;
+    // ✅ 公共论文库标签不可移除
+    if (tabId === 'public-library') return;
     
     setTabs(currentTabs => {
       const newTabs = currentTabs.filter(tab => tab.id !== tabId);
@@ -65,7 +66,7 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
         } else if (newTabs.length > 0) {
           newActiveTabId = newTabs[0].id;
         } else {
-          newActiveTabId = 'dashboard';
+          newActiveTabId = 'public-library'; // ✅ 默认返回公共论文库
         }
         
         setActiveTabId(newActiveTabId);
@@ -85,7 +86,7 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
 
   const clearAllTabs = useCallback(() => {
     setTabs([DEFAULT_TAB]);
-    setActiveTabId('dashboard');
+    setActiveTabId('public-library');
     setLoadingTabId(null);
   }, []);
 
@@ -119,3 +120,14 @@ export function useTabStore() {
   }
   return context;
 }
+
+// ✅ 导出 getState 方法供外部使用
+useTabStore.getState = () => {
+  // 这是一个简化的实现，实际使用时可能需要更复杂的状态管理
+  // 如果需要在组件外访问 store，建议使用 zustand 或其他状态管理库
+  return {
+    removeTab: (tabId: string) => {
+      console.warn('removeTab called outside component context');
+    }
+  };
+};

@@ -36,23 +36,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       setIsLoading(true);
       const response = await authApi.login({ username, password });
-      
-      // ✅ 添加日志：查看完整响应
-      console.log('[AuthContext] HTTP响应:', JSON.stringify(response, null, 2));
-      console.log('[AuthContext] BusinessCode.SUCCESS值:', BusinessCode.SUCCESS);
-      
+
       // HTTP / 网关层
       if (response?.code === 200) {
         const businessResponse = response.data;
-        
-        // ✅ 添加日志：查看业务响应
-        console.log('[AuthContext] 业务响应:', JSON.stringify(businessResponse, null, 2));
-        console.log('[AuthContext] 业务code比较:', businessResponse?.code, '===', BusinessCode.SUCCESS, '?', businessResponse?.code === BusinessCode.SUCCESS);
-        
+
         // 业务层
         if (businessResponse?.code === BusinessCode.SUCCESS) {
           const { token, user: userData } = businessResponse.data;
-          
+
           // 检查 userData 是否存在
           if (!userData) {
             console.error('[AuthContext] 用户数据为空:', businessResponse);
@@ -62,15 +54,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
               businessCode: businessResponse?.code,
             };
           }
-          
+
           authApi.setToken(token);
           setUser(userData);
-          
-          console.log('[AuthContext] 登录成功，用户:', userData);
-          console.log('[AuthContext] 用户名:', userData.username);
+
           return { ok: true };
         } else {
-          console.log('[AuthContext] 业务层失败，返回消息');
           return {
             ok: false,
             message: businessResponse?.message || '登录失败',
@@ -78,7 +67,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           };
         }
       }
-      console.log('[AuthContext] HTTP层失败');
       return { ok: false, message: response?.message || '网络错误，请稍后重试' };
     } catch (error) {
       console.error('[AuthContext] 登录异常:', error);
@@ -109,8 +97,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const refreshUser = async () => {
     try {
       const response = await authApi.getCurrentUser();
-      console.log('[AuthContext] 刷新用户信息响应:', response);
-      
+
       if (response?.code === 200 && response?.data) {
         // getCurrentUser 直接返回用户数据（单层结构）
         setUser(response.data);

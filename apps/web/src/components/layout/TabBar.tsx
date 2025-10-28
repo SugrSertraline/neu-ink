@@ -3,34 +3,25 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   X,
-  Home,
-  Library,
-  Settings,
-  FileText,
   Loader2,
   ChevronLeft,
   ChevronRight,
-  BookOpen
 } from 'lucide-react';
-import { useRouter, usePathname } from 'next/navigation';
-import { useTabStore, Tab } from '@/stores/useTabStore';
-import { useAuth } from '@/contexts/AuthContext';
+import { usePathname } from 'next/navigation';
+import { useTabStore } from '@/stores/useTabStore';
+import { NavItem } from '@/types/navigation';
 import { cn } from '@/lib/utils';
 
-const iconMap: Record<Tab['type'], React.ReactNode> = {
-  dashboard: <Home className="w-4 h-4" />,
-  library: <Library className="w-4 h-4" />,
-  'public-library': <BookOpen className="w-4 h-4" />,  
-  settings: <Settings className="w-4 h-4" />,
-  paper: <FileText className="w-4 h-4" />
-};
+interface TabBarProps {
+  navItems: NavItem[];
+  onNavigate: (item: NavItem) => void;
+  onCloseTab: (tabId: string) => void;
+  isAuthenticated: boolean;
+}
 
-
-export default function TabBar() {
-  const router = useRouter();
+export default function TabBar({ navItems, onNavigate, onCloseTab, isAuthenticated }: TabBarProps) {
   const pathname = usePathname();
-  const { isAuthenticated } = useAuth();
-  const { tabs, activeTabId, setActiveTab, removeTab, loadingTabId, setLoading } = useTabStore();
+  const { tabs, activeTabId, loadingTabId, setLoading } = useTabStore();
   const [showLeftGradient, setShowLeftGradient] = useState(false);
   const [showRightGradient, setShowRightGradient] = useState(false);
   const [isDragging, setIsDragging] = useState(false);
@@ -38,17 +29,17 @@ export default function TabBar() {
   const [scrollLeft, setScrollLeft] = useState(0);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // ✅ 过滤标签页：未登录时只显示公共论文库相关的标签页
+  // ✅ 过滤标签页：未登录时只显示不需要权限的标签页
   const visibleTabs = React.useMemo(() => {
     if (isAuthenticated) {
       return tabs;
     }
-    // 未登录时只显示公共论文库和论文详情（如果是从公共库打开的）
-    return tabs.filter(tab => 
-      tab.type === 'public-library' || 
-      (tab.type === 'paper' && tab.path.includes('public'))
-    );
-  }, [tabs, isAuthenticated]);
+    // 未登录时只显示不需要权限的标签页
+    return tabs.filter(tab => {
+      const config = navItems.find(item => item.id === tab.id);
+      return !config?.requiresAuth;
+    });
+  }, [tabs, isAuthenticated, navItems]);
 
   // 当活跃标签改变时，自动滚动到可见区域
   useEffect(() => {
@@ -91,7 +82,7 @@ export default function TabBar() {
         window.removeEventListener('resize', checkScroll);
       };
     }
-  }, [visibleTabs]); // ✅ 改为监听 visibleTabs
+  }, [visibleTabs]);
 
   // 鼠标滚轮横向滚动
   useEffect(() => {
@@ -171,60 +162,19 @@ export default function TabBar() {
     }, 50);
   };
 
-  const onClickTab = async (tab: Tab) => {
-    if (tab.id === activeTabId) return;
+  const onClickTab = (tabId: string) => {
+    const tab = tabs.find(t => t.id === tabId);
+    if (!tab) return;
     
-    const currentPath = window.location.pathname;
-    if (currentPath === tab.path) {
-      setActiveTab(tab.id);
-      setLoading(false, null);
-      return;
-    }
-    
-    setLoading(true, tab.id);
-    
-    try {
-      setActiveTab(tab.id);
-      await router.push(tab.path);
-    } catch (error) {
-      console.error('Navigation error:', error);
-      setLoading(false, null);
+    const navItem = navItems.find(item => item.id === tab.id);
+    if (navItem) {
+      onNavigate(navItem);
     }
   };
 
-  const onCloseTab = async (e: React.MouseEvent, tab: Tab) => {
+  const handleCloseTab = (e: React.MouseEvent, tabId: string) => {
     e.stopPropagation();
-    
-    if (tab.id === 'dashboard' || tab.id === 'public-library') return; // ✅ 公共论文库标签页不可关闭
-    
-    if (tab.id === activeTabId) {
-      const currentIndex = visibleTabs.findIndex(t => t.id === tab.id); // ✅ 使用 visibleTabs
-      let targetTab: Tab | null = null;
-      
-      if (currentIndex > 0) {
-        targetTab = visibleTabs[currentIndex - 1];
-      } else if (visibleTabs.length > 1) {
-        targetTab = visibleTabs[currentIndex + 1];
-      }
-      
-      if (targetTab) {
-        if (window.location.pathname === targetTab.path) {
-          setActiveTab(targetTab.id);
-          setLoading(false, null);
-        } else {
-          setLoading(true, targetTab.id);
-          try {
-            setActiveTab(targetTab.id);
-            await router.push(targetTab.path);
-          } catch (error) {
-            console.error('Navigation error:', error);
-            setLoading(false, null);
-          }
-        }
-      }
-    }
-    
-    removeTab(tab.id);
+    onCloseTab(tabId);
   };
 
   return (
@@ -235,7 +185,7 @@ export default function TabBar() {
         {showLeftGradient && (
           <button
             onClick={() => scrollToDirection('left')}
-            className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-8 h-8 flex items-center justify-center bg-linear-to-r from-white/95 dark:from-gray-800/95 to-transparent hover:from-white dark:hover:from-gray-800 transition-all group"
+            className="absolute left-0 top-1/2 -translate-y-1/2 z-20 w-8 h-8 flex items-center justify-center bg-gradient-to-r from-white/95 dark:from-gray-800/95 to-transparent hover:from-white dark:hover:from-gray-800 transition-all group"
             title="向左滚动"
           >
             <ChevronLeft className="w-4 h-4 text-gray-600 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors" />
@@ -255,10 +205,12 @@ export default function TabBar() {
             msOverflowStyle: 'none',
           }}
         >
-          {/* ✅ 使用 visibleTabs 而不是 tabs */}
           {visibleTabs.map((tab) => {
             const isActive = tab.id === activeTabId;
             const isLoading = loadingTabId === tab.id;
+            const navItem = navItems.find(item => item.id === tab.id);
+            const Icon = navItem?.icon;
+
             const baseBtn =
               "relative inline-flex items-center gap-2 px-3 py-1.5 rounded-lg transition-all duration-200 text-sm font-medium group overflow-hidden flex-shrink-0 max-w-[200px]";
             const activeStyles = isActive 
@@ -269,7 +221,7 @@ export default function TabBar() {
               <div key={tab.id} className="relative group/tab">
                 <button
                   data-tab-id={tab.id}
-                  onClick={() => onClickTab(tab)}
+                  onClick={() => onClickTab(tab.id)}
                   disabled={isLoading}
                   onMouseDown={(e) => e.stopPropagation()}
                   className={cn(
@@ -284,17 +236,21 @@ export default function TabBar() {
                   )}
 
                   <span className={cn(isActive ? "scale-110" : "group-hover:scale-110")}>
-                    {isLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : iconMap[tab.type]}
+                    {isLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : Icon ? (
+                      <Icon className="w-4 h-4" />
+                    ) : null}
                   </span>
 
                   <span className="flex-1 text-left whitespace-nowrap overflow-hidden text-ellipsis">{tab.title}</span>
 
                   {isActive && !isLoading && <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse" />}
 
-                  {/* ✅ 公共论文库标签页不可关闭 */}
-                  {tab.id !== 'dashboard' && tab.id !== 'public-library' && (
+                  {/* 根据配置决定是否显示关闭按钮 */}
+                  {navItem?.closable && (
                     <X
-                      onClick={(e) => onCloseTab(e, tab)}
+                      onClick={(e) => handleCloseTab(e, tab.id)}
                       className={cn(
                         "w-3 h-3 transition-all duration-200 hover:text-red-400",
                         isActive ? "" : "opacity-60 group-hover:opacity-100 group-hover:scale-110"
@@ -311,7 +267,7 @@ export default function TabBar() {
         {showRightGradient && (
           <button
             onClick={() => scrollToDirection('right')}
-            className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-8 h-8 flex items-center justify-center bg-linear-to-l from-white/95 dark:from-gray-800/95 to-transparent hover:from-white dark:hover:from-gray-800 transition-all group"
+            className="absolute right-0 top-1/2 -translate-y-1/2 z-20 w-8 h-8 flex items-center justify-center bg-gradient-to-l from-white/95 dark:from-gray-800/95 to-transparent hover:from-white dark:hover:from-gray-800 transition-all group"
             title="向右滚动"
           >
             <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-300 group-hover:text-gray-900 dark:group-hover:text-white transition-colors" />

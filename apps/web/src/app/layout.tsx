@@ -16,7 +16,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="antialiased" suppressHydrationWarning>
         <AuthProvider>
           <TabProvider>
-            {children}
+            <MainLayout>
+              {children}
+            </MainLayout>
             <Toaster />
           </TabProvider>
         </AuthProvider>

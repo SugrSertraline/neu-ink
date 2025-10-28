@@ -101,11 +101,11 @@ export default function LibraryPage() {
         response = await paperApi.getPublicPapers(filters);
       }
 
-      console.log('[PublicLibrary] 完整API响应:', response);
+      
       
       // 检查响应是否为空或无效
       if (!response || typeof response !== 'object') {
-        console.error('[PublicLibrary] 无效的API响应:', response);
+        
         setError('服务器响应无效');
         return;
       }
@@ -115,19 +115,19 @@ export default function LibraryPage() {
         const papersData = response.data.data.papers;
         const pagination = response.data.data.pagination;
         
-        console.log('[PublicLibrary] 获取到的论文数据:', papersData);
-        console.log('[PublicLibrary] 分页信息:', pagination);
+        
+        
         
         // 检查数据是否为数组
         if (!Array.isArray(papersData)) {
-          console.error('[PublicLibrary] 论文数据不是数组:', papersData);
+          
           setError('数据格式错误：论文列表不是数组');
           return;
         }
         
         // 转换为 PaperListItem 格式
         const papersList: PaperListItem[] = papersData.map((paper: any, index: number) => {
-          console.log(`[PublicLibrary] 处理论文 ${index}:`, paper);
+          
           
           // 确保 parseStatus 有默认值
           const parseStatus = paper.parseStatus || {
@@ -173,8 +173,8 @@ export default function LibraryPage() {
           };
         });
 
-        console.log('[PublicLibrary] 转换后的论文列表:', papersList);
-        console.log('[PublicLibrary] 论文数量:', papersList.length);
+        
+        
         
         setPapers(papersList);
         setTotalCount(pagination?.total || papersList.length);
@@ -184,11 +184,11 @@ export default function LibraryPage() {
           .sort((a, b) => (b || 0) - (a || 0));
         setAvailableYears(years);
       } else {
-        console.error('[PublicLibrary] API响应错误:', response);
+        
         setError(response?.data?.message || response?.message || '获取论文列表失败');
       }
     } catch (err: any) {
-      console.error('[PublicLibrary] 加载论文列表异常:', err);
+      
       setError(err?.message || '加载失败');
     } finally {
       setLoading(false);
@@ -209,25 +209,44 @@ export default function LibraryPage() {
     if (!isAuthenticated) {
       // ✅ 显示登录提示
       setShowLoginHint(true);
-      
+
       // ✅ 3秒后自动跳转到登录页面
       setTimeout(() => {
         router.push('/login');
       }, 2000);
       return;
     }
-    
-    const id = `paper:${paper.id}`;
-    const path = `/paper/${paper.id}`;
-    
-    addTab({
-      id,
-      type: 'paper',
-      title: paper.title,
-      path,
-      data: { paperId: paper.id }
-    });
-    setActiveTab(id);
+
+    try {
+      // ✅ 调用 paperApi.getPaper 获取论文详情
+      const response = await paperApi.getPaper(paper.id);
+
+      if (response.code === 200 && response.data) {
+        // ✅ 获取成功，跳转到论文详情页面
+        const id = `paper:${paper.id}`;
+        const path = `/paper/${paper.id}`;
+
+        addTab({
+          id,
+          type: 'paper',
+          title: paper.title,
+          path,
+          data: { paperId: paper.id }
+        });
+        setActiveTab(id);
+
+        // ✅ 导航到论文详情页面
+        router.push(path);
+      } else {
+        // ✅ 获取失败，显示错误提示
+        
+        alert(`获取论文详情失败: ${response.message || '未知错误'}`);
+      }
+    } catch (error: any) {
+      // ✅ 处理网络错误或其他异常
+      
+      alert(`获取论文详情失败: ${error?.message || '网络错误'}`);
+    }
   };
 
   // 编辑论文
@@ -248,7 +267,7 @@ export default function LibraryPage() {
           throw new Error(response.message || '删除失败');
         }
       } catch (error: any) {
-        console.error('删除失败:', error);
+        
         alert(`删除失败: ${error.message}`);
       }
     }
@@ -273,7 +292,7 @@ export default function LibraryPage() {
         throw new Error(response.message || '添加失败');
       }
     } catch (error: any) {
-      console.error('添加失败:', error);
+      
       alert(`添加失败: ${error.message}`);
     }
   };
