@@ -1,7 +1,6 @@
 import { LucideIcon } from 'lucide-react';
 import { User } from './user';
 
-// ✅ 删除 'dashboard' 类型
 export type TabType = 'library' | 'paper' | 'settings' | 'public-library';
 
 export interface NavItem {

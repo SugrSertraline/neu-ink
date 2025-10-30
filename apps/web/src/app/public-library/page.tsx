@@ -20,6 +20,7 @@ import {
   PaperListItem,
   type Author,
   type PaperListData,
+  ViewerSource,
 } from '@/types/paper';
 
 type ViewMode = 'card' | 'table' | 'compact';
@@ -276,36 +277,42 @@ export default function PublicLibraryPage() {
       setShowLoginHint(true);
       return;
     }
-
+  
     try {
-      const cached = paperCache.get(paper.id);
-      if (!cached) {
-        const detail = await publicPaperService.getPublicPaperDetail(paper.id);
-        if (!isSuccess(detail) || !detail.data) {
-          throw new Error(detail.bizMessage || detail.topMessage || '获取论文详情失败');
+      let detail = paperCache.get(paper.id);
+      if (!detail) {
+        const res = await publicPaperService.getPublicPaperDetail(paper.id);
+        if (!isSuccess(res)) {
+          throw new Error(res.bizMessage || res.topMessage || '获取论文详情失败');
         }
-        paperCache.set(paper.id, detail.data);
+        detail = res.data;
+        paperCache.set(paper.id, detail);
       }
-
+  
       const tabId = `paper:${paper.id}`;
       const path = `/paper/${paper.id}`;
-
+  
       addTab({
         id: tabId,
         type: 'paper',
         title: paper.title,
         path,
-        data: { paperId: paper.id },
+        data: {
+          paperId: paper.id,
+          source: 'public-guest' as ViewerSource,
+          initialPaper: detail,
+        },
       });
-
+  
       setActiveTab(tabId);
       router.push(path);
     } catch (error) {
-      const message = error instanceof Error ? error.message : '网络错误';
+      const message =
+        error instanceof Error ? error.message : '网络错误';
       alert(`获取论文详情失败：${message}`);
     }
   };
-
+  
   const handleDeletePaper = async (paperId: string) => {
     if (!isAdmin) return;
 

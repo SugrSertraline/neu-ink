@@ -1,22 +1,32 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useMemo,
+} from 'react';
 
-export type TabType = 'dashboard' | 'library' | 'paper' | 'settings' | 'public-library';
+export type TabType =
+  | 'dashboard'
+  | 'library'
+  | 'paper'
+  | 'settings'
+  | 'public-library';
 
 export interface Tab {
   id: string;
   type: TabType;
   title: string;
   path: string;
-  data?: any;
+  data?: Record<string, unknown>;
 }
 
 interface TabContextType {
   tabs: Tab[];
   activeTabId: string | null;
   loadingTabId: string | null;
-  
   addTab: (tab: Tab) => void;
   removeTab: (tabId: string) => void;
   setActiveTab: (tabId: string) => void;
@@ -27,7 +37,6 @@ interface TabContextType {
 
 const TabContext = createContext<TabContextType | undefined>(undefined);
 
-// ✅ 修改默认标签为公共论文库
 const DEFAULT_TAB: Tab = {
   id: 'public-library',
   type: 'public-library',
@@ -35,46 +44,58 @@ const DEFAULT_TAB: Tab = {
   path: '/',
 };
 
+function mergeTab(existing: Tab, incoming: Tab): Tab {
+  return {
+    ...existing,
+    ...incoming,
+    data: { ...(existing.data ?? {}), ...(incoming.data ?? {}) },
+  };
+}
+
+let currentStoreSnapshot: TabContextType | null = null;
+
 export function TabProvider({ children }: { children: React.ReactNode }) {
   const [tabs, setTabs] = useState<Tab[]>([DEFAULT_TAB]);
-  const [activeTabId, setActiveTabId] = useState<string>('public-library'); // ✅ 修改默认激活标签
+  const [activeTabId, setActiveTabId] = useState<string>(DEFAULT_TAB.id);
   const [loadingTabId, setLoadingTabId] = useState<string | null>(null);
 
   const addTab = useCallback((tab: Tab) => {
-    setTabs(currentTabs => {
-      const existingTab = currentTabs.find(t => t.id === tab.id);
-      if (existingTab) {
-        return currentTabs;
+    setTabs((currentTabs) => {
+      const incoming = { ...tab, data: tab.data ?? {} };
+      const index = currentTabs.findIndex((t) => t.id === incoming.id);
+      if (index >= 0) {
+        const updated = mergeTab(currentTabs[index], incoming);
+        return currentTabs.map((t, i) => (i === index ? updated : t));
       }
-      return [...currentTabs, tab];
+      return [...currentTabs, incoming];
     });
   }, []);
 
-  const removeTab = useCallback((tabId: string) => {
-    // ✅ 公共论文库标签不可移除
-    if (tabId === 'public-library') return;
-    
-    setTabs(currentTabs => {
-      const newTabs = currentTabs.filter(tab => tab.id !== tabId);
-      
-      if (activeTabId === tabId) {
-        const currentIndex = currentTabs.findIndex(tab => tab.id === tabId);
-        let newActiveTabId: string;
-        
-        if (currentIndex > 0) {
-          newActiveTabId = currentTabs[currentIndex - 1].id;
-        } else if (newTabs.length > 0) {
-          newActiveTabId = newTabs[0].id;
-        } else {
-          newActiveTabId = 'public-library'; // ✅ 默认返回公共论文库
+  const removeTab = useCallback(
+    (tabId: string) => {
+      if (tabId === DEFAULT_TAB.id) return;
+
+      setTabs((currentTabs) => {
+        if (currentTabs.length <= 1) return currentTabs;
+
+        const currentIndex = currentTabs.findIndex((tab) => tab.id === tabId);
+        if (currentIndex === -1) return currentTabs;
+
+        const nextTabs = currentTabs.filter((tab) => tab.id !== tabId);
+
+        if (activeTabId === tabId) {
+          const fallback =
+            currentIndex > 0
+              ? currentTabs[currentIndex - 1].id
+              : nextTabs[0]?.id ?? DEFAULT_TAB.id;
+          setActiveTabId(fallback);
         }
-        
-        setActiveTabId(newActiveTabId);
-      }
-      
-      return newTabs;
-    });
-  }, [activeTabId]);
+
+        return nextTabs;
+      });
+    },
+    [activeTabId],
+  );
 
   const handleSetActiveTab = useCallback((tabId: string) => {
     setActiveTabId(tabId);
@@ -86,29 +107,49 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
 
   const clearAllTabs = useCallback(() => {
     setTabs([DEFAULT_TAB]);
-    setActiveTabId('public-library');
+    setActiveTabId(DEFAULT_TAB.id);
     setLoadingTabId(null);
   }, []);
 
   const updateTab = useCallback((tabId: string, updates: Partial<Tab>) => {
-    setTabs(currentTabs =>
-      currentTabs.map(tab =>
-        tab.id === tabId ? { ...tab, ...updates } : tab
-      )
+    setTabs((currentTabs) =>
+      currentTabs.map((tab) => {
+        if (tab.id !== tabId) return tab;
+        const next = { ...tab, ...updates };
+        if (updates.data) {
+          next.data = { ...(tab.data ?? {}), ...updates.data };
+        }
+        return next;
+      }),
     );
   }, []);
 
-  const value: TabContextType = {
-    tabs,
-    activeTabId,
-    loadingTabId,
-    addTab,
-    removeTab,
-    setActiveTab: handleSetActiveTab,
-    setLoading: handleSetLoading,
-    clearAllTabs,
-    updateTab,
-  };
+  const value = useMemo<TabContextType>(
+    () => ({
+      tabs,
+      activeTabId,
+      loadingTabId,
+      addTab,
+      removeTab,
+      setActiveTab: handleSetActiveTab,
+      setLoading: handleSetLoading,
+      clearAllTabs,
+      updateTab,
+    }),
+    [
+      tabs,
+      activeTabId,
+      loadingTabId,
+      addTab,
+      removeTab,
+      handleSetActiveTab,
+      handleSetLoading,
+      clearAllTabs,
+      updateTab,
+    ],
+  );
+
+  currentStoreSnapshot = value;
 
   return React.createElement(TabContext.Provider, { value }, children);
 }
@@ -121,13 +162,9 @@ export function useTabStore() {
   return context;
 }
 
-// ✅ 导出 getState 方法供外部使用
 useTabStore.getState = () => {
-  // 这是一个简化的实现，实际使用时可能需要更复杂的状态管理
-  // 如果需要在组件外访问 store，建议使用 zustand 或其他状态管理库
-  return {
-    removeTab: (tabId: string) => {
-      console.warn('removeTab called outside component context');
-    }
-  };
+  if (!currentStoreSnapshot) {
+    throw new Error('Tab store is not ready yet');
+  }
+  return currentStoreSnapshot;
 };

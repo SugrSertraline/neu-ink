@@ -1,28 +1,48 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useMemo, useState, useRef } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
-import PaperHeader from '@/components/paper/PaperHeader';
-import PaperMetadata from '@/components/paper/PaperMetadata';
-import PaperContent from '@/components/paper/PaperContent';
+import { useTabStore } from '@/stores/useTabStore';
 import { ViewerSource } from '@/types/paper/viewer';
 import { usePaperLoader } from '@/lib/hooks/usePaperLoader';
 import { useViewerCapabilities } from '@/lib/hooks/useViewerCapabilities';
-// import { usePaperNotes } from '@/lib/hooks/usePaperNotes';
+import PaperHeader from '@/components/paper/PaperHeader';
+import PaperMetadata from '@/components/paper/PaperMetadata';
+import PaperContent from '@/components/paper/PaperContent';
+import type { Paper } from '@/types/paper';
 
 type Lang = 'en' | 'both';
 
 export default function PaperPage() {
   const params = useParams();
   const searchParams = useSearchParams();
+  const { tabs } = useTabStore();
+
   const paperId = Array.isArray(params?.id) ? params.id[0] : (params?.id as string);
 
-  const source = (searchParams?.get('source') ?? 'public-guest') as ViewerSource;
-  const capabilities = useViewerCapabilities(source);
-  const { paper, isLoading, error } = usePaperLoader(paperId, source);
+  const tabData = useMemo(() => {
+    const tabKey = `paper:${paperId}`;
+    const tab = tabs.find((t) => t.id === tabKey);
+    return (tab?.data ?? {}) as {
+      paperId?: string;
+      source?: ViewerSource;
+      initialPaper?: Paper;
+    };
+  }, [tabs, paperId]);
 
-  const [lang, setLang] = useState<Lang>('both');
+  const urlSource = (searchParams?.get('source') ?? null) as ViewerSource | null;
+  const source = tabData.source ?? urlSource ?? ('public-guest' as ViewerSource);
+
+  const { paper, isLoading, error } = usePaperLoader(
+    paperId,
+    source,
+    tabData.initialPaper,
+  );
+
+  const capabilities = useViewerCapabilities(source);
+
+  const [lang, setLang] = useState<Lang>('en');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
   const [highlightedRefs, setHighlightedRefs] = useState<string[]>([]);
@@ -34,7 +54,8 @@ export default function PaperPage() {
   const handleSearchNavigate = (direction: 'next' | 'prev') => {
     if (!searchResults.length) return;
     const delta = direction === 'next' ? 1 : -1;
-    const nextIndex = (currentSearchIndex + delta + searchResults.length) % searchResults.length;
+    const nextIndex =
+      (currentSearchIndex + delta + searchResults.length) % searchResults.length;
     setCurrentSearchIndex(nextIndex);
 
     const targetBlockId = searchResults[nextIndex];
@@ -70,7 +91,9 @@ export default function PaperPage() {
       <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex items-center justify-center">
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg p-8 max-w-md">
           <h2 className="text-xl font-bold text-red-600 mb-2">加载失败</h2>
-          <p className="text-gray-700 dark:text-slate-300">{error || '论文内容不存在'}</p>
+          <p className="text-gray-700 dark:text-slate-300">
+            {error || '论文内容不存在'}
+          </p>
           <button
             onClick={() => window.history.back()}
             className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-all"
@@ -84,7 +107,6 @@ export default function PaperPage() {
 
   return (
     <div className="relative h-screen bg-gray-50 dark:bg-slate-950 overflow-hidden">
-      {/* 悬浮 Header - 固定在顶部 */}
       <div className="absolute top-0 left-0 right-0 z-50 pointer-events-none">
         <div className="pointer-events-auto">
           <PaperHeader
@@ -97,16 +119,31 @@ export default function PaperPage() {
             onSearchNavigate={handleSearchNavigate}
             actions={{
               ...capabilities,
-              onAddNote: capabilities.canAddNotes ? () => {/* 打开笔记面板 */ } : undefined,
-              onEditPublicPaper: capabilities.canEditPublicPaper ? () => {/* 跳转到编辑公共论文 */ } : undefined,
-              onEditPersonalPaper: capabilities.canEditPersonalPaper ? () => {/* 打开个人论文编辑弹窗 */ } : undefined,
-              onToggleVisibility: capabilities.canToggleVisibility ? () => {/* 调用后端切换显示状态 */ } : undefined,
+              onAddNote: capabilities.canAddNotes
+                ? () => {
+                    /* TODO: 打开笔记面板 */
+                  }
+                : undefined,
+              onEditPublicPaper: capabilities.canEditPublicPaper
+                ? () => {
+                    /* TODO: 跳转到编辑公共论文 */
+                  }
+                : undefined,
+              onEditPersonalPaper: capabilities.canEditPersonalPaper
+                ? () => {
+                    /* TODO: 打开个人论文编辑弹窗 */
+                  }
+                : undefined,
+              onToggleVisibility: capabilities.canToggleVisibility
+                ? () => {
+                    /* TODO: 调用后端切换显示状态 */
+                  }
+                : undefined,
             }}
           />
         </div>
       </div>
 
-      {/* 内容区域 - 从顶部开始 */}
       <div className="h-full overflow-hidden">
         <div ref={contentRef} className="h-full overflow-y-auto">
           <div className="max-w-5xl mx-auto p-8 pt-28">

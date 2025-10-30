@@ -22,13 +22,10 @@ function ensureAttachments(attachments?: PaperAttachments): PaperAttachments {
 }
 
 function pickSourcePaperId(userPaper: UserPaper): string | null {
-  // 修复：直接访问 sourcePaperId，不需要类型转换
-  // UserPaper 类型定义中已经有 sourcePaperId 字段了
   return userPaper.sourcePaperId;
 }
 
 function pickParseStatus(paperData: UserPaper['paperData']): ParseStatus {
-  // 如果需要访问未定义的属性，使用 unknown 中转
   const rawStatus = (paperData as unknown as Record<string, unknown>).parseStatus;
   if (
     rawStatus &&
@@ -87,7 +84,14 @@ export function usePaperLoader(
       return;
     }
 
-    // 修复：将 paperId 作为参数传入 load 函数，确保类型为 string
+    if (initialData) {
+      setPaper(initialData);
+      setUserPaperMeta(null);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+
     let cancelled = false;
 
     async function load(id: string) {
@@ -146,13 +150,6 @@ export function usePaperLoader(
           setLoading(false);
         }
       }
-    }
-
-    if (initialData) {
-      setLoading(false);
-      setError(null);
-      setUserPaperMeta(null);
-      return;
     }
 
     load(paperId);

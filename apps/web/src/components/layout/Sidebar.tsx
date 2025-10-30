@@ -40,24 +40,29 @@ export default function Sidebar({
 
     const colorMap = {
       blue: {
-        gradient: 'from-blue-600 to-blue-700',
-        shadow: 'shadow-blue-500/20'
+        gradient: 'from-blue-500/80 via-blue-600/80 to-blue-700/80',
+        shadow: 'shadow-blue-500/30',
+        glow: 'shadow-[0_0_15px_rgba(59,130,246,0.5)]'
       },
       indigo: {
-        gradient: 'from-indigo-600 to-indigo-700',
-        shadow: 'shadow-indigo-500/20'
+        gradient: 'from-indigo-500/80 via-indigo-600/80 to-indigo-700/80',
+        shadow: 'shadow-indigo-500/30',
+        glow: 'shadow-[0_0_15px_rgba(99,102,241,0.5)]'
       },
       cyan: {
-        gradient: 'from-cyan-600 to-cyan-700',
-        shadow: 'shadow-cyan-600/20'
+        gradient: 'from-cyan-500/80 via-cyan-600/80 to-cyan-700/80',
+        shadow: 'shadow-cyan-600/30',
+        glow: 'shadow-[0_0_15px_rgba(6,182,212,0.5)]'
       },
       slate: {
-        gradient: 'from-slate-600 to-slate-700',
-        shadow: 'shadow-slate-500/20'
+        gradient: 'from-slate-500/80 via-slate-600/80 to-slate-700/80',
+        shadow: 'shadow-slate-500/30',
+        glow: 'shadow-[0_0_15px_rgba(100,116,139,0.5)]'
       },
       purple: {
-        gradient: 'from-purple-600 to-purple-700',
-        shadow: 'shadow-purple-500/20'
+        gradient: 'from-purple-500/80 via-purple-600/80 to-purple-700/80',
+        shadow: 'shadow-purple-500/30',
+        glow: 'shadow-[0_0_15px_rgba(168,85,247,0.5)]'
       }
     };
 
@@ -68,26 +73,30 @@ export default function Sidebar({
         onClick={() => onNavigate(item)}
         disabled={isLoading || isDisabled}
         className={cn(
-          "relative w-full flex items-center gap-2 px-2.5 py-3 rounded-lg transition-all duration-300 text-xs font-medium group overflow-hidden",
+          "relative w-full flex items-center gap-3 px-3 py-3.5 rounded-xl transition-all duration-300 text-sm font-medium group overflow-hidden",
           "focus:outline-none focus-visible:outline-none focus:ring-0",
+          "backdrop-blur-md border",
           isActive && !isDisabled
-            ? `bg-gradient-to-r ${colors.gradient} text-white shadow-md ${colors.shadow} scale-[1.01]`
+            ? `bg-linear-to-r ${colors.gradient} text-white ${colors.shadow} ${colors.glow} scale-[1.02] border-white/20`
             : isDisabled
-            ? "text-gray-400 dark:text-gray-600 cursor-not-allowed opacity-60"
-            : "text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 hover:shadow-sm hover:scale-[1.01]",
+            ? "text-gray-400 dark:text-gray-500 cursor-not-allowed opacity-50 bg-gray-100/30 dark:bg-gray-800/20 border-gray-200/30 dark:border-gray-700/30"
+            : "text-gray-700 dark:text-gray-200 bg-white/40 dark:bg-gray-800/40 hover:bg-white/60 dark:hover:bg-gray-700/60 hover:shadow-lg hover:scale-[1.02] border-gray-200/50 dark:border-gray-700/50",
           isLoading && "opacity-75 cursor-wait"
         )}
       >
         {isActive && !isDisabled && (
-          <div className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 bg-white rounded-r-full shadow-md" />
+          <>
+            <div className="absolute left-0 top-1/2 -translate-y-1/2 w-1 h-8 bg-white rounded-r-full shadow-lg" />
+            <div className="absolute inset-0 bg-linear-to-r from-white/10 to-transparent" />
+          </>
         )}
 
         {isLoading ? (
-          <Loader2 className="w-3.5 h-3.5 animate-spin flex-shrink-0" />
+          <Loader2 className="w-4 h-4 animate-spin " shrink-0/>
         ) : (
           <item.icon className={cn(
-            "w-3.5 h-3.5 transition-all duration-300 flex-shrink-0",
-            isActive && !isDisabled ? "scale-110" : "group-hover:scale-110",
+            "w-4 h-4 transition-all duration-300 shrink-0",
+            isActive && !isDisabled ? "scale-110 drop-shadow-lg" : "group-hover:scale-110",
             item.id === 'settings' && isActive && "rotate-90"
           )} />
         )}
@@ -95,51 +104,51 @@ export default function Sidebar({
         <span className="flex-1 text-left truncate">{item.label}</span>
 
         {isDisabled && item.requiresAuth && (
-          <span className="text-[10px] text-gray-400 dark:text-gray-600 flex-shrink-0">
+          <span className="text-xs text-gray-400 dark:text-gray-500 shrink-0 px-2 py-0.5 bg-gray-200/50 dark:bg-gray-700/50 rounded-full backdrop-blur-sm">
             需登录
           </span>
         )}
 
         {isDisabled && item.disabled && isAuthenticated && (
-          <span className="text-[10px] text-gray-400 flex-shrink-0">即将推出</span>
+          <span className="text-xs text-gray-400 shrink-0 px-2 py-0.5 bg-gray-200/50 dark:bg-gray-700/50 rounded-full backdrop-blur-sm">即将推出</span>
         )}
 
         {badge && !isDisabled && (
           <span className={cn(
-            "px-1.5 py-0.5 text-[10px] rounded-full flex-shrink-0",
+            "px-2 py-0.5 text-xs font-semibold rounded-full shrink-0 backdrop-blur-sm",
             isActive 
-              ? "bg-white/20 text-white" 
-              : "bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400"
+              ? "bg-white/30 text-white shadow-lg" 
+              : "bg-purple-100/80 dark:bg-purple-900/50 text-purple-700 dark:text-purple-300 border border-purple-200/50 dark:border-purple-700/50"
           )}>
             {badge}
           </span>
         )}
 
         {isActive && !isLoading && !isDisabled && (
-          <div className="w-1.5 h-1.5 bg-white rounded-full animate-pulse flex-shrink-0" />
+          <div className="w-2 h-2 bg-white rounded-full animate-pulse shrink-0 shadow-lg shadow-white/50" />
         )}
       </button>
     );
   };
 
   return (
-    <div className="w-60 h-full bg-gradient-to-b from-gray-50 to-gray-100 dark:from-gray-900 dark:to-gray-950 border-r border-gray-200 dark:border-gray-800 flex flex-col shadow-sm">
+    <div className="w-60 h-full bg-linear-to-br from-gray-50/95 via-blue-50/90 to-purple-50/95 dark:from-gray-900/95 dark:via-blue-950/90 dark:to-purple-950/95 border-r border-gray-200/50 dark:border-gray-700/50 flex flex-col shadow-xl backdrop-blur-xl">
       {/* Logo区域 */}
-      <div className="h-10 flex items-center px-3 border-b border-gray-200 dark:border-gray-800 bg-white/50 dark:bg-gray-900/50 backdrop-blur-sm select-none">
-        <div className="flex items-center gap-1.5">
-          <div className="h-6 w-6 bg-blue-600 rounded-md flex items-center justify-center flex-shrink-0">
-            <span className="text-white font-bold text-xs">N</span>
+      <div className="h-12 flex items-center px-4 border-b border-gray-200/50 dark:border-gray-700/50 bg-white/60 dark:bg-gray-900/60 backdrop-blur-lg shadow-sm select-none">
+        <div className="flex items-center gap-2">
+          <div className="h-7 w-7 bg-linear-to-br from-blue-500 to-blue-700 rounded-lg flex items-center justify-center shrink-0 shadow-lg shadow-blue-500/30">
+            <span className="text-white font-bold text-sm">N</span>
           </div>
-          <span className="font-bold text-sm text-blue-600 truncate">
+          <span className="font-bold text-base bg-linear-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent truncate">
             NeuInk
           </span>
         </div>
       </div>
 
       {/* 导航菜单 */}
-      <nav className="flex-1 p-2.5 space-y-1.5 overflow-y-auto flex flex-col">
+      <nav className="flex-1 p-3 space-y-2 overflow-y-auto flex flex-col">
         {/* 主要功能区 */}
-        <div className="space-y-1">
+        <div className="space-y-1.5">
           {navItems
             .filter(item => item.showInSidebar)
             .map(item => (
@@ -148,21 +157,25 @@ export default function Sidebar({
         </div>
 
         {/* 分割线 */}
-        <div className="relative py-2">
+        <div className="relative py-3">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-gray-200 dark:border-gray-700"></div>
+            <div className="w-full border-t border-gradient-to-r from-transparent via-gray-300/50 dark:via-gray-600/50 to-transparent"></div>
           </div>
         </div>
 
         {/* 用户信息 - 只有已登录用户显示 */}
         {isAuthenticated && (
-          <div className="flex-1 space-y-1 min-h-0">
-            <div className="p-2 bg-white/50 dark:bg-gray-800/50 rounded-md border border-gray-200 dark:border-gray-700">
-              <div className="text-xs">
-                <div className="font-medium text-gray-900 dark:text-gray-100 truncate">
+          <div className="flex-1 space-y-2 min-h-0">
+            <div className="p-3 bg-linear-to-br from-white/60 to-gray-100/60 dark:from-gray-800/60 dark:to-gray-900/60 rounded-xl border border-gray-200/50 dark:border-gray-700/50 backdrop-blur-lg shadow-lg">
+              <div className="text-sm">
+                <div className="font-semibold text-gray-900 dark:text-gray-100 truncate mb-0.5">
                   {user?.nickname || user?.username}
                 </div>
-                <div className="text-gray-500 dark:text-gray-400 text-[10px]">
+                <div className="text-gray-600 dark:text-gray-400 text-xs flex items-center gap-1.5">
+                  <div className={cn(
+                    "w-1.5 h-1.5 rounded-full",
+                    isAdmin ? "bg-linear-to-r from-purple-500 to-pink-500 shadow-lg shadow-purple-500/50" : "bg-linear-to-r from-blue-500 to-cyan-500 shadow-lg shadow-blue-500/50"
+                  )} />
                   {isAdmin ? '管理员' : '普通用户'}
                 </div>
               </div>
@@ -172,18 +185,18 @@ export default function Sidebar({
 
         {/* 未登录用户显示登录提示 */}
         {!isAuthenticated && (
-          <div className="flex-1 space-y-1 min-h-0">
-            <div className="p-2 bg-blue-50 dark:bg-blue-900/20 rounded-md border border-blue-200 dark:border-blue-800">
-              <div className="text-xs text-center">
-                <div className="font-medium text-blue-900 dark:text-blue-100 mb-0.5">
+          <div className="flex-1 space-y-2 min-h-0">
+            <div className="p-3 bg-linear-to-br from-blue-50/80 to-indigo-50/80 dark:from-blue-900/40 dark:to-indigo-900/40 rounded-xl border border-blue-200/50 dark:border-blue-700/50 backdrop-blur-lg shadow-lg">
+              <div className="text-sm text-center">
+                <div className="font-semibold text-blue-900 dark:text-blue-100 mb-1">
                   未登录
                 </div>
-                <div className="text-blue-700 dark:text-blue-300 text-[10px] mb-1.5">
+                <div className="text-blue-700 dark:text-blue-300 text-xs mb-2">
                   登录后可使用更多功能
                 </div>
                 <button
                   onClick={() => router.push('/login')}
-                  className="w-full px-2 py-1 bg-blue-600 text-white rounded text-[10px] hover:bg-blue-700 transition-colors"
+                  className="w-full px-3 py-2 bg-linear-to-r from-blue-500 to-blue-600 text-white rounded-lg text-xs font-medium hover:from-blue-600 hover:to-blue-700 transition-all duration-300 shadow-lg shadow-blue-500/30 hover:shadow-xl hover:shadow-blue-500/40 hover:scale-[1.02] backdrop-blur-sm"
                 >
                   立即登录
                 </button>
