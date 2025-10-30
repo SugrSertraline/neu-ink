@@ -1,47 +1,130 @@
 'use client';
 
 import React from 'react';
-import { Library, Plus } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { useTabStore } from '@/stores/useTabStore';
 import { useRouter } from 'next/navigation';
+import { Library, Plus } from 'lucide-react';
 
-// ✅ 引入统一结果体下的 paper 服务与工具
-import { usePaperService } from '@/lib/services/paper';
-import { isSuccess } from '@/lib/http';
-
-// ✅ 类型
-import type {
-  Paper,
-  PaperListItem,
-  PaperFilters,
-  PaperListResponse,
-  PaperListData,
-} from '@/types/paper';
-
-// 组件
+import { Button } from '@/components/ui/button';
 import LibraryFilters from '@/components/library/LibraryFilters';
 import PaperCard from '@/components/library/PaperCard';
 import ViewModeSwitcher from '@/components/library/ViewModeSwitcher';
 import CreatePaperDialog from '@/components/library/CreatePaperDialog';
+
 import { useAuth } from '@/contexts/AuthContext';
+import { useTabStore } from '@/stores/useTabStore';
+import { usePaperService } from '@/lib/services/paper';
+import { isSuccess } from '@/lib/http';
+import {
+  ParseStatus,
+  Paper,
+  PaperListItem,
+  type Author,
+  type PaperListData,
+} from '@/types/paper';
 
 type ViewMode = 'card' | 'table' | 'compact';
+
+type PublicLibraryFilters = {
+  page?: number;
+  pageSize?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  search?: string;
+  articleType?: string;
+  year?: number;
+  yearFrom?: number;
+  yearTo?: number;
+  sciQuartile?: string;
+  casQuartile?: string;
+  ccfRank?: string;
+  tag?: string;
+  author?: string;
+  publication?: string;
+  doi?: string;
+};
+
+type AdminLibraryFilters = PublicLibraryFilters & {
+  isPublic?: boolean;
+  parseStatus?: ParseStatus['status'];
+  createdBy?: string;
+};
+
+const PARSE_STATUS_SET = new Set<ParseStatus['status']>([
+  'pending',
+  'parsing',
+  'completed',
+  'failed',
+]);
+
+function extractPaperListData(payload: unknown): PaperListData | null {
+  if (!payload || typeof payload !== 'object') return null;
+
+  if (Array.isArray((payload as PaperListData).papers)) {
+    return payload as PaperListData;
+  }
+
+  const nested = (payload as { data?: unknown }).data;
+  if (nested && typeof nested === 'object' && Array.isArray((nested as PaperListData).papers)) {
+    return nested as PaperListData;
+  }
+
+  return null;
+}
+
+function transformPaperToListItem(paper: Paper): PaperListItem {
+  const metadata = paper.metadata ?? ({} as Paper['metadata']);
+
+  return {
+    id: paper.id,
+    isPublic: paper.isPublic,
+    createdBy: paper.createdBy,
+    createdAt: paper.createdAt,
+    updatedAt: paper.updatedAt,
+    parseStatus: paper.parseStatus,
+    title: metadata.title ?? '未命名论文',
+    titleZh: metadata.titleZh,
+    shortTitle: metadata.shortTitle,
+    authors: metadata.authors ?? [],
+    publication: metadata.publication,
+    year: metadata.year,
+    date: metadata.date,
+    doi: metadata.doi,
+    articleType: metadata.articleType,
+    sciQuartile: metadata.sciQuartile,
+    casQuartile: metadata.casQuartile,
+    ccfRank: metadata.ccfRank,
+    impactFactor: metadata.impactFactor,
+    tags: metadata.tags ?? [],
+  };
+}
+
+function matchesImpactPriority(impactFactor: number | undefined, level: string): boolean {
+  if (!impactFactor || Number.isNaN(impactFactor)) return false;
+  switch (level) {
+    case 'high':
+      return impactFactor >= 10;
+    case 'medium':
+      return impactFactor >= 5 && impactFactor < 10;
+    case 'low':
+      return impactFactor > 0 && impactFactor < 5;
+    default:
+      return true;
+  }
+}
 
 export default function PublicLibraryPage() {
   const router = useRouter();
   const { isAuthenticated, isAdmin } = useAuth();
   const { addTab, setActiveTab } = useTabStore();
 
-  // ✅ 统一服务
-  const { paperService, paperCache, transformPaperToListItem } = usePaperService();
+  const { publicPaperService, adminPaperService, userPaperService, paperCache } = usePaperService();
 
-  // 视图状态
   const [viewMode, setViewMode] = React.useState<ViewMode>('card');
 
-  // 筛选状态
   const [searchTerm, setSearchTerm] = React.useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = React.useState('');
+
   const [filterStatus, setFilterStatus] = React.useState('all');
   const [filterPriority, setFilterPriority] = React.useState('all');
   const [filterType, setFilterType] = React.useState('all');
@@ -51,33 +134,24 @@ export default function PublicLibraryPage() {
   const [filterYear, setFilterYear] = React.useState('all');
   const [showAdvancedFilter, setShowAdvancedFilter] = React.useState(false);
 
-  // 对话框状态
   const [showCreateDialog, setShowCreateDialog] = React.useState(false);
-  const [showEditDialog, setShowEditDialog] = React.useState(false);
-  const [editingPaper, setEditingPaper] = React.useState<PaperListItem | null>(null);
 
-  // 数据状态
   const [papers, setPapers] = React.useState<PaperListItem[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [totalCount, setTotalCount] = React.useState(0);
-  // ✅ years 用 number[]，避免 unknown[] 报错
   const [availableYears, setAvailableYears] = React.useState<number[]>([]);
 
-  // 分页状态
   const [currentPage, setCurrentPage] = React.useState(1);
   const [pageSize, setPageSize] = React.useState(20);
 
-  // 登录提示浮层
   const [showLoginHint, setShowLoginHint] = React.useState(false);
 
-  // 搜索防抖
   React.useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearchTerm(searchTerm), 500);
     return () => clearTimeout(timer);
   }, [searchTerm]);
 
-  // 筛选条件变化时重置页码
   React.useEffect(() => {
     setCurrentPage(1);
   }, [
@@ -91,62 +165,95 @@ export default function PublicLibraryPage() {
     filterYear,
   ]);
 
-  // 加载论文数据（统一结果体）
-  const loadPapers = React.useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
+  const parseStatusFilter = React.useMemo<ParseStatus['status'] | undefined>(() => {
+    if (PARSE_STATUS_SET.has(filterStatus as ParseStatus['status'])) {
+      return filterStatus as ParseStatus['status'];
+    }
+    return undefined;
+  }, [filterStatus]);
 
-      const filters: PaperFilters = {
+  const applyClientSideFilters = React.useCallback(
+    (items: PaperListItem[]): PaperListItem[] => {
+      let result = items;
+
+      if (parseStatusFilter) {
+        result = result.filter(item => item.parseStatus?.status === parseStatusFilter);
+      }
+
+      if (filterPriority !== 'all') {
+        result = result.filter(item => matchesImpactPriority(item.impactFactor, filterPriority));
+      }
+
+      return result;
+    },
+    [filterPriority, parseStatusFilter],
+  );
+
+  const loadPapers = React.useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const parsedYear = Number(filterYear);
+      const yearFilter =
+        filterYear === 'all' || Number.isNaN(parsedYear) ? undefined : parsedYear;
+
+      const baseFilters: PublicLibraryFilters = {
+        page: currentPage,
+        pageSize,
+        limit: pageSize,
         search: debouncedSearchTerm || undefined,
-        status: filterStatus !== 'all' ? filterStatus : undefined,
-        priority: filterPriority !== 'all' ? filterPriority : undefined,
         articleType: filterType !== 'all' ? filterType : undefined,
-        year: filterYear !== 'all' ? filterYear : undefined,
+        year: yearFilter,
         sciQuartile: filterSciQuartile !== 'all' ? filterSciQuartile : undefined,
         casQuartile: filterCasQuartile !== 'all' ? filterCasQuartile : undefined,
         ccfRank: filterCcfRank !== 'all' ? filterCcfRank : undefined,
-        page: currentPage,
-        pageSize: pageSize,
       };
 
-      // 非管理员走公共库；如果你想登录后展示“我的论文库”，可将下行改为 getUserPapers
-      const uni = isAdmin
-        ? await paperService.getAllPapers(filters)
-        : await paperService.getPublicPapers(filters);
+      const adminFilters: AdminLibraryFilters = {
+        ...baseFilters,
+        ...(parseStatusFilter ? { parseStatus: parseStatusFilter } : {}),
+      };
 
-      if (isSuccess(uni) && uni.data) {
-        const data = ((uni.data as unknown as PaperListResponse).data ??
-        (uni.data as unknown)) as PaperListData;
-        const papersArr: Paper[] = Array.isArray(data?.papers) ? data.papers : [];
-        const list: PaperListItem[] = papersArr.map((p: Paper) => transformPaperToListItem(p));
+      const response = isAdmin
+        ? await adminPaperService.getAdminPapers(adminFilters)
+        : await publicPaperService.getPublicPapers(baseFilters);
 
-        setPapers(list);
-
-        const total = data?.pagination?.total ?? list.length;
-        setTotalCount(Number(total) || 0);
-
-        const years: number[] = Array.from(
-          new Set(
-            list
-              .map((p: PaperListItem) => p.year)
-              .filter((y): y is number => typeof y === 'number')
-          )
-        ).sort((a, b) => b - a);
-
-        setAvailableYears(years);
-      } else {
-        setError(uni.bizMessage || uni.topMessage || '获取论文列表失败');
+      if (!isSuccess(response) || !response.data) {
+        throw new Error(response.bizMessage || response.topMessage || '获取论文列表失败');
       }
-    } catch (err: any) {
-      setError(err?.message || '加载失败');
+
+      const payload = extractPaperListData(response.data);
+      if (!payload) {
+        throw new Error('返回数据结构不符合预期');
+      }
+
+      const rawList = Array.isArray(payload.papers) ? payload.papers : [];
+      const mappedList = rawList.map(transformPaperToListItem);
+      const filteredList = applyClientSideFilters(mappedList);
+
+      setPapers(filteredList);
+      setTotalCount(payload.pagination?.total ?? mappedList.length);
+
+      const years = Array.from(
+        new Set(
+          mappedList
+            .map(item => item.year)
+            .filter((value): value is number => typeof value === 'number' && !Number.isNaN(value)),
+        ),
+      ).sort((a: number, b: number) => b - a);
+      setAvailableYears(years);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '加载失败';
+      setError(message);
+      setPapers([]);
+      setTotalCount(0);
     } finally {
       setLoading(false);
     }
   }, [
+    applyClientSideFilters,
     debouncedSearchTerm,
-    filterStatus,
-    filterPriority,
     filterType,
     filterSciQuartile,
     filterCasQuartile,
@@ -155,96 +262,88 @@ export default function PublicLibraryPage() {
     currentPage,
     pageSize,
     isAdmin,
-    paperService,
-    transformPaperToListItem,
+    adminPaperService,
+    publicPaperService,
+    parseStatusFilter,
   ]);
 
   React.useEffect(() => {
-    loadPapers();
+    void loadPapers();
   }, [loadPapers]);
 
-  // 打开论文（详情）
   const openPaper = async (paper: PaperListItem) => {
     if (!isAuthenticated) {
       setShowLoginHint(true);
-      setTimeout(() => {
-        router.push('/login');
-      }, 2000);
       return;
     }
 
     try {
-      // 先尝试缓存
       const cached = paperCache.get(paper.id);
       if (!cached) {
-        const uni = await paperService.getPaper(paper.id);
-        if (!isSuccess(uni) || !uni.data) {
-          alert(`获取论文详情失败: ${uni.bizMessage || uni.topMessage || '未知错误'}`);
-          return;
+        const detail = await publicPaperService.getPublicPaperDetail(paper.id);
+        if (!isSuccess(detail) || !detail.data) {
+          throw new Error(detail.bizMessage || detail.topMessage || '获取论文详情失败');
         }
-        paperCache.set(paper.id, uni.data);
+        paperCache.set(paper.id, detail.data);
       }
 
-      const id = `paper:${paper.id}`;
+      const tabId = `paper:${paper.id}`;
       const path = `/paper/${paper.id}`;
+
       addTab({
-        id,
+        id: tabId,
         type: 'paper',
         title: paper.title,
         path,
         data: { paperId: paper.id },
       });
-      setActiveTab(id);
+
+      setActiveTab(tabId);
       router.push(path);
-    } catch (error: any) {
-      alert(`获取论文详情失败: ${error?.message || '网络错误'}`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '网络错误';
+      alert(`获取论文详情失败：${message}`);
     }
   };
 
-  // 编辑论文
-  const handleEditPaper = (paper: PaperListItem) => {
-    setEditingPaper(paper);
-    setShowEditDialog(true);
-  };
-
-  // 删除论文
   const handleDeletePaper = async (paperId: string) => {
+    if (!isAdmin) return;
+
     if (!window.confirm('确定要删除这篇论文吗？此操作不可撤销。')) return;
+
     try {
-      const uni = await paperService.deletePaper(paperId);
-      if (isSuccess(uni)) {
-        loadPapers();
-      } else {
-        throw new Error(uni.bizMessage || uni.topMessage || '删除失败');
+      const result = await adminPaperService.deletePaper(paperId);
+      if (!isSuccess(result)) {
+        throw new Error(result.bizMessage || result.topMessage || '删除失败');
       }
-    } catch (error: any) {
-      alert(`删除失败: ${error?.message || '网络错误'}`);
+      await loadPapers();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '网络错误';
+      alert(`删除失败：${message}`);
     }
   };
 
-  // 添加到个人库
   const handleAddToLibrary = async (paperId: string) => {
     if (!isAuthenticated) {
       setShowLoginHint(true);
-      setTimeout(() => {
-        router.push('/login');
-      }, 2000);
       return;
     }
 
     try {
-      const uni = await paperService.addToUserLibrary(paperId);
-      if (isSuccess(uni)) {
-        alert('已添加到个人库');
-      } else {
-        throw new Error(uni.bizMessage || uni.topMessage || '添加失败');
+      const result = await userPaperService.addToLibrary({
+        paperId,
+        extra: {},
+      });
+      if (!isSuccess(result)) {
+        throw new Error(result.bizMessage || result.topMessage || '添加失败');
       }
-    } catch (error: any) {
-      alert(`添加失败: ${error?.message || '网络错误'}`);
+      alert('已添加到个人论文库');
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '网络错误';
+      alert(`添加失败：${message}`);
     }
   };
 
-  // 重置筛选
   const resetFilters = () => {
     setSearchTerm('');
     setDebouncedSearchTerm('');
@@ -259,39 +358,44 @@ export default function PublicLibraryPage() {
   };
 
   return (
-    <div className="flex flex-col h-full">
-      {/* 登录提示浮层 */}
+    <div className="flex h-full flex-col">
       {showLoginHint && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-xl max-w-md mx-4 animate-in fade-in zoom-in duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="mx-4 max-w-md animate-in fade-in zoom-in rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800">
             <div className="text-center">
-              <div className="w-12 h-12 bg-blue-100 dark:bg-blue-900/30 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Library className="w-6 h-6 text-blue-600 dark:text-blue-400" />
+              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
+                <Library className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
-              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
+              <h3 className="mb-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
                 需要登录
               </h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-4">查看论文详情需要登录账号</p>
-              <p className="text-sm text-gray-500 dark:text-gray-500 mb-4">即将跳转到登录页面...</p>
-              <div className="flex gap-3 justify-center">
+              <p className="mb-4 text-gray-600 dark:text-gray-400">
+                查看论文详情或执行该操作前,请先登录账号
+              </p>
+              <div className="flex justify-center gap-3">
                 <Button variant="outline" onClick={() => setShowLoginHint(false)}>
                   取消
                 </Button>
-                <Button onClick={() => router.push('/login')}>立即登录</Button>
+                <Button
+                  onClick={() => {
+                    setShowLoginHint(false);
+                    router.push('/login');
+                  }}
+                >
+                  立即登录
+                </Button>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* 顶部固定区域 */}
-      <div className="flex-none bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700">
-        <div className="p-6 pb-4 space-y-4">
-          {/* 头部 */}
+      <div className="flex-none border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
+        <div className="space-y-3 p-4">
           <div className="flex items-center justify-between">
             <div>
-              <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100 mb-2">论文库</h1>
-              <p className="text-gray-600 dark:text-gray-400">
+              <h1 className="mb-1 text-xl font-bold text-gray-900 dark:text-gray-100">论文库</h1>
+              <p className="text-sm text-gray-600 dark:text-gray-400">
                 {isAdmin
                   ? '管理和浏览所有论文'
                   : isAuthenticated
@@ -300,25 +404,22 @@ export default function PublicLibraryPage() {
                 • 共 {totalCount} 篇论文
               </p>
               {!isAuthenticated && (
-                <p className="text-sm text-blue-600 dark:text蓝-400 mt-1">
-                  💡 登录后可查看论文详情和管理个人论文库
+                <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
+                  💡 登录后可查看论文详情并管理个人论文库
                 </p>
               )}
             </div>
             <div className="flex items-center gap-3">
               {isAdmin && (
-                <div className="relative">
-                  <Button className="gap-2" onClick={() => setShowCreateDialog(true)}>
-                    <Plus className="w-4 h-4" />
-                    新建论文
-                  </Button>
-                </div>
+                <Button size="sm" className="gap-2" onClick={() => setShowCreateDialog(true)}>
+                  <Plus className="h-4 w-4" />
+                  新建论文
+                </Button>
               )}
               <ViewModeSwitcher value={viewMode} onChange={setViewMode} />
             </div>
           </div>
 
-          {/* 筛选组件 */}
           <LibraryFilters
             searchTerm={searchTerm}
             onSearchChange={setSearchTerm}
@@ -329,7 +430,7 @@ export default function PublicLibraryPage() {
             filterType={filterType}
             onTypeChange={setFilterType}
             showAdvancedFilter={showAdvancedFilter}
-            onToggleAdvancedFilter={() => setShowAdvancedFilter(!showAdvancedFilter)}
+            onToggleAdvancedFilter={() => setShowAdvancedFilter(v => !v)}
             filterSciQuartile={filterSciQuartile}
             onSciQuartileChange={setFilterSciQuartile}
             filterCasQuartile={filterCasQuartile}
@@ -344,36 +445,37 @@ export default function PublicLibraryPage() {
         </div>
       </div>
 
-      {/* 中间内容区域 */}
       <div className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-950">
-        <div className="p-6">
+        <div className="p-4">
           {loading && (
             <div className="flex items-center justify-center py-12">
-              <div className="text-gray-500 dark:text-gray-400">加载中...</div>
+              <div className="text-gray-500 dark:text-gray-400">加载中…</div>
             </div>
           )}
 
           {error && (
-            <div className="p-6 text-red-600 text-sm bg-red-50 dark:bg-red-900/20 rounded-lg border border-red-200 dark:border-red-800">
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-600 dark:border-red-800 dark:bg-red-900/20">
               加载失败：{error}
             </div>
           )}
 
           {!loading && !error && papers.length === 0 && (
-            <div className="text-center py-12">
-              <Library className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-              <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">暂无论文</h3>
-              <p className="text-gray-600 dark:text-gray-400 mb-4">
+            <div className="py-12 text-center">
+              <Library className="mx-auto mb-4 h-12 w-12 text-gray-400" />
+              <h3 className="mb-2 text-lg font-medium text-gray-900 dark:text-gray-100">
+                暂无论文
+              </h3>
+              <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
                 {isAdmin ? '开始添加第一篇论文吧' : '暂时没有符合条件的论文'}
               </p>
               {!isAuthenticated && (
-                <p className="text-sm text-blue-600 dark:text-blue-400 mb-4">
-                  登录后可以查看论文详情和管理个人论文库
+                <p className="mb-4 text-sm text-blue-600 dark:text-blue-400">
+                  登录后可以查看论文详情并管理个人论文库
                 </p>
               )}
               {isAdmin && (
-                <Button onClick={() => setShowCreateDialog(true)}>
-                  <Plus className="w-4 h-4 mr-2" />
+                <Button size="sm" onClick={() => setShowCreateDialog(true)}>
+                  <Plus className="mr-2 h-4 w-4" />
                   添加论文
                 </Button>
               )}
@@ -383,16 +485,17 @@ export default function PublicLibraryPage() {
           {!loading && !error && papers.length > 0 && (
             <>
               {viewMode === 'card' && (
-                <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-6">
-                  {papers.map((paper) => (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                  {papers.map(paper => (
                     <PaperCard
                       key={paper.id}
                       paper={paper}
                       onClick={() => openPaper(paper)}
-                      onEdit={isAdmin ? () => handleEditPaper(paper) : undefined}
                       onDelete={isAdmin ? () => handleDeletePaper(paper.id) : undefined}
                       onAddToLibrary={
-                        !isAdmin && isAuthenticated ? () => handleAddToLibrary(paper.id) : undefined
+                        !isAdmin && isAuthenticated
+                          ? () => handleAddToLibrary(paper.id)
+                          : undefined
                       }
                       showLoginRequired={!isAuthenticated}
                     />
@@ -402,33 +505,38 @@ export default function PublicLibraryPage() {
 
               {viewMode === 'compact' && (
                 <div className="space-y-2">
-                  {papers.map((paper) => (
+                  {papers.map(paper => (
                     <div
                       key={paper.id}
                       onClick={() => openPaper(paper)}
-                      className="flex items-center justify-between p-4 bg白 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 hover:shadow-md transition-shadow cursor-pointer group"
+                      className="group flex cursor-pointer items-center justify-between rounded-lg border border-gray-200 bg-white p-3 transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
                     >
-                      <div className="flex-1 min-w-0">
-                        <h3 className="font-medium text-gray-900 dark:text-gray-100 truncate">
+                      <div className="min-w-0 flex-1">
+                        <h3 className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
                           {paper.title}
                         </h3>
-                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
-                          {paper.authors.map((a) => a.name).join(', ')} • {paper.year}
+                        <p className="truncate text-xs text-gray-600 dark:text-gray-400">
+                          {paper.authors.map((author: Author) => author.name).join(', ')} •{' '}
+                          {paper.year ?? '未知年份'}
                         </p>
                       </div>
-                      <div className="flex items-center gap-2 ml-4">
+                      <div className="ml-4 flex items-center gap-2">
                         {!isAuthenticated && (
-                          <span className="text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-                            点击登录查看
+                          <span className="opacity-0 transition-opacity group-hover:opacity-100">
+                            <span className="rounded bg-blue-100 px-2 py-1 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                              登录后查看详情
+                            </span>
                           </span>
                         )}
                         {paper.sciQuartile && paper.sciQuartile !== '无' && (
-                          <span className="text-xs px-2 py-1 bg-red-50 text-red-700 rounded">
+                          <span className="rounded bg-red-50 px-2 py-1 text-xs text-red-700">
                             {paper.sciQuartile}
                           </span>
                         )}
                         {paper.impactFactor && (
-                          <span className="text-xs text-gray-500">IF: {paper.impactFactor}</span>
+                          <span className="text-xs text-gray-500">
+                            IF: {paper.impactFactor}
+                          </span>
                         )}
                       </div>
                     </div>
@@ -437,9 +545,11 @@ export default function PublicLibraryPage() {
               )}
 
               {viewMode === 'table' && (
-                <div className="bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden">
-                  <div className="px-6 py-4 border-b border-gray-200 dark:border-gray-700">
-                    <h3 className="font-medium text-gray-900 dark:text-gray-100">表格视图开发中</h3>
+                <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
+                  <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
+                    <h3 className="font-medium text-gray-900 dark:text-gray-100">
+                      表格视图开发中
+                    </h3>
                   </div>
                   <div className="p-6 text-center text-gray-500 dark:text-gray-400">
                     表格视图功能即将推出
@@ -451,30 +561,13 @@ export default function PublicLibraryPage() {
         </div>
       </div>
 
-      {/* 创建论文对话框 */}
       {showCreateDialog && (
         <CreatePaperDialog
           open={showCreateDialog}
           onClose={() => setShowCreateDialog(false)}
           onSuccess={() => {
             setShowCreateDialog(false);
-            loadPapers();
-          }}
-        />
-      )}
-
-      {/* 编辑论文对话框 */}
-      {showEditDialog && editingPaper && (
-        <CreatePaperDialog
-          open={showEditDialog}
-          onClose={() => {
-            setShowEditDialog(false);
-            setEditingPaper(null);
-          }}
-          onSuccess={() => {
-            setShowEditDialog(false);
-            setEditingPaper(null);
-            loadPapers();
+            void loadPapers();
           }}
         />
       )}

@@ -7,6 +7,6 @@ from .user_papers import bp as user_papers_bp
 
 def init_app(app: Flask, prefix: str) -> None:
     """注册论文相关蓝图"""
-    app.register_blueprint(public_papers_bp, url_prefix=f"{prefix}/papers")
-    app.register_blueprint(admin_papers_bp, url_prefix=f"{prefix}/papers/admin")
-    app.register_blueprint(user_papers_bp, url_prefix=f"{prefix}/user-papers")
+    app.register_blueprint(public_papers_bp, url_prefix=f"{prefix}/public/papers")
+    app.register_blueprint(admin_papers_bp, url_prefix=f"{prefix}/admin/papers")
+    app.register_blueprint(user_papers_bp, url_prefix=f"{prefix}/user/papers")

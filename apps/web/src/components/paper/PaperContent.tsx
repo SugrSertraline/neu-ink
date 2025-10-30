@@ -66,7 +66,7 @@ export default function PaperContent({
           buf.push(extractInlineText(n.children));
           break;
         case 'inline-math':
-          buf.push(n.latex || '');
+          buf.push(n.latex ?? '');
           break;
         case 'citation':
           buf.push(n.displayText || n.referenceIds?.join(',') || '');

@@ -1,6 +1,7 @@
 // frontend/app/papers/[id]/utils/autoNumbering.ts
 
-import type { PaperContent, Section, BlockContent, Reference} from "@/app/types/paper";
+import { PaperContent, Section, BlockContent, Reference } from "@/types/paper";
+
 
 /**
  * 自动计算所有编号

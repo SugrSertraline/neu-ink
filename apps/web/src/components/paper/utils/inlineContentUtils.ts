@@ -1,5 +1,6 @@
 // 文本样式应用工具函数（重写版）
-import type { InlineContent, TextNode } from '@/app/types/paper';
+
+import { TextNode, InlineContent } from "@/types/paper";
 
 /**
  * 字符级别的数据结构
@@ -49,23 +50,23 @@ function flattenToChars(nodes: InlineContent[]): CharInfo[] {
 function getNodePlaceholder(node: InlineContent): string {
   switch (node.type) {
     case 'link':
-      return flattenToChars(node.children).map(c => c.char).join('');
-    case 'inline-math':
-      return `$${node.latex}$`;
+      return flattenToChars(node.children).map((c) => c.char).join('');
+    case 'inline-math': {
+      const latex = node.latex?.trim() ?? '';
+      return latex ? `$${latex}$` : '';
+    }
     case 'citation':
-      return `[${node.displayText}]`;
+      return node.displayText ?? '';
     case 'figure-ref':
     case 'table-ref':
     case 'equation-ref':
     case 'section-ref':
-      return node.displayText;
     case 'footnote':
-      return node.displayText;
+      return node.displayText ?? '';
     default:
       return '';
   }
 }
-
 /**
  * 将字符数组重新组合为 InlineContent 数组
  */

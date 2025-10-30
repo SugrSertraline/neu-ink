@@ -6,7 +6,7 @@ const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5000';
 const API_PREFIX = process.env.NEXT_PUBLIC_API_PREFIX || '/api/v1';
 const AUTH_STORAGE_KEY = 'auth_token';
 
-type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE';
+type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
 
 export class ApiClient {
   private baseURL: string;
@@ -128,6 +128,9 @@ export class ApiClient {
   put<T>(endpoint: string, data?: any) {
     return this.request<T>(endpoint, 'PUT', data);
   }
+  patch<T>(endpoint: string, data?: any) {
+  return this.request<T>(endpoint, 'PATCH', data);
+}
 
   delete<T>(endpoint: string) {
     return this.request<T>(endpoint, 'DELETE');

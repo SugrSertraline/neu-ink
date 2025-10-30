@@ -182,3 +182,28 @@ def get_statistics():
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>", methods=["GET"])
+@login_required
+@admin_required
+def get_admin_paper_detail(paper_id):
+    """
+    管理员查看论文详情。
+    """
+    try:
+        service = get_paper_service()
+        result = service.get_admin_paper_detail(
+            paper_id=paper_id,
+            user_id=g.current_user["user_id"],
+        )
+
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:  # pylint: disable=broad-except
+        return internal_error_response(f"服务器错误: {exc}")

@@ -115,6 +115,13 @@ class PaperService:
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"获取论文列表失败: {exc}")
 
+
+    def get_admin_paper_detail(self, paper_id: str, user_id: str) -> Dict[str, Any]:
+        paper = self.paper_model.find_admin_paper_by_id(paper_id)
+        if not paper:
+            return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+        return self._wrap_success("获取论文成功", paper)
+
     def create_paper(self, paper_data: Dict[str, Any], creator_id: str) -> Dict[str, Any]:
         try:
             paper_data["createdBy"] = creator_id

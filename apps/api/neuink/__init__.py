@@ -33,8 +33,10 @@ def create_app():
     # 注册基础模块
     from neuink.routes.health import bp as health_bp
     from neuink.routes.users import bp as users_bp
+    from neuink.routes import notes
     app.register_blueprint(health_bp, url_prefix=f"{prefix}/health")
     app.register_blueprint(users_bp, url_prefix=f"{prefix}/users")
+    app.register_blueprint(notes.bp, url_prefix=f"{prefix}/notes")
 
     # 注册论文相关蓝图
     from neuink.routes import init_app as init_paper_routes

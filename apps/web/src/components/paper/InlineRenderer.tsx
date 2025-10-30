@@ -3,6 +3,8 @@
 import React, { useMemo, useCallback, useEffect, useRef } from 'react';
 import type { InlineContent } from '@/types/paper'; // 确保导出 InlineContent
 import type { Reference } from '@/types/paper';
+import katex from 'katex';
+import InlineMathSpan from './InlineMathSpan';
 
 interface InlineRendererProps {
   nodes: InlineContent[];
@@ -151,14 +153,8 @@ export default function InlineRenderer({
           );
         }
 
-        case 'inline-math': {
-          // 基础版：直接原样输出；后续可接入 KaTeX/MathJax
-          return (
-            <span key={key} data-math-inline className="font-mono">
-              {node.latex}
-            </span>
-          );
-        }
+        case 'inline-math':
+  return <InlineMathSpan key={key} latex={node.latex} />;
 
         case 'citation': {
           const nums = Array.from(
@@ -173,8 +169,8 @@ export default function InlineRenderer({
             node.displayText && node.displayText.trim().length > 0
               ? node.displayText
               : nums.length
-              ? `[${nums.join(', ')}]`
-              : '[?]';
+                ? `[${nums.join(', ')}]`
+                : '[?]';
 
           return (
             <button

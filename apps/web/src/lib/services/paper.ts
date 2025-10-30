@@ -1,188 +1,350 @@
-// lib/services/paper.ts
+// 论文服务层 - 对接后端真实 API
+
+import { AddToLibraryRequest, CreateNoteRequest, DeleteResult, Note, NoteFilters, NoteListData, Paper, PaperContent, PaperListData, PublicPaperFilters, UpdateNoteRequest, UpdateReadingProgressRequest, UpdateUserPaperRequest, UserPaper, UserPaperFilters, UserPaperListData, UserStatistics } from '@/types/paper/index';
 import { apiClient, callAndNormalize } from '../http';
 import type { UnifiedResult } from '@/types/api';
 
-import type {
-  Paper,
-  PaperListResponse,
-  PaperFilters,
-  PaperListItem,
-  UserPaper,
-  Note,
-} from '@/types/paper';
 
 // —— 参数拼接工具 —— //
-function buildSearchParams(params: Record<string, any>) {
+function buildSearchParams(params: Record<string, any>): string {
   const searchParams = new URLSearchParams();
   Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '' && value !== 0) {
-      if (Array.isArray(value)) value.forEach(v => searchParams.append(key, String(v)));
-      else searchParams.append(key, String(value));
+    if (value !== undefined && value !== null && value !== '') {
+      if (Array.isArray(value)) {
+        value.forEach(v => searchParams.append(key, String(v)));
+      } else {
+        searchParams.append(key, String(value));
+      }
     }
   });
   const qs = searchParams.toString();
   return qs ? `?${qs}` : '';
 }
 
-// —— 领域服务 —— //
-export const paperService = {
-  // 公开论文（无需认证）
-  getPublicPapers(filters: PaperFilters = {}): Promise<UnifiedResult<PaperListResponse>> {
-    return callAndNormalize<PaperListResponse>(apiClient.get(`/papers${buildSearchParams(filters)}`));
-  },
-
-  // 用户论文库（需认证）
-  getUserPapers(filters: PaperFilters = {}): Promise<UnifiedResult<PaperListResponse>> {
-    return callAndNormalize<PaperListResponse>(apiClient.get(`/papers/user${buildSearchParams(filters)}`));
-  },
-
-  // 管理员查看所有
-  getAllPapers(filters: PaperFilters = {}): Promise<UnifiedResult<PaperListResponse>> {
-    return callAndNormalize<PaperListResponse>(apiClient.get(`/papers/all${buildSearchParams(filters)}`));
-  },
-
-  // 详情 & 内容
-  getPaper(paperId: string): Promise<UnifiedResult<Paper>> {
-    return callAndNormalize<Paper>(apiClient.get(`/papers/${paperId}`));
-  },
-
-  getPaperContent(paperId: string): Promise<UnifiedResult<any>> {
-    return callAndNormalize<any>(apiClient.get(`/papers/${paperId}/content`));
-  },
-
-  // 创建/更新/删除
-  createPaper(payload: Partial<Paper>): Promise<UnifiedResult<Paper>> {
-    return callAndNormalize<Paper>(apiClient.post('/papers', payload));
-  },
-
-  async createPaperFromMarkdown(formData: FormData): Promise<UnifiedResult<{ paperId: string }>> {
-    // 走 client.upload 以保持 Token/错误处理一致
-    return callAndNormalize<{ paperId: string }>(
-      apiClient.upload('/papers/markdown', formData)
+// —— 公共论文库服务 —— //
+export const publicPaperService = {
+  /**
+   * 获取公共论文列表
+   */
+  getPublicPapers(
+    filters: PublicPaperFilters = {}
+  ): Promise<UnifiedResult<PaperListData>> {
+    return callAndNormalize<PaperListData>(
+      apiClient.get(`/public/papers${buildSearchParams(filters)}`)
     );
   },
 
-  updatePaper(paperId: string, payload: Partial<Paper>): Promise<UnifiedResult<Paper>> {
-    return callAndNormalize<Paper>(apiClient.put(`/papers/${paperId}`, payload));
+  /**
+   * 获取公共论文详情
+   */
+  getPublicPaperDetail(paperId: string): Promise<UnifiedResult<Paper>> {
+    return callAndNormalize<Paper>(
+      apiClient.get(`/public/papers/${paperId}`)
+    );
   },
 
-  deletePaper(paperId: string): Promise<UnifiedResult<null>> {
-    return callAndNormalize<null>(apiClient.delete(`/papers/${paperId}`));
-  },
-
-  // 用户个性化
-  addToUserLibrary(paperId: string, userData?: Partial<UserPaper>): Promise<UnifiedResult<UserPaper>> {
-    return callAndNormalize<UserPaper>(apiClient.post(`/papers/${paperId}/add-to-library`, userData));
-  },
-
-  removeFromUserLibrary(paperId: string): Promise<UnifiedResult<null>> {
-    return callAndNormalize<null>(apiClient.delete(`/papers/${paperId}/remove-from-library`));
-  },
-
-  updateUserPaper(paperId: string, userData: Partial<UserPaper>): Promise<UnifiedResult<UserPaper>> {
-    return callAndNormalize<UserPaper>(apiClient.put(`/papers/${paperId}/user-data`, userData));
-  },
-
-  // 解析进度
-  getParseProgress(paperId: string): Promise<UnifiedResult<{ status: string; progress: number; message: string }>> {
-    return callAndNormalize(apiClient.get(`/papers/${paperId}/parse-progress`));
-  },
-
-  // 笔记
-  getNotes(paperId: string): Promise<UnifiedResult<Note[]>> {
-    return callAndNormalize<Note[]>(apiClient.get(`/papers/${paperId}/notes`));
-  },
-
-  createNote(paperId: string, noteData: Partial<Note>): Promise<UnifiedResult<Note>> {
-    return callAndNormalize<Note>(apiClient.post(`/papers/${paperId}/notes`, noteData));
-  },
-
-  updateNote(paperId: string, noteId: string, noteData: Partial<Note>): Promise<UnifiedResult<Note>> {
-    return callAndNormalize<Note>(apiClient.put(`/papers/${paperId}/notes/${noteId}`, noteData));
-  },
-
-  deleteNote(paperId: string, noteId: string): Promise<UnifiedResult<null>> {
-    return callAndNormalize<null>(apiClient.delete(`/papers/${paperId}/notes/${noteId}`));
-  },
-
-  // 跨论文笔记
-  getAllNotes(filters: { page?: number; pageSize?: number } = {}):
-    Promise<UnifiedResult<{ notes: Note[]; pagination: any }>> {
-    return callAndNormalize(apiClient.get(`/notes${buildSearchParams(filters)}`));
+  /**
+   * 获取公共论文阅读内容
+   */
+  getPublicPaperContent(paperId: string): Promise<UnifiedResult<PaperContent>> {
+    return callAndNormalize<PaperContent>(
+      apiClient.get(`/public/papers/${paperId}/content`)
+    );
   },
 };
 
-// —— 数据转换器（UI友好） —— //
-export function transformPaperToListItem(paper: Paper, userPaper?: UserPaper): PaperListItem {
-  return {
-    id: paper.id,
-    isPublic: paper.isPublic,
-    createdBy: paper.createdBy,
-    createdAt: paper.createdAt,
-    updatedAt: paper.updatedAt,
-    parseStatus: paper.parseStatus,
+// —— 个人论文库服务 —— //
+export const userPaperService = {
+  /**
+   * 获取个人论文库列表
+   */
+  getUserPapers(
+    filters: UserPaperFilters = {}
+  ): Promise<UnifiedResult<UserPaperListData>> {
+    return callAndNormalize<UserPaperListData>(
+      apiClient.get(`/user/papers${buildSearchParams(filters)}`)
+    );
+  },
 
-    // 元数据
-    title: paper.metadata.title,
-    titleZh: paper.metadata.titleZh,
-    shortTitle: paper.metadata.shortTitle,
-    authors: paper.metadata.authors,
-    publication: paper.metadata.publication,
-    year: paper.metadata.year,
-    date: paper.metadata.date,
-    doi: paper.metadata.doi,
-    articleType: paper.metadata.articleType,
-    sciQuartile: paper.metadata.sciQuartile,
-    casQuartile: paper.metadata.casQuartile,
-    ccfRank: paper.metadata.ccfRank,
-    impactFactor: paper.metadata.impactFactor,
-    tags: paper.metadata.tags,
+  /**
+   * 添加公共论文到个人库
+   */
+  addToLibrary(request: AddToLibraryRequest): Promise<UnifiedResult<UserPaper>> {
+    return callAndNormalize<UserPaper>(
+      apiClient.post('/user/papers', request)
+    );
+  },
 
-    // 用户个性化
-    readingStatus: userPaper?.readingStatus,
-    priority: userPaper?.priority,
-    remarks: userPaper?.remarks,
-    readingPosition: userPaper?.readingPosition,
-    totalReadingTime: userPaper?.totalReadingTime,
-    lastReadTime: userPaper?.lastReadTime,
-  };
-}
+  /**
+   * 获取个人论文详情
+   */
+  getUserPaperDetail(userPaperId: string): Promise<UnifiedResult<UserPaper>> {
+    return callAndNormalize<UserPaper>(
+      apiClient.get(`/user/papers/${userPaperId}`)
+    );
+  },
 
-// —— 简单内存缓存（5分钟） —— //
+  /**
+   * 更新个人论文
+   */
+  updateUserPaper(
+    userPaperId: string,
+    data: UpdateUserPaperRequest
+  ): Promise<UnifiedResult<UserPaper>> {
+    return callAndNormalize<UserPaper>(
+      apiClient.put(`/user/papers/${userPaperId}`, data)
+    );
+  },
+
+  /**
+   * 更新阅读进度（快速接口）
+   */
+  updateReadingProgress(
+    userPaperId: string,
+    progress: UpdateReadingProgressRequest
+  ): Promise<UnifiedResult<UserPaper>> {
+    return callAndNormalize<UserPaper>(
+      apiClient.patch(`/user/papers/${userPaperId}/progress`, progress)
+    );
+  },
+
+  /**
+   * 从个人库删除论文
+   */
+  deleteUserPaper(userPaperId: string): Promise<UnifiedResult<DeleteResult>> {
+    return callAndNormalize<DeleteResult>(
+      apiClient.delete(`/user/papers/${userPaperId}`)
+    );
+  },
+
+  /**
+   * 获取用户统计信息
+   */
+  getUserStatistics(): Promise<UnifiedResult<UserStatistics>> {
+    return callAndNormalize<UserStatistics>(
+      apiClient.get('/user/papers/statistics')
+    );
+  },
+
+  /**
+   * 上传私有论文（预留）
+   */
+  uploadPrivatePaper(formData: FormData): Promise<UnifiedResult<UserPaper>> {
+    return callAndNormalize<UserPaper>(
+      apiClient.upload('/user/papers/uploads', formData)
+    );
+  },
+};
+
+// —— 笔记服务 —— //
+export const noteService = {
+  /**
+   * 创建笔记
+   */
+  createNote(request: CreateNoteRequest): Promise<UnifiedResult<Note>> {
+    return callAndNormalize<Note>(
+      apiClient.post('/notes', request)
+    );
+  },
+
+  /**
+   * 获取论文的所有笔记
+   */
+  getNotesByPaper(
+    userPaperId: string,
+    filters: NoteFilters = {}
+  ): Promise<UnifiedResult<NoteListData>> {
+    return callAndNormalize<NoteListData>(
+      apiClient.get(`/notes/paper/${userPaperId}${buildSearchParams(filters)}`)
+    );
+  },
+
+  /**
+   * 获取某个 Block 的笔记
+   */
+  getNotesByBlock(
+    userPaperId: string,
+    blockId: string
+  ): Promise<UnifiedResult<{ notes: Note[] }>> {
+    return callAndNormalize<{ notes: Note[] }>(
+      apiClient.get(`/notes/paper/${userPaperId}/block/${blockId}`)
+    );
+  },
+
+  /**
+   * 获取用户所有笔记
+   */
+  getUserNotes(filters: NoteFilters = {}): Promise<UnifiedResult<NoteListData>> {
+    return callAndNormalize<NoteListData>(
+      apiClient.get(`/notes/user${buildSearchParams(filters)}`)
+    );
+  },
+
+  /**
+   * 搜索笔记
+   */
+  searchNotes(
+    keyword: string,
+    filters: Omit<NoteFilters, 'keyword'> = {}
+  ): Promise<UnifiedResult<NoteListData>> {
+    return callAndNormalize<NoteListData>(
+      apiClient.get(`/notes/search${buildSearchParams({ keyword, ...filters })}`)
+    );
+  },
+
+  /**
+   * 更新笔记
+   */
+  updateNote(
+    noteId: string,
+    data: UpdateNoteRequest
+  ): Promise<UnifiedResult<Note>> {
+    return callAndNormalize<Note>(
+      apiClient.put(`/notes/${noteId}`, data)
+    );
+  },
+
+  /**
+   * 删除笔记
+   */
+  deleteNote(noteId: string): Promise<UnifiedResult<null>> {
+    return callAndNormalize<null>(
+      apiClient.delete(`/notes/${noteId}`)
+    );
+  },
+
+  /**
+   * 批量删除论文的所有笔记
+   */
+  deleteNotesByPaper(userPaperId: string): Promise<UnifiedResult<DeleteResult>> {
+    return callAndNormalize<DeleteResult>(
+      apiClient.delete(`/notes/paper/${userPaperId}`)
+    );
+  },
+};
+
+// —— 管理员服务 —— //
+export const adminPaperService = {
+  /**
+   * 获取管理员论文列表
+   */
+  getAdminPapers(
+    filters: PublicPaperFilters & { 
+      isPublic?: boolean; 
+      parseStatus?: string; 
+      createdBy?: string;
+    } = {}
+  ): Promise<UnifiedResult<PaperListData>> {
+    return callAndNormalize<PaperListData>(
+      apiClient.get(`/admin/papers${buildSearchParams(filters)}`)
+    );
+  },
+
+  /**
+   * 创建论文
+   */
+  createPaper(data: Partial<Paper>): Promise<UnifiedResult<Paper>> {
+    return callAndNormalize<Paper>(
+      apiClient.post('/admin/papers', data)
+    );
+  },
+
+  /**
+   * 更新论文
+   */
+  updatePaper(
+    paperId: string, 
+    data: Partial<Paper>
+  ): Promise<UnifiedResult<Paper>> {
+    return callAndNormalize<Paper>(
+      apiClient.put(`/admin/papers/${paperId}`, data)
+    );
+  },
+
+  /**
+   * 删除论文
+   */
+  deletePaper(paperId: string): Promise<UnifiedResult<null>> {
+    return callAndNormalize<null>(
+      apiClient.delete(`/admin/papers/${paperId}`)
+    );
+  },
+
+  /**
+   * 获取统计信息
+   */
+  getStatistics(): Promise<UnifiedResult<{
+    total: number;
+    public: number;
+    private: number;
+  }>> {
+    return callAndNormalize<{
+      total: number;
+      public: number;
+      private: number;
+    }>(
+      apiClient.get('/admin/papers/statistics')
+    );
+  },
+  async getAdminPaperDetail(paperId: string): Promise<UnifiedResult<Paper>> {
+    return callAndNormalize<Paper>(
+      apiClient.get(`/admin/papers/${paperId}`)
+    );
+  },
+};
+
+// —— 统一导出（兼容旧代码） —— //
+export const paperService = {
+  // 公共论文
+  ...publicPaperService,
+  
+  // 个人论文
+  ...userPaperService,
+  
+  // 笔记
+  ...noteService,
+  
+  // 管理员
+  ...adminPaperService,
+};
+
+// —— 内存缓存 —— //
 export class PaperCache {
-  private cache = new Map<string, { data: Paper; ts: number }>();
-  private readonly TTL = 5 * 60 * 1000;
+  private cache = new Map<string, { data: Paper | UserPaper; ts: number }>();
+  private readonly TTL = 5 * 60 * 1000; // 5分钟
 
-  set(paperId: string, paper: Paper) {
-    this.cache.set(paperId, { data: paper, ts: Date.now() });
+  set(id: string, data: Paper | UserPaper): void {
+    this.cache.set(id, { data, ts: Date.now() });
   }
 
-  get(paperId: string): Paper | null {
-    const node = this.cache.get(paperId);
+  get(id: string): Paper | UserPaper | null {
+    const node = this.cache.get(id);
     if (!node) return null;
     if (Date.now() - node.ts > this.TTL) {
-      this.cache.delete(paperId);
+      this.cache.delete(id);
       return null;
     }
     return node.data;
   }
 
-  invalidate(paperId: string) {
-    this.cache.delete(paperId);
+  invalidate(id: string): void {
+    this.cache.delete(id);
   }
 
-  clear() {
+  clear(): void {
     this.cache.clear();
   }
 }
 
 export const paperCache = new PaperCache();
 
-// —— 自带 Hook 风格导出 —— //
+// —— Hook 风格导出 —— //
 export function usePaperService() {
   return {
-    paperService,
+    publicPaperService,
+    userPaperService,
+    noteService,
+    adminPaperService,
     paperCache,
-    transformPaperToListItem,
   };
 }

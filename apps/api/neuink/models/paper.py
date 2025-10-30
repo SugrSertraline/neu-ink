@@ -255,7 +255,8 @@ class PaperModel:
         query: Dict[str, Any] = {}
 
         created_by = filters.pop("createdBy", None)
-        query["createdBy"] = created_by or user_id
+        if created_by:
+            query["createdBy"] = created_by
 
         is_public = filters.pop("isPublic", None)
         if is_public is not None:
@@ -353,3 +354,7 @@ class PaperModel:
         if include_score:
             projection["score"] = {"$meta": "textScore"}
         return projection
+
+    def find_admin_paper_by_id(self, paper_id: str) -> Optional[Dict[str, Any]]:
+        """管理员获取论文详情；不限制公开状态"""
+        return self.collection.find_one({"id": paper_id}, self._full_document_projection())

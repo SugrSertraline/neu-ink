@@ -1,0 +1,133 @@
+// API 请求和响应类型定义
+
+import type { Paper, UserPaper, Note } from './models';
+
+// —— 分页信息 ——
+export interface Pagination {
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+}
+
+// —— 公共论文列表响应 ——
+export interface PaperListData {
+  papers: Paper[];
+  pagination: Pagination;
+}
+
+// —— 个人论文列表响应 ——
+export interface UserPaperListData {
+  papers: UserPaper[];
+  pagination: Pagination;
+}
+
+// —— 笔记列表响应 ——
+export interface NoteListData {
+  notes: Note[];
+  pagination: Pagination;
+}
+
+// —— 用户统计信息 ——
+export interface UserStatistics {
+  total: number;
+  readingStatus: {
+    unread: number;
+    reading: number;
+    finished: number;
+  };
+  priority: {
+    high: number;
+    medium: number;
+    low: number;
+  };
+  fromPublic: number;
+  uploaded: number;
+  totalNotes: number;
+}
+
+// —— 筛选参数：公共论文 ——
+export interface PublicPaperFilters {
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  search?: string;
+  articleType?: string;
+  year?: number;
+  yearFrom?: number;
+  yearTo?: number;
+  sciQuartile?: string;
+  casQuartile?: string;
+  ccfRank?: string;
+  tag?: string;
+  author?: string;
+  publication?: string;
+  doi?: string;
+}
+
+// —— 筛选参数：个人论文 ——
+export interface UserPaperFilters {
+  page?: number;
+  pageSize?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  search?: string;
+  readingStatus?: 'unread' | 'reading' | 'finished';
+  priority?: 'high' | 'medium' | 'low';
+  customTag?: string;
+  hasSource?: boolean;
+}
+
+// —— 筛选参数：笔记 ——
+export interface NoteFilters {
+  page?: number;
+  pageSize?: number;
+  keyword?: string;
+}
+
+// —— 请求：添加到个人库 ——
+export interface AddToLibraryRequest {
+  paperId: string;
+  extra?: {
+    customTags?: string[];
+    readingStatus?: 'unread' | 'reading' | 'finished';
+    priority?: 'high' | 'medium' | 'low';
+  };
+}
+
+// —— 请求：更新个人论文 ——
+export interface UpdateUserPaperRequest {
+  paperData?: Partial<UserPaper['paperData']>;
+  customTags?: string[];
+  readingStatus?: 'unread' | 'reading' | 'finished';
+  priority?: 'high' | 'medium' | 'low';
+  readingPosition?: string | null;
+  totalReadingTime?: number;
+  lastReadTime?: string | null;
+  remarks?: string | null;
+}
+
+// —— 请求：更新阅读进度 ——
+export interface UpdateReadingProgressRequest {
+  readingPosition?: string | null;  // blockId
+  readingTime?: number;             // 本次阅读时长（秒）
+}
+
+// —— 请求：创建笔记 ——
+export interface CreateNoteRequest {
+  userPaperId: string;
+  blockId: string;
+  content: Note['content'];
+}
+
+// —— 请求：更新笔记 ——
+export interface UpdateNoteRequest {
+  content: Note['content'];
+}
+
+// —— 响应：删除结果 ——
+export interface DeleteResult {
+  deletedNotes?: number;
+  deletedCount?: number;
+}

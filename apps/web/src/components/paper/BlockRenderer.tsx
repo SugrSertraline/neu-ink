@@ -1,395 +1,545 @@
 'use client';
 
-import React, { JSX } from 'react';
-import type { BlockContent as Block, Reference, InlineContent } from '@/types/paper';
+import { useState, useRef, useEffect, useCallback } from 'react';
+import type { ComponentProps, MouseEvent, ReactNode } from 'react';
+import {
+  BlockContent,
+  ParagraphBlock,
+  HeadingBlock,
+  InlineContent,
+  Reference,
+} from '@/types/paper';
 import InlineRenderer from './InlineRenderer';
-import { toAbsoluteUrl } from '@/lib/api';
-
-type Lang = 'en' | 'both';
+import TextSelectionToolbar from './TextSelectionToolbar';
+import {
+  toggleBold,
+  toggleItalic,
+  toggleUnderline,
+  applyTextColor,
+  applyBackgroundColor,
+  clearAllStyles,
+} from './utils/inlineContentUtils';
+import katex from 'katex';
 
 interface BlockRendererProps {
-  block: Block;
-  lang: Lang;
-  sectionNumber: string;
-  searchQuery: string;
-  isActive: boolean;
-  onClick: () => void;
-  highlightedRefs: string[];
-  setHighlightedRefs: (refs: string[]) => void;
-  contentRef: React.RefObject<HTMLDivElement | null>;
-  references: Reference[];
+  block: BlockContent;
+  lang: 'en' | 'zh';
+  isActive?: boolean;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+  references?: Reference[];
+  onCitationClick?: (refIds: string[]) => void;
+  searchQuery?: string;
+  contentRef?: React.RefObject<HTMLDivElement | null>;
+  onBlockUpdate?: (block: BlockContent) => void;
+  highlightedRefs?: string[];
+  setHighlightedRefs?: (refs: string[]) => void;
 }
+
+type InlineRendererBaseProps = Omit<ComponentProps<typeof InlineRenderer>, 'nodes'>;
+
+type LocalizedInlineValue = Partial<Record<'en' | 'zh', InlineContent[] | string | number>>;
+
+const hasLocalizedContent = (value: unknown): value is LocalizedInlineValue => {
+  if (typeof value !== 'object' || value === null) return false;
+  const candidate = value as Record<string, unknown>;
+  return 'en' in candidate || 'zh' in candidate;
+};
+
+const renderInlineValue = (
+  value: unknown,
+  lang: 'en' | 'zh',
+  baseProps: InlineRendererBaseProps
+): ReactNode => {
+  if (value === null || value === undefined) return null;
+
+  if (Array.isArray(value)) {
+    return <InlineRenderer nodes={value as InlineContent[]} {...baseProps} />;
+  }
+
+  if (hasLocalizedContent(value)) {
+    const preferred = value[lang] ?? value.en ?? value.zh ?? [];
+    if (Array.isArray(preferred)) {
+      return <InlineRenderer nodes={preferred as InlineContent[]} {...baseProps} />;
+    }
+    if (typeof preferred === 'string' || typeof preferred === 'number') {
+      return preferred;
+    }
+  }
+
+  if (typeof value === 'string' || typeof value === 'number') {
+    return value;
+  }
+
+  return null;
+};
+
+function BlockMath({ math }: { math: string }) {
+  const mathRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!mathRef.current || !math) return;
+    try {
+      katex.render(math, mathRef.current, {
+        throwOnError: false,
+        displayMode: true,
+      });
+    } catch (err) {
+      console.error('KaTeX block render error:', err);
+      mathRef.current.textContent = `$$${math}$$`;
+    }
+  }, [math]);
+
+  return <div ref={mathRef} className="text-center" />;
+}
+
+const resolveMediaUrl = (src?: string) => {
+  if (!src) return '';
+  if (/^(https?:|data:|\/\/)/i.test(src)) return src;
+  if (typeof window !== 'undefined') {
+    try {
+      return new URL(src, window.location.origin).href;
+    } catch (err) {
+      console.warn('resolveMediaUrl fallback for src:', src, err);
+    }
+  }
+  return src;
+};
 
 export default function BlockRenderer({
   block,
   lang,
-  sectionNumber,
-  searchQuery,
-  isActive,
-  onClick,
+  isActive = false,
+  onMouseEnter,
+  onMouseLeave,
+  references = [],
+  onCitationClick,
+  searchQuery = '',
+  contentRef,
+  onBlockUpdate,
   highlightedRefs,
   setHighlightedRefs,
-  contentRef,
-  references,
 }: BlockRendererProps) {
-  // ---- utils ----
-  const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const [showToolbar, setShowToolbar] = useState(false);
+  const [toolbarPos, setToolbarPos] = useState({ x: 0, y: 0 });
+  const [selectedText, setSelectedText] = useState('');
+  const blockRef = useRef<HTMLDivElement>(null);
+  const fallbackContentRef = useRef<HTMLDivElement | null>(null);
+  const [localHighlightedRefs, setLocalHighlightedRefs] = useState<string[]>([]);
 
-  function highlightText(text: string, query: string): React.ReactNode {
-    const q = query.trim();
-    if (!q) return text;
-    const re = new RegExp(`(${escapeRegExp(q)})`, 'gi');
-    return text.split(re).map((part, i) =>
-      part.toLowerCase() === q.toLowerCase() ? (
-        <mark
-          key={i}
-          className="bg-yellow-200 dark:bg-yellow-700 text-gray-900 dark:text-white"
-        >
-          {part}
-        </mark>
-      ) : (
-        <React.Fragment key={i}>{part}</React.Fragment>
-      )
-    );
-  }
+  const effectiveContentRef = contentRef ?? fallbackContentRef;
+  const effectiveHighlightedRefs = highlightedRefs ?? localHighlightedRefs;
 
-  const cardClass = `p-4 rounded-lg transition-all ${
-    isActive ? 'bg-blue-50 dark:bg-blue-900/20 ring-2 ring-blue-500' : 'hover:bg-gray-50 dark:hover:bg-slate-800'
+  const handleHighlightedRefs = useCallback(
+    (ids: string[]) => {
+      if (setHighlightedRefs) {
+        setHighlightedRefs(ids);
+      } else {
+        setLocalHighlightedRefs(ids);
+      }
+      if (ids.length > 0) {
+        onCitationClick?.(ids);
+      }
+    },
+    [setHighlightedRefs, onCitationClick]
+  );
+
+  const inlineRendererBaseProps: InlineRendererBaseProps = {
+    searchQuery,
+    highlightedRefs: effectiveHighlightedRefs,
+    setHighlightedRefs: handleHighlightedRefs,
+    contentRef: effectiveContentRef,
+    references,
+  };
+
+  const baseClass = `transition-all duration-200 rounded-lg ${
+    isActive ? 'bg-blue-50 ring-2 ring-blue-200 shadow-sm' : ''
   }`;
 
-  const headingColors: Record<number, string> = {
-    1: 'text-3xl',
-    2: 'text-2xl',
-    3: 'text-xl',
-    4: 'text-lg',
-    5: 'text-base',
-    6: 'text-sm',
-  };
+  const handleTextSelection = useCallback(
+    (e: MouseEvent<HTMLElement>) => {
+      if (block.type !== 'paragraph' && block.type !== 'heading') return;
+      if (!onBlockUpdate) return;
 
-  const textAlignClass = (align?: 'left' | 'center' | 'right' | 'justify') => {
-    switch (align) {
-      case 'center':
-        return 'text-center';
-      case 'right':
-        return 'text-right';
-      case 'justify':
-        return 'text-justify';
-      default:
-        return 'text-left';
-    }
-  };
+      setTimeout(() => {
+        const selection = window.getSelection();
+        const text = selection?.toString().trim();
 
-  const colAlignClass = (a?: 'left' | 'center' | 'right') =>
-    a === 'center' ? 'text-center' : a === 'right' ? 'text-right' : 'text-left';
+        if (!text) {
+          setShowToolbar(false);
+          return;
+        }
 
-  const renderInline = (nodes?: InlineContent[]) =>
-    nodes ? (
-      <InlineRenderer
-        nodes={nodes}
-        searchQuery={searchQuery}
-        highlightedRefs={highlightedRefs}
-        setHighlightedRefs={setHighlightedRefs}
-        contentRef={contentRef}
-        references={references}
-      />
-    ) : null;
+        const range = selection?.getRangeAt(0);
+        if (!range) return;
 
-  // ---- renderers ----
-  function renderHeading() {
-    const h = block;
-    if (h.type !== 'heading') return null;
-    const Tag = `h${h.level}` as keyof JSX.IntrinsicElements;
-    const numberText = h.number ?? sectionNumber;
+        const element = blockRef.current;
+        if (!element || !element.contains(range.commonAncestorContainer)) {
+          setShowToolbar(false);
+          return;
+        }
 
-    return (
-      <div id={h.id} onClick={onClick} className={cardClass}>
-        <Tag className={`${headingColors[h.level]} font-semibold text-gray-900 dark:text-slate-100`}>
-          {numberText ? <span className="mr-2">{numberText}</span> : null}
-          {lang === 'en' || lang === 'both' ? renderInline(h.content.en) : null}
-        </Tag>
-        {lang === 'both' && h.content.zh ? (
-          <div className="mt-1 italic text-gray-600 dark:text-slate-400">
-            {renderInline(h.content.zh)}
-          </div>
-        ) : null}
-      </div>
-    );
-  }
+        const rect = range.getBoundingClientRect();
+        if (!rect) return;
 
-  function renderParagraph() {
-    const p = block;
-    if (p.type !== 'paragraph') return null;
+        setSelectedText(text);
+        setToolbarPos({
+          x: rect.left + rect.width / 2,
+          y: rect.top - 10,
+        });
+        setShowToolbar(true);
 
-    return (
-      <div id={p.id} onClick={onClick} className={`${cardClass} ${textAlignClass(p.align)} cursor-pointer`}>
-        {(lang === 'en' || lang === 'both') && p.content.en ? (
-          <p className="text-gray-800 dark:text-slate-200 leading-relaxed mb-2">
-            {renderInline(p.content.en)}
+        console.log('=== 文本选择调试 ===');
+        console.log('选中的文本:', text);
+        console.log('块类型:', block.type);
+        console.log('当前内容:', (block as ParagraphBlock | HeadingBlock).content?.[lang]);
+      }, 10);
+    },
+    [block, lang, onBlockUpdate]
+  );
+
+  const applyStyle = useCallback(
+    (
+      styleType: 'bold' | 'italic' | 'underline' | 'color' | 'bg' | 'clear',
+      value?: string
+    ) => {
+      if (!onBlockUpdate || !selectedText) return;
+
+      const currentBlock = block as ParagraphBlock | HeadingBlock;
+      const currentContent = currentBlock.content?.[lang];
+      if (!currentContent) return;
+
+      console.log('=== 应用样式 ===');
+      console.log('样式类型:', styleType);
+      console.log('样式值:', value);
+      console.log('选中文本:', selectedText);
+      console.log('原内容:', currentContent);
+
+      let newContent = currentContent;
+
+      switch (styleType) {
+        case 'bold':
+          newContent = toggleBold(currentContent, selectedText);
+          break;
+        case 'italic':
+          newContent = toggleItalic(currentContent, selectedText);
+          break;
+        case 'underline':
+          newContent = toggleUnderline(currentContent, selectedText);
+          break;
+        case 'color':
+          if (value !== undefined) {
+            newContent = applyTextColor(currentContent, selectedText, value);
+          }
+          break;
+        case 'bg':
+          if (value !== undefined) {
+            newContent = applyBackgroundColor(currentContent, selectedText, value);
+          }
+          break;
+        case 'clear':
+          newContent = clearAllStyles(currentContent, selectedText);
+          break;
+      }
+
+      console.log('新内容:', newContent);
+
+      const updatedBlock: BlockContent = {
+        ...currentBlock,
+        content: {
+          ...currentBlock.content,
+          [lang]: newContent,
+        },
+      };
+
+      onBlockUpdate(updatedBlock);
+
+      setTimeout(() => {
+        setShowToolbar(false);
+        window.getSelection()?.removeAllRanges();
+      }, 100);
+    },
+    [block, lang, onBlockUpdate, selectedText]
+  );
+
+  const renderContent = useCallback(() => {
+    switch (block.type) {
+      case 'heading': {
+        const headingSizes = {
+          1: 'text-3xl',
+          2: 'text-2xl',
+          3: 'text-xl',
+          4: 'text-lg',
+          5: 'text-base',
+          6: 'text-sm',
+        } as const;
+
+        const commonProps = {
+          className: `${headingSizes[block.level]} font-bold text-gray-900 mb-2`,
+          onMouseUp: handleTextSelection,
+          style: { userSelect: 'text' as const },
+          children: (
+            <>
+              {block.number && <span className="text-blue-600 mr-2">{block.number}</span>}
+              <InlineRenderer
+                nodes={block.content?.[lang] ?? []}
+                {...inlineRendererBaseProps}
+              />
+            </>
+          ),
+        };
+
+        switch (block.level) {
+          case 1:
+            return <h1 {...commonProps} />;
+          case 2:
+            return <h2 {...commonProps} />;
+          case 3:
+            return <h3 {...commonProps} />;
+          case 4:
+            return <h4 {...commonProps} />;
+          case 5:
+            return <h5 {...commonProps} />;
+          case 6:
+            return <h6 {...commonProps} />;
+          default:
+            return <h2 {...commonProps} />;
+        }
+      }
+
+      case 'paragraph': {
+        const alignClass =
+          {
+            left: 'text-left',
+            center: 'text-center',
+            right: 'text-right',
+            justify: 'text-justify',
+          }[block.align || 'left'] ?? 'text-left';
+
+        return (
+          <p
+            className={`text-gray-700 leading-relaxed ${alignClass}`}
+            onMouseUp={handleTextSelection}
+            style={{ userSelect: 'text' }}
+          >
+            <InlineRenderer nodes={block.content?.[lang] ?? []} {...inlineRendererBaseProps} />
           </p>
-        ) : null}
-        {lang === 'both' && p.content.zh ? (
-          <p className="text-gray-600 dark:text-slate-400 leading-relaxed italic">
-            {renderInline(p.content.zh)}
-          </p>
-        ) : null}
-      </div>
-    );
-  }
+        );
+      }
 
-  function renderMath() {
-    const m = block;
-    if (m.type !== 'math') return null;
-
-    return (
-      <div id={m.id} onClick={onClick} className={cardClass}>
-        <div className="bg-gray-50 dark:bg-slate-800 p-4 rounded-lg text-center overflow-x-auto">
-          {/* 这里保留纯文本/代码展示；后续可接入 KaTeX/MathJax */}
-          <code className="text-gray-800 dark:text-slate-200 font-mono text-sm">
-            {m.latex}
-          </code>
-        </div>
-        {m.number != null && (
-          <p className="mt-2 text-sm text-right text-gray-600 dark:text-slate-400">({m.number})</p>
-        )}
-        {m.label && (
-          <p className="mt-1 text-sm text-right text-gray-500 dark:text-slate-400">{m.label}</p>
-        )}
-      </div>
-    );
-  }
-
-  function renderFigure() {
-    const f = block;
-    if (f.type !== 'figure') return null;
-
-    const style: React.CSSProperties = {
-      width: f.width,
-      height: f.height,
-    };
-
-    return (
-      <div id={f.id} onClick={onClick} className={cardClass}>
-        <figure className="flex flex-col items-center">
-          <img
-            src={toAbsoluteUrl(f.src)}
-            alt={f.alt || 'Figure'}
-            style={style}
-            className="max-w-full h-auto rounded-lg shadow-md"
-          />
-          {(f.caption.en || f.caption.zh) && (
-            <figcaption className="mt-3 text-sm text-center text-gray-600 dark:text-slate-400">
-              {f.number != null ? <strong className="mr-1">Figure {f.number}:</strong> : null}
-              {(lang === 'en' || lang === 'both') && f.caption.en ? renderInline(f.caption.en) : null}
-              {lang === 'both' && f.caption.zh ? (
-                <div className="italic mt-1">{renderInline(f.caption.zh)}</div>
-              ) : null}
-            </figcaption>
-          )}
-          {(f.description?.en || f.description?.zh) && (
-            <div className="mt-2 text-xs text-gray-500 dark:text-slate-400 text-center">
-              {(lang === 'en' || lang === 'both') && f.description?.en ? renderInline(f.description.en) : null}
-              {lang === 'both' && f.description?.zh ? (
-                <div className="italic mt-1">{renderInline(f.description.zh)}</div>
-              ) : null}
+      case 'math': {
+        return (
+          <div className="my-4">
+            <div className="relative flex items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-4 py-4">
+              <BlockMath math={block.latex || ''} />
+              {block.number && (
+                <div className="absolute right-4 top-1/2 -translate-y-1/2 text-sm text-gray-500">
+                  ({block.number})
+                </div>
+              )}
             </div>
-          )}
-        </figure>
-      </div>
-    );
-  }
-
-  function renderTable() {
-    const t = block;
-    if (t.type !== 'table') return null;
-
-    return (
-      <div id={t.id} onClick={onClick} className={`${cardClass} overflow-x-auto`}>
-        <table className="min-w-full border-collapse border border-gray-300 dark:border-slate-600">
-          {/* headers */}
-          {t.headers && t.headers.length > 0 && (
-            <thead>
-              <tr className="bg-gray-100 dark:bg-slate-800 font-semibold">
-                {t.headers.map((h, i) => (
-                  <th
-                    key={i}
-                    className={`border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-800 dark:text-slate-200 ${colAlignClass(
-                      t.align?.[i]
-                    )}`}
-                  >
-                    {highlightText(h, searchQuery)}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-          )}
-          {/* body */}
-          <tbody>
-            {t.rows.map((row, rIdx) => (
-              <tr key={rIdx} className={rIdx % 2 === 1 ? 'bg-gray-50 dark:bg-slate-900/40' : ''}>
-                {row.map((cell, cIdx) => {
-                  const contentStr =
-                    typeof cell === 'string'
-                      ? cell
-                      : (lang === 'en' || lang === 'both'
-                          ? cell.en ?? cell.zh ?? ''
-                          : ''); // 目前仅支持 lang: 'en' | 'both'
-                  return (
-                    <td
-                      key={cIdx}
-                      className={`border border-gray-300 dark:border-slate-600 px-4 py-2 text-sm text-gray-800 dark:text-slate-200 ${colAlignClass(
-                        t.align?.[cIdx]
-                      )}`}
-                    >
-                      {highlightText(contentStr, searchQuery)}
-                    </td>
-                  );
-                })}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {(t.caption.en || t.caption.zh) && (
-          <p className="mt-3 text-sm text-center text-gray-600 dark:text-slate-400">
-            {t.number != null ? <strong className="mr-1">Table {t.number}:</strong> : null}
-            {(lang === 'en' || lang === 'both') && t.caption.en ? renderInline(t.caption.en) : null}
-            {lang === 'both' && t.caption.zh ? <span className="italic ml-2">{renderInline(t.caption.zh)}</span> : null}
-          </p>
-        )}
-
-        {(t.description?.en || t.description?.zh) && (
-          <p className="mt-2 text-xs text-center text-gray-500 dark:text-slate-400">
-            {(lang === 'en' || lang === 'both') && t.description?.en ? renderInline(t.description.en) : null}
-            {lang === 'both' && t.description?.zh ? <span className="italic ml-2">{renderInline(t.description.zh)}</span> : null}
-          </p>
-        )}
-      </div>
-    );
-  }
-
-  function renderCode() {
-    const c = block;
-    if (c.type !== 'code') return null;
-
-    return (
-      <div id={c.id} onClick={onClick} className={cardClass}>
-        <div className="relative bg-slate-900 text-slate-100 rounded-lg p-4 overflow-x-auto">
-          {c.language && (
-            <span className="absolute top-2 right-3 text-xs text-slate-300">{c.language.toUpperCase()}</span>
-          )}
-          <pre className="text-sm leading-relaxed">
-            <code>{c.code}</code>
-          </pre>
-        </div>
-        {(c.caption?.en || c.caption?.zh) && (
-          <div className="mt-2 text-sm text-gray-600 dark:text-slate-400">
-            {(lang === 'en' || lang === 'both') && c.caption?.en ? renderInline(c.caption.en) : null}
-            {lang === 'both' && c.caption?.zh ? <div className="italic mt-1">{renderInline(c.caption.zh)}</div> : null}
           </div>
-        )}
-      </div>
-    );
-  }
+        );
+      }
 
-  function renderOrderedList() {
-    const l = block;
-    if (l.type !== 'ordered-list') return null;
+      case 'figure': {
+        return (
+          <figure className="my-6">
+            {block.src ? (
+              <img
+                src={resolveMediaUrl(block.src)}
+                alt={block.alt || ''}
+                className="mx-auto max-w-2xl rounded-lg border border-gray-200 shadow-md"
+                style={{
+                  width: block.width || 'auto',
+                  height: block.height || 'auto',
+                }}
+              />
+            ) : (
+              <div className="mx-auto max-w-2xl rounded-lg border-2 border-dashed border-gray-300 bg-gray-100 p-12 text-center">
+                <svg
+                  className="mx-auto mb-3 h-16 w-16 text-gray-400"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                  />
+                </svg>
+                <p className="text-sm text-gray-400">图片未上传</p>
+              </div>
+            )}
 
-    return (
-      <div id={l.id} onClick={onClick} className={cardClass}>
-        <ol className="list-decimal list-inside space-y-2" start={l.start ?? 1}>
-          {l.items.map((it, idx) => (
-            <li key={idx} className="text-gray-800 dark:text-slate-200">
-              {(lang === 'en' || lang === 'both') && it.content.en ? (
-                <span>{renderInline(it.content.en)}</span>
-              ) : null}
-              {lang === 'both' && it.content.zh ? (
-                <div className="text-gray-600 dark:text-slate-400 italic ml-6 mt-1">
-                  {renderInline(it.content.zh)}
+            <figcaption className="mt-3 px-4 text-center text-sm text-gray-600">
+              {block.number && (
+                <span className="mr-1 font-semibold text-gray-800">
+                  Figure {block.number}.
+                </span>
+              )}
+              <InlineRenderer nodes={block.caption?.[lang] ?? []} {...inlineRendererBaseProps} />
+            </figcaption>
+
+            {block.description?.[lang] && (
+              <div className="mt-2 px-4 text-center text-xs text-gray-500">
+                <InlineRenderer
+                  nodes={block.description[lang] ?? []}
+                  {...inlineRendererBaseProps}
+                />
+              </div>
+            )}
+          </figure>
+        );
+      }
+
+      case 'table': {
+        return (
+          <div className="my-6 overflow-x-auto">
+            {block.caption?.[lang] && (
+              <div className="mb-2 text-center text-sm font-medium text-gray-600">
+                {block.number && (
+                  <span className="mr-1 font-semibold text-gray-800">
+                    Table {block.number}.
+                  </span>
+                )}
+                <InlineRenderer nodes={block.caption[lang] ?? []} {...inlineRendererBaseProps} />
+              </div>
+            )}
+
+            <table className="mx-auto min-w-full border-collapse border border-gray-300 shadow-sm">
+              {block.headers && (
+                <thead className="bg-gray-100">
+                  <tr>
+                    {block.headers.map((header, i) => (
+                      <th
+                        key={i}
+                        className="border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-900"
+                        style={{ textAlign: block.align?.[i] || 'left' }}
+                      >
+                        {renderInlineValue(header, lang, inlineRendererBaseProps)}
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+              )}
+              <tbody>
+                {block.rows.map((row, r) => (
+                  <tr key={r} className="transition-colors hover:bg-gray-50">
+                    {row.map((cell, c) => (
+                      <td
+                        key={c}
+                        className="border border-gray-300 px-3 py-2 text-sm text-gray-700"
+                        style={{ textAlign: block.align?.[c] || 'left' }}
+                      >
+                        {renderInlineValue(cell, lang, inlineRendererBaseProps)}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+
+            {block.description?.[lang] && (
+              <div className="mt-2 text-center text-xs text-gray-500">
+                <InlineRenderer nodes={block.description[lang] ?? []} {...inlineRendererBaseProps} />
+              </div>
+            )}
+          </div>
+        );
+      }
+
+      case 'code': {
+        return (
+          <div className="my-4">
+            {block.caption?.[lang] && (
+              <div className="mb-2 text-xs text-gray-500">
+                <InlineRenderer nodes={block.caption[lang] ?? []} {...inlineRendererBaseProps} />
+              </div>
+            )}
+            <pre className="relative overflow-auto rounded-lg bg-gray-900 p-4 text-sm text-gray-100 shadow-md">
+              {block.language && (
+                <div className="absolute right-3 top-3 rounded bg-gray-800 px-2 py-1 text-xs text-gray-400">
+                  {block.language}
                 </div>
-              ) : null}
-            </li>
-          ))}
-        </ol>
+              )}
+              <code className={block.showLineNumbers ? 'block' : ''}>{block.code}</code>
+            </pre>
+          </div>
+        );
+      }
+
+      case 'ordered-list': {
+        return (
+          <ol start={block.start ?? 1} className="my-3 list-decimal space-y-1.5 pl-6">
+            {block.items.map((item, i) => (
+              <li key={i} className="leading-relaxed text-gray-700">
+                <InlineRenderer nodes={item.content?.[lang] ?? []} {...inlineRendererBaseProps} />
+              </li>
+            ))}
+          </ol>
+        );
+      }
+
+      case 'unordered-list': {
+        return (
+          <ul className="my-3 list-disc space-y-1.5 pl-6">
+            {block.items.map((item, i) => (
+              <li key={i} className="leading-relaxed text-gray-700">
+                <InlineRenderer nodes={item.content?.[lang] ?? []} {...inlineRendererBaseProps} />
+              </li>
+            ))}
+          </ul>
+        );
+      }
+
+      case 'quote': {
+        return (
+          <blockquote className="my-4 rounded-r-lg border-l-4 border-blue-500 bg-blue-50 py-2 pl-4 italic text-gray-600">
+            <InlineRenderer nodes={block.content?.[lang] ?? []} {...inlineRendererBaseProps} />
+            {block.author && (
+              <div className="mt-2 text-right text-sm font-medium not-italic text-gray-500">
+                — {block.author}
+              </div>
+            )}
+          </blockquote>
+        );
+      }
+
+      case 'divider':
+        return <hr className="my-6 border-t-2 border-gray-300" />;
+
+      default:
+        return null;
+    }
+  }, [block, lang, handleTextSelection, inlineRendererBaseProps]);
+
+  return (
+    <>
+      <div
+        ref={blockRef}
+        id={block.id}
+        className={`${baseClass} mb-3 p-2`}
+        onMouseEnter={onMouseEnter}
+        onMouseLeave={onMouseLeave}
+      >
+        {renderContent()}
       </div>
-    );
-  }
 
-  function renderUnorderedList() {
-    const l = block;
-    if (l.type !== 'unordered-list') return null;
-
-    return (
-      <div id={l.id} onClick={onClick} className={cardClass}>
-        <ul className="list-disc list-inside space-y-2">
-          {l.items.map((it, idx) => (
-            <li key={idx} className="text-gray-800 dark:text-slate-200">
-              {(lang === 'en' || lang === 'both') && it.content.en ? (
-                <span>{renderInline(it.content.en)}</span>
-              ) : null}
-              {lang === 'both' && it.content.zh ? (
-                <div className="text-gray-600 dark:text-slate-400 italic ml-6 mt-1">
-                  {renderInline(it.content.zh)}
-                </div>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      </div>
-    );
-  }
-
-  function renderQuote() {
-    const q = block;
-    if (q.type !== 'quote') return null;
-
-    return (
-      <div id={q.id} onClick={onClick} className={cardClass}>
-        <blockquote className="border-l-4 pl-4 italic text-gray-700 dark:text-slate-300">
-          {(lang === 'en' || lang === 'both') && q.content.en ? renderInline(q.content.en) : null}
-          {lang === 'both' && q.content.zh ? <div className="mt-2">{renderInline(q.content.zh)}</div> : null}
-        </blockquote>
-        {q.author && (
-          <div className="mt-2 text-right text-sm text-gray-500 dark:text-slate-400">— {q.author}</div>
-        )}
-      </div>
-    );
-  }
-
-  function renderDivider() {
-    const d = block;
-    if (d.type !== 'divider') return null;
-
-    return (
-      <div id={d.id} onClick={onClick} className={cardClass}>
-        <hr className="border-gray-300 dark:border-slate-600" />
-      </div>
-    );
-  }
-
-  // ---- dispatch by type ----
-  switch (block.type) {
-    case 'heading':
-      return renderHeading();
-    case 'paragraph':
-      return renderParagraph();
-    case 'math':
-      return renderMath();
-    case 'figure':
-      return renderFigure();
-    case 'table':
-      return renderTable();
-    case 'code':
-      return renderCode();
-    case 'ordered-list':
-      return renderOrderedList();
-    case 'unordered-list':
-      return renderUnorderedList();
-    case 'quote':
-      return renderQuote();
-    case 'divider':
-      return renderDivider();
-    default:
-      return null;
-  }
+      {showToolbar && (
+        <TextSelectionToolbar
+          onBold={() => applyStyle('bold')}
+          onItalic={() => applyStyle('italic')}
+          onUnderline={() => applyStyle('underline')}
+          onColor={(color) => applyStyle('color', color)}
+          onBackgroundColor={(bg) => applyStyle('bg', bg)}
+          onClearStyles={() => applyStyle('clear')}
+          position={toolbarPos}
+          onClose={() => setShowToolbar(false)}
+        />
+      )}
+    </>
+  );
 }

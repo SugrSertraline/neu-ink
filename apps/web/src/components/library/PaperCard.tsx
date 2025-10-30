@@ -1,258 +1,265 @@
-'use client';
-
 import React from 'react';
-import { Star, Clock, FolderPlus, Loader2, AlertCircle, Eye, Edit, Trash2 } from 'lucide-react';
+import { FileText, Trash2, Plus, Calendar, BookOpen, Award } from 'lucide-react';
+import {
+  HoverCard,
+  HoverCardContent,
+  HoverCardTrigger,
+} from '@/components/ui/hover-card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { cn } from '@/lib/utils';
-import type { PaperListItem } from '@/types/paper';
-import { useAuth } from '@/contexts/AuthContext';
+import { type PaperListItem, type Author } from '@/types/paper';
 
 interface PaperCardProps {
   paper: PaperListItem;
-  onClick: () => void | Promise<void>;
-  onEdit?: () => void | Promise<void>;
-  onDelete?: () => void | Promise<void>;
-  onAddToLibrary?: () => void | Promise<void>;
+  onClick: () => void;
+  onDelete?: () => void;
+  onAddToLibrary?: () => void;
   showLoginRequired?: boolean;
 }
 
-// 获取状态徽章
-function getStatusBadge(status?: string) {
+function getStatusColor(status: string): string {
   switch (status) {
-    case 'unread':
-      return <Badge variant="outline" className="bg-gray-50 text-gray-600">未读</Badge>;
-    case 'reading':
-      return <Badge variant="outline" className="bg-blue-50 text-blue-600">阅读中</Badge>;
-    case 'finished':
-      return <Badge variant="outline" className="bg-green-50 text-green-600">已完成</Badge>;
+    case 'completed':
+      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+    case 'parsing':
+      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+    case 'pending':
+      return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
+    case 'failed':
+      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
     default:
-      return null;
+      return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
   }
 }
 
-// 获取优先级徽章
-function getPriorityBadge(priority?: string) {
-  switch (priority) {
-    case 'high':
-      return <Badge variant="outline" className="bg-red-50 text-red-600">高</Badge>;
-    case 'medium':
-      return <Badge variant="outline" className="bg-yellow-50 text-yellow-600">中</Badge>;
-    case 'low':
-      return <Badge variant="outline" className="bg-green-50 text-green-600">低</Badge>;
+function getStatusText(status: string): string {
+  switch (status) {
+    case 'completed':
+      return '已完成';
+    case 'parsing':
+      return '解析中';
+    case 'pending':
+      return '等待中';
+    case 'failed':
+      return '失败';
     default:
-      return null;
-  }
-}
-
-// 获取分区颜色
-function getQuartileColor(quartile: string) {
-  switch (quartile) {
-    case 'Q1':
-    case '1区':
-      return 'bg-red-50 text-red-700 border-red-200';
-    case 'Q2':
-    case '2区':
-      return 'bg-orange-50 text-orange-700 border-orange-200';
-    case 'Q3':
-    case '3区':
-      return 'bg-yellow-50 text-yellow-700 border-yellow-200';
-    case 'Q4':
-    case '4区':
-      return 'bg-gray-50 text-gray-700 border-gray-200';
-    default:
-      return 'bg-gray-50 text-gray-700 border-gray-200';
+      return '未知';
   }
 }
 
 export default function PaperCard({
   paper,
   onClick,
-  onEdit,
   onDelete,
   onAddToLibrary,
   showLoginRequired = false,
 }: PaperCardProps) {
-  const { isAdmin } = useAuth();
-  const guard =
-    (fn?: () => void | Promise<void>) =>
-      async (e: React.MouseEvent) => {
-        e.stopPropagation();
-        if (showLoginRequired) return; // 未登录时直接拦截
-        await fn?.();
-      };
+  const authors = paper.authors.slice(0, 3).map((author: Author) => author.name).join(', ');
+  const hasMoreAuthors = paper.authors.length > 3;
+  const authorsDisplay = hasMoreAuthors ? `${authors} 等` : authors;
+
   return (
-    <div
-      className={cn(
-        "group relative rounded-xl border border-gray-200 dark:border-gray-700 p-5 transition-all duration-300 bg-white dark:bg-gray-800 hover:shadow-lg hover:border-blue-300 dark:hover:border-blue-600 cursor-pointer"
-      )}
-      onClick={onClick}
-    >
-      {/* 快捷按钮 - 悬停时显示 */}
-      <div className="absolute top-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
-        {onAddToLibrary && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger>
+    <HoverCard>
+      <HoverCardTrigger asChild>
+        <div
+          onClick={onClick}
+          className="group relative cursor-pointer rounded-lg border border-gray-200 bg-white p-4 transition-all hover:border-blue-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-600"
+        >
+          {/* 状态标签 */}
+          {paper.parseStatus && (
+            <div className="absolute right-3 top-3">
+              <Badge
+                variant="secondary"
+                className={`text-xs ${getStatusColor(paper.parseStatus.status)}`}
+              >
+                {getStatusText(paper.parseStatus.status)}
+              </Badge>
+            </div>
+          )}
+
+          {/* 标题 */}
+          <h3 className="mb-2 line-clamp-2 pr-20 text-sm font-semibold text-gray-900 dark:text-gray-100">
+            {paper.title}
+          </h3>
+
+          {/* 作者和年份 */}
+          <p className="mb-3 line-clamp-1 text-xs text-gray-600 dark:text-gray-400">
+            {authorsDisplay || '未知作者'}
+            {paper.year && <span> • {paper.year}</span>}
+          </p>
+
+          {/* 标签区域 */}
+          <div className="flex flex-wrap gap-1.5">
+            {paper.sciQuartile && paper.sciQuartile !== '无' && (
+              <Badge variant="outline" className="text-xs font-medium text-red-600 dark:text-red-400">
+                SCI {paper.sciQuartile}
+              </Badge>
+            )}
+            {paper.casQuartile && paper.casQuartile !== '无' && (
+              <Badge variant="outline" className="text-xs font-medium text-orange-600 dark:text-orange-400">
+                CAS {paper.casQuartile}
+              </Badge>
+            )}
+            {paper.ccfRank && paper.ccfRank !== '无' && (
+              <Badge variant="outline" className="text-xs font-medium text-purple-600 dark:text-purple-400">
+                CCF {paper.ccfRank}
+              </Badge>
+            )}
+            {paper.impactFactor && (
+              <Badge variant="outline" className="text-xs font-medium text-blue-600 dark:text-blue-400">
+                IF {paper.impactFactor.toFixed(2)}
+              </Badge>
+            )}
+          </div>
+
+          {/* 操作按钮 */}
+          {(onDelete || onAddToLibrary || showLoginRequired) && (
+            <div className="mt-3 flex gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
+              {showLoginRequired && (
+                <span className="text-xs text-blue-600 dark:text-blue-400">
+                  登录后查看详情
+                </span>
+              )}
+              {onAddToLibrary && (
                 <Button
                   size="sm"
-                  variant="outline"
-                  onClick={guard(onAddToLibrary)} // ✅ 使用 guard
-                  className="h-8 w-8 p-0"
+                  variant="ghost"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onAddToLibrary();
+                  }}
+                  className="h-7 text-xs"
                 >
-                  <FolderPlus className="w-4 h-4" />
+                  <Plus className="mr-1 h-3 w-3" />
+                  添加到我的论文库
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent>
-                {showLoginRequired ? '请先登录后使用' : '添加到个人库'}
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-
-        {onEdit && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger>
+              )}
+              {onDelete && (
                 <Button
                   size="sm"
-                  variant="outline"
-                  onClick={guard(onEdit)} // ✅
-                  className="h-8 w-8 p-0"
+                  variant="ghost"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete();
+                  }}
+                  className="h-7 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
                 >
-                  <Edit className="w-4 h-4" />
+                  <Trash2 className="mr-1 h-3 w-3" />
+                  删除
                 </Button>
-              </TooltipTrigger>
-              <TooltipContent>{showLoginRequired ? '请先登录后使用' : '编辑'}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-
-
-        {onDelete && isAdmin && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={guard(onDelete)} // ✅
-                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>{showLoginRequired ? '请先登录后使用' : '删除'}</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-      </div>
-
-      {/* 头部：标题和状态 */}
-      <div className="flex items-start justify-between gap-3 mb-3 pr-16">
-        <h3 className="font-semibold text-lg line-clamp-2 transition-colors group-hover:text-blue-600 dark:group-hover:text-blue-400">
-          {paper.title}
-        </h3>
-        {paper.parseStatus && paper.parseStatus.status === 'parsing' && (
-          <Loader2 className="w-5 h-5 animate-spin text-blue-500 shrink-0" />
-        )}
-        {paper.parseStatus && paper.parseStatus.status === 'failed' && (
-          <AlertCircle className="w-5 h-5 text-red-500 shrink-0" />
-        )}
-      </div>
-
-      {/* 作者和年份 */}
-      <p className="text-sm text-gray-600 dark:text-gray-400 mb-3">
-        {paper.authors && paper.authors.length > 0
-          ? paper.authors.map(a => a.name).join(', ')
-          : '未知作者'}
-        {paper.year && ` · ${paper.year}`}
-      </p>
-
-      {/* 期刊/会议 */}
-      {paper.publication && (
-        <p className="text-xs text-gray-500 dark:text-gray-500 mb-2 truncate" title={paper.publication}>
-          📄 {paper.publication}
-        </p>
-      )}
-
-      {/* 分区和影响因子 */}
-      <div className="flex flex-wrap gap-2 mb-3">
-        {paper.sciQuartile && paper.sciQuartile !== '无' && (
-          <Badge className={cn('text-xs', getQuartileColor(paper.sciQuartile))}>
-            SCI {paper.sciQuartile}
-          </Badge>
-        )}
-        {paper.casQuartile && paper.casQuartile !== '无' && (
-          <Badge className={cn('text-xs', getQuartileColor(paper.casQuartile))}>
-            中科院 {paper.casQuartile}
-          </Badge>
-        )}
-        {paper.ccfRank && paper.ccfRank !== '无' && (
-          <Badge className="text-xs bg-purple-50 text-purple-700 border-purple-200">
-            CCF {paper.ccfRank}
-          </Badge>
-        )}
-        {paper.impactFactor && (
-          <Badge className="text-xs bg-indigo-50 text-indigo-700 border-indigo-200">
-            IF {paper.impactFactor}
-          </Badge>
-        )}
-      </div>
-
-      {/* 标签 */}
-      {paper.tags && paper.tags.length > 0 && (
-        <div className="flex flex-wrap gap-2 mb-3">
-          {paper.tags.slice(0, 4).map(tag => (
-            <Badge key={tag} variant="outline" className="text-xs">
-              {tag}
-            </Badge>
-          ))}
-          {paper.tags.length > 4 && (
-            <Badge variant="outline" className="text-xs">
-              +{paper.tags.length - 4}
-            </Badge>
+              )}
+            </div>
           )}
         </div>
-      )}
+      </HoverCardTrigger>
 
-      {/* 阅读进度（如果有个人数据） */}
-      {paper.readingPosition !== undefined && paper.readingPosition > 0 && (
-        <div className="mb-3">
-          <div className="flex justify-between text-xs text-gray-500 dark:text-gray-400 mb-1">
-            <span>阅读进度</span>
-            <span>{Math.round(paper.readingPosition * 100)}%</span>
+      <HoverCardContent className="w-96" side="top" align="start">
+        <div className="space-y-3">
+          {/* 完整标题 */}
+          <div>
+            <h4 className="mb-1 font-semibold text-gray-900 dark:text-gray-100">
+              {paper.title}
+            </h4>
+            {paper.titleZh && (
+              <p className="text-sm text-gray-600 dark:text-gray-400">{paper.titleZh}</p>
+            )}
           </div>
-          <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-1.5">
-            <div
-              className="bg-blue-600 h-1.5 rounded-full transition-all duration-300"
-              style={{ width: `${paper.readingPosition * 100}%` }}
-            />
-          </div>
-        </div>
-      )}
 
-      {/* 底部：状态和优先级 */}
-      <div className="flex items-center justify-between pt-3 border-t border-gray-100 dark:border-gray-700">
-        <div className="flex gap-2">
-          {getStatusBadge(paper.readingStatus)}
-          {getPriorityBadge(paper.priority)}
-        </div>
-        {paper.totalReadingTime && paper.totalReadingTime > 0 && (
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger>
-                <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
-                  <Clock className="w-3 h-3" />
-                  {Math.round(paper.totalReadingTime / 60)}min
+          {/* 作者列表 */}
+          {paper.authors.length > 0 && (
+            <div className="flex items-start gap-2">
+              <FileText className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-500" />
+              <div>
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-300">作者</p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  {paper.authors.map((author: Author) => author.name).join(', ')}
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* 发表信息 */}
+          {(paper.publication || paper.date) && (
+            <div className="flex items-start gap-2">
+              <BookOpen className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-500" />
+              <div>
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-300">发表信息</p>
+                {paper.publication && (
+                  <p className="text-xs text-gray-600 dark:text-gray-400">{paper.publication}</p>
+                )}
+                {paper.date && (
+                  <p className="text-xs text-gray-500 dark:text-gray-500">{paper.date}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* 评级信息 */}
+          {(paper.sciQuartile || paper.casQuartile || paper.ccfRank || paper.impactFactor) && (
+            <div className="flex items-start gap-2">
+              <Award className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-500" />
+              <div className="flex-1">
+                <p className="mb-1 text-xs font-medium text-gray-700 dark:text-gray-300">评级信息</p>
+                <div className="flex flex-wrap gap-1.5">
+                  {paper.sciQuartile && paper.sciQuartile !== '无' && (
+                    <Badge variant="secondary" className="text-xs">
+                      SCI {paper.sciQuartile}
+                    </Badge>
+                  )}
+                  {paper.casQuartile && paper.casQuartile !== '无' && (
+                    <Badge variant="secondary" className="text-xs">
+                      CAS {paper.casQuartile}
+                    </Badge>
+                  )}
+                  {paper.ccfRank && paper.ccfRank !== '无' && (
+                    <Badge variant="secondary" className="text-xs">
+                      CCF {paper.ccfRank}
+                    </Badge>
+                  )}
+                  {paper.impactFactor && (
+                    <Badge variant="secondary" className="text-xs">
+                      影响因子: {paper.impactFactor.toFixed(3)}
+                    </Badge>
+                  )}
                 </div>
-              </TooltipTrigger>
-              <TooltipContent>总阅读时长</TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
-        )}
-      </div>
-    </div>
+              </div>
+            </div>
+          )}
+
+          {/* 文章类型 */}
+          {paper.articleType && (
+            <div className="flex items-start gap-2">
+              <Calendar className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-500" />
+              <div>
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-300">文章类型</p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">{paper.articleType}</p>
+              </div>
+            </div>
+          )}
+
+          {/* DOI */}
+          {paper.doi && (
+            <div className="rounded-md bg-gray-50 p-2 dark:bg-gray-800">
+              <p className="text-xs font-medium text-gray-700 dark:text-gray-300">DOI</p>
+              <p className="break-all text-xs text-gray-600 dark:text-gray-400">{paper.doi}</p>
+            </div>
+          )}
+
+          {/* 标签 */}
+          {paper.tags && paper.tags.length > 0 && (
+            <div>
+              <p className="mb-1 text-xs font-medium text-gray-700 dark:text-gray-300">标签</p>
+              <div className="flex flex-wrap gap-1">
+                {paper.tags.map((tag, index) => (
+                  <Badge key={index} variant="outline" className="text-xs">
+                    {tag}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      </HoverCardContent>
+    </HoverCard>
   );
 }

@@ -91,7 +91,7 @@ def list_public_papers():
         return internal_error_response(f"服务器错误: {exc}")
 
 
-@bp.route("/public/<paper_id>", methods=["GET"])
+@bp.route("<paper_id>", methods=["GET"])
 def get_public_paper_detail(paper_id):
     """
     公开论文详情。仅当论文 isPublic=True 时提供完整信息。
@@ -111,7 +111,7 @@ def get_public_paper_detail(paper_id):
         return internal_error_response(f"服务器错误: {exc}")
 
 
-@bp.route("/public/<paper_id>/content", methods=["GET"])
+@bp.route("/<paper_id>/content", methods=["GET"])
 def get_public_paper_content(paper_id):
     """
     阅读器内容接口，输出结构化正文信息。
