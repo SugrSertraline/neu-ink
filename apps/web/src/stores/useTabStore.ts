@@ -59,17 +59,18 @@ function normalizeTabForPaper(tab: Tab): Tab {
 
   if (!data.source) {
     const path = tab.path ?? '';
-    if (/^\/admin\/papers\//.test(path)) {
+    if (/^\/admin\/papers?\//.test(path)) {
       data.source = 'public-admin';
-    } else if (/^\/user\/papers\//.test(path)) {
+    } else if (/^\/user\/papers?\//.test(path)) {
       data.source = 'personal-owner';
-    } else if (/^\/papers\//.test(path)) {
+    } else if (/^\/papers?\//.test(path)) { // 同时匹配 /paper/ 与 /papers/
       data.source = 'public-guest';
     }
   }
 
   return { ...tab, data };
 }
+
 
 let currentStoreSnapshot: TabContextType | null = null;
 

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import { BookOpen, Library, Settings, CheckSquare } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -134,7 +134,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
   const handleCloseTab = useCallback(async (tabId: string) => {
     // 找到要关闭的标签配置
     const tabConfig = navigationConfig.find(item => item.id === tabId);
-    
+
     // 不可关闭的标签不处理
     if (tabConfig && !tabConfig.closable) {
       return;
@@ -182,7 +182,26 @@ export default function MainLayout({ children }: MainLayoutProps) {
     // 从 store 中移除标签
     removeTab(tabId);
   }, [tabs, activeTabId, pathname, isAuthenticated, router, setActiveTab, setLoading, removeTab]);
+  useEffect(() => {
+    // 仅识别单/复数：/paper/... 或 /papers/...
+    const isPaperPath = /^\/(paper|papers)\//.test(pathname || '');
 
+    if (!isPaperPath) return;
+
+    const hasPaperTab = tabs.some(t => t.type === 'paper' && t.path === pathname);
+
+    // “初始态”的判定：只有一个默认标签，且激活的就是它
+    const isPristine =
+      tabs.length === 1 &&
+      tabs[0]?.id === 'public-library' &&
+      activeTabId === 'public-library';
+
+    // 仅当“刷新落在论文页 + 没有论文标签 + 是初始态”时才跳转
+    if (!hasPaperTab && isPristine) {
+      setLoading(true, 'public-library');
+      router.replace('/'); // 自动切回“公共论文库”
+    }
+  }, [pathname, tabs, activeTabId, setLoading, router]);
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
       {/* 侧边栏 */}
@@ -195,7 +214,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
         isAdmin={isAdmin}
         isAuthenticated={isAuthenticated}
       />
-      
+
       {/* 主内容区域 */}
       <div className="flex-1 flex flex-col min-w-0">
         {/* Tab栏 */}
@@ -205,7 +224,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
           onCloseTab={handleCloseTab}
           isAuthenticated={isAuthenticated}
         />
-        
+
         {/* 页面内容 */}
         <main className="flex-1 overflow-hidden">
           {children}

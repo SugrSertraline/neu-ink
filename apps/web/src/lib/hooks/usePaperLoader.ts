@@ -1,4 +1,5 @@
-import { useEffect, useState } from 'react';
+// apps/web/src/lib/hooks/usePaperLoader.ts
+import { useEffect, useMemo, useState } from 'react';
 import { BusinessCode, ResponseCode } from '@/types/api';
 import type { Paper, ParseStatus, UserPaper } from '@/types/paper';
 import type { ViewerSource } from '@/types/paper/viewer';
@@ -65,90 +66,116 @@ function isSuccess(topCode: number, bizCode: number): boolean {
   return topCode === ResponseCode.SUCCESS && bizCode === BusinessCode.SUCCESS;
 }
 
+type ViewerSourceInput = ViewerSource | ViewerSource[];
+
 export function usePaperLoader(
   paperId: string | undefined,
-  source: ViewerSource,
+  viewerSources: ViewerSourceInput,
   initialData?: Paper,
 ) {
+  const normalizedSources = useMemo<ViewerSource[]>(() => {
+    const arr = Array.isArray(viewerSources)
+      ? viewerSources
+      : viewerSources
+      ? [viewerSources]
+      : [];
+    const deduped = Array.from(new Set(arr)) as ViewerSource[];
+    return deduped.length ? deduped : ['public-guest'];
+  }, [viewerSources]);
+
   const [paper, setPaper] = useState<Paper | null>(initialData ?? null);
   const [userPaperMeta, setUserPaperMeta] = useState<UserPaperMeta | null>(null);
-  const [isLoading, setLoading] = useState(!initialData);
+  const [isLoading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeSource, setActiveSource] = useState<ViewerSource | null>(null);
 
   useEffect(() => {
     if (!paperId) {
       setPaper(null);
       setUserPaperMeta(null);
+      setActiveSource(null);
       setLoading(false);
       setError('缺少论文编号');
       return;
     }
 
-    if (initialData) {
-      setPaper(initialData);
+    if (!normalizedSources.length) {
+      setPaper(null);
       setUserPaperMeta(null);
-      setError(null);
+      setActiveSource(null);
       setLoading(false);
+      setError('缺少论文来源');
       return;
     }
 
     let cancelled = false;
 
+    setLoading(true);
+    setError(null);
+
+    if (initialData) {
+      setPaper(initialData);
+      setUserPaperMeta(null);
+      setActiveSource(normalizedSources[0] ?? null);
+    } else {
+      setPaper(null);
+      setUserPaperMeta(null);
+      setActiveSource(null);
+    }
+
     async function load(id: string) {
-      setLoading(true);
-      setError(null);
+      let lastError: string | null = null;
 
-      try {
-        if (source === 'personal-owner') {
-          const res = await userPaperService.getUserPaperDetail(id);
+      for (const candidate of normalizedSources) {
+        try {
+          if (candidate === 'personal-owner') {
+            const res = await userPaperService.getUserPaperDetail(id);
 
-          if (!isSuccess(res.topCode, res.bizCode) || !res.data) {
+            if (!isSuccess(res.topCode, res.bizCode) || !res.data) {
+              lastError = res.bizMessage || res.topMessage || '获取个人论文失败';
+              continue;
+            }
+
             if (!cancelled) {
-              setPaper(null);
-              setUserPaperMeta(null);
-              setError(res.bizMessage || res.topMessage || '获取个人论文失败');
+              const { paper: normalizedPaper, meta } = normalizeUserPaper(res.data);
+              setPaper(normalizedPaper);
+              setUserPaperMeta(meta);
+              setActiveSource(candidate);
+              setError(null);
+              setLoading(false);
             }
             return;
           }
 
-          if (!cancelled) {
-            const { paper: normalizedPaper, meta } = normalizeUserPaper(res.data);
-            setPaper(normalizedPaper);
-            setUserPaperMeta(meta);
-            setError(null);
+          const res =
+            candidate === 'public-admin'
+              ? await adminPaperService.getAdminPaperDetail(id)
+              : await publicPaperService.getPublicPaperDetail(id);
+
+          if (!isSuccess(res.topCode, res.bizCode) || !res.data) {
+            lastError = res.bizMessage || res.topMessage || '获取论文失败';
+            continue;
           }
-          return;
-        }
 
-        const res =
-          source === 'public-admin'
-            ? await adminPaperService.getAdminPaperDetail(id)
-            : await publicPaperService.getPublicPaperDetail(id);
-
-        if (!isSuccess(res.topCode, res.bizCode) || !res.data) {
           if (!cancelled) {
-            setPaper(null);
+            setPaper(res.data);
             setUserPaperMeta(null);
-            setError(res.bizMessage || res.topMessage || '获取论文失败');
+            setActiveSource(candidate);
+            setError(null);
+            setLoading(false);
           }
           return;
+        } catch (err: any) {
+          lastError = err?.message ?? '网络错误';
         }
+      }
 
-        if (!cancelled) {
-          setPaper(res.data);
-          setUserPaperMeta(null);
-          setError(null);
-        }
-      } catch (err: any) {
-        if (!cancelled) {
-          setPaper(null);
-          setUserPaperMeta(null);
-          setError(err?.message ?? '网络错误');
-        }
-      } finally {
-        if (!cancelled) {
-          setLoading(false);
-        }
+      if (!cancelled) {
+        setPaper(null);
+        setUserPaperMeta(null);
+        setActiveSource(normalizedSources[normalizedSources.length - 1] ?? null);
+        setError(lastError ?? '获取论文失败');
+        setLoading(false);
       }
     }
 
@@ -157,7 +184,7 @@ export function usePaperLoader(
     return () => {
       cancelled = true;
     };
-  }, [paperId, source, initialData]);
+  }, [paperId, normalizedSources, initialData]);
 
-  return { paper, userPaperMeta, isLoading, error };
+  return { paper, userPaperMeta, isLoading, error, activeSource };
 }

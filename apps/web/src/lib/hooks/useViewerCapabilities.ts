@@ -1,3 +1,4 @@
+// apps/web/src/lib/hooks/useViewerCapabilities.ts
 import { ViewerSource, ViewerCapabilities } from '@/types/paper/viewer';
 
 const capabilityMap: Record<ViewerSource, ViewerCapabilities> = {

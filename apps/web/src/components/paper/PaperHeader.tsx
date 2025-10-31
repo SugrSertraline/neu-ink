@@ -6,7 +6,6 @@ import {
   BookOpen,
   ChevronUp,
   ChevronDown,
-  StickyNote,
   PencilLine,
   Eye,
   EyeOff,
@@ -15,18 +14,18 @@ import {
 type Lang = 'en' | 'both';
 
 interface PaperHeaderActions {
-  canAddNotes?: boolean;
-  canEditPublicPaper?: boolean;
-  canEditPersonalPaper?: boolean;
+  // 统一“编辑”入口
+  editEnabled?: boolean;
+  editLabel?: string; // 默认“编辑”；如需要可用 isEditing 切换为“退出编辑”
+  isEditing?: boolean; // 页面内编辑模式时用于切换按钮图标与文案
+  onEdit?: () => void;
+
+  // 可见性切换（通常管理员可用）
   canToggleVisibility?: boolean;
-  canToggleEditMode?: boolean;
   isPublicVisible?: boolean;
-  isEditing?: boolean;
-  onAddNote?: () => void;
-  onEditPublicPaper?: () => void;
-  onEditPersonalPaper?: () => void;
   onToggleVisibility?: () => void;
-  onToggleEditMode?: () => void;
+
+  // 预留扩展
   extraActions?: React.ReactNode;
 }
 
@@ -119,28 +118,10 @@ export default function PaperHeader({
             {actions && (
               <div className="flex items-center gap-2">
                 {renderActionButton(
-                  actions.canToggleEditMode,
-                  actions.isEditing ? '退出编辑' : '进入编辑',
+                  actions.editEnabled,
+                  actions.isEditing ? '退出编辑' : actions.editLabel ?? '编辑',
                   actions.isEditing ? BookOpen : PencilLine,
-                  actions.onToggleEditMode,
-                )}
-                {renderActionButton(
-                  actions.canAddNotes,
-                  '添加笔记',
-                  StickyNote,
-                  actions.onAddNote,
-                )}
-                {renderActionButton(
-                  actions.canEditPublicPaper,
-                  '编辑公共论文',
-                  PencilLine,
-                  actions.onEditPublicPaper,
-                )}
-                {renderActionButton(
-                  actions.canEditPersonalPaper,
-                  '编辑个人论文',
-                  PencilLine,
-                  actions.onEditPersonalPaper,
+                  actions.onEdit,
                 )}
                 {renderActionButton(
                   actions.canToggleVisibility,
