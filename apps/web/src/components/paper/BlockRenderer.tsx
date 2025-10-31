@@ -21,6 +21,8 @@ import {
 } from './utils/inlineContentUtils';
 import katex from 'katex';
 
+/** ===================== 工具与类型 ===================== */
+
 interface BlockRendererProps {
   block: BlockContent;
   lang: 'en' | 'zh';
@@ -46,33 +48,106 @@ const hasLocalizedContent = (value: unknown): value is LocalizedInlineValue => {
   return 'en' in candidate || 'zh' in candidate;
 };
 
+const COMPONENT_LABEL_MAP: Record<
+  BlockContent['type'] | 'tableHeader' | 'tableCell' | 'figureCaption' | 'figureDesc' | 'tableCaption' | 'tableDesc' | 'codeCaption' | 'listItem',
+  string
+> = {
+  heading: '标题',
+  paragraph: '段落',
+  math: '公式',
+  figure: '图片',
+  table: '表格',
+  code: '代码',
+  'ordered-list': '列表',
+  'unordered-list': '列表',
+  quote: '引用',
+  divider: '分割线',
+  // 细粒度部位
+  tableHeader: '表格',
+  tableCell: '表格',
+  figureCaption: '图片',
+  figureDesc: '图片',
+  tableCaption: '表格',
+  tableDesc: '表格',
+  codeCaption: '代码',
+  listItem: '列表',
+};
+
+const zhPlaceholder = (label: string) => (
+  <span className="inline-block rounded px-1 bg-gray-100 text-gray-500 italic">
+    {`该${label}组件未配置中文`}
+  </span>
+);
+
+/** zh 是否存在有效内容（InlineContent[] 或 string/number） */
+const hasZh = (v?: InlineContent[] | string | number | null): boolean => {
+  if (v == null) return false;
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === 'string') return v.trim().length > 0;
+  return true; // number 等
+};
+
+/** 封装：在表格等“可能是本地化值”的场景渲染 value */
 const renderInlineValue = (
   value: unknown,
   lang: 'en' | 'zh',
-  baseProps: InlineRendererBaseProps
+  baseProps: InlineRendererBaseProps,
+  opts?: { componentLabel?: string; wrapZhBg?: boolean }
 ): ReactNode => {
   if (value === null || value === undefined) return null;
 
+  // 直接数组 → 按当前语言视为节点
   if (Array.isArray(value)) {
+    if (lang === 'zh' && opts?.wrapZhBg) {
+      return (
+        <span className="rounded px-1 bg-gray-50">
+          <InlineRenderer nodes={value as InlineContent[]} {...baseProps} />
+        </span>
+      );
+    }
     return <InlineRenderer nodes={value as InlineContent[]} {...baseProps} />;
   }
 
+  // 本地化对象
   if (hasLocalizedContent(value)) {
-    const preferred = value[lang] ?? value.en ?? value.zh ?? [];
+    const lv = value as LocalizedInlineValue;
+    const preferred = lv[lang] ?? lv.en ?? lv.zh ?? [];
+
+    if (lang === 'zh') {
+      // zh 缺失 → 占位
+      if (!hasZh(lv.zh)) {
+        return zhPlaceholder(opts?.componentLabel ?? '组件');
+      }
+      // zh 存在 → 浅灰底
+      if (Array.isArray(preferred)) {
+        return (
+          <span className="rounded px-1 bg-gray-50">
+            <InlineRenderer nodes={preferred as InlineContent[]} {...baseProps} />
+          </span>
+        );
+      }
+      return <span className="rounded px-1 bg-gray-50">{preferred as any}</span>;
+    }
+
+    // 英文
     if (Array.isArray(preferred)) {
       return <InlineRenderer nodes={preferred as InlineContent[]} {...baseProps} />;
     }
-    if (typeof preferred === 'string' || typeof preferred === 'number') {
-      return preferred;
-    }
+    return preferred as any;
   }
 
+  // 原始字符串/数值
   if (typeof value === 'string' || typeof value === 'number') {
+    if (lang === 'zh' && opts?.wrapZhBg) {
+      return <span className="rounded px-1 bg-gray-50">{String(value)}</span>;
+    }
     return value;
   }
 
   return null;
 };
+
+/** ===================== KaTeX 块渲染 ===================== */
 
 function BlockMath({ math }: { math: string }) {
   const mathRef = useRef<HTMLDivElement>(null);
@@ -105,6 +180,8 @@ const resolveMediaUrl = (src?: string) => {
   }
   return src;
 };
+
+/** ===================== 主组件 ===================== */
 
 export default function BlockRenderer({
   block,
@@ -156,6 +233,7 @@ export default function BlockRenderer({
     isActive ? 'bg-blue-50 ring-2 ring-blue-200 shadow-sm' : ''
   }`;
 
+  /** ====== 文本选择工具条 ====== */
   const handleTextSelection = useCallback(
     (e: MouseEvent<HTMLElement>) => {
       if (block.type !== 'paragraph' && block.type !== 'heading') return;
@@ -262,49 +340,79 @@ export default function BlockRenderer({
     [block, lang, onBlockUpdate, selectedText]
   );
 
+  /** ====== 标题渲染（中英并排：编号.英文/中文） ====== */
+  const renderBilingualHeading = (block: HeadingBlock) => {
+    const headingSizes = {
+      1: 'text-3xl',
+      2: 'text-2xl',
+      3: 'text-xl',
+      4: 'text-lg',
+      5: 'text-base',
+      6: 'text-sm',
+    } as const;
+
+    const enNodes = block.content?.en ?? [];
+    const zhNodes = block.content?.zh;
+
+    const numberPart = block.number ? (
+      <span className="text-blue-600 mr-2">{`${block.number}.`}</span>
+    ) : null;
+
+    const enPart = (
+      <span className="mr-1 align-baseline">
+        <InlineRenderer nodes={enNodes} {...inlineRendererBaseProps} />
+      </span>
+    );
+
+    const slash = <span className="mx-1 text-gray-400">/</span>;
+
+    const zhPart = hasZh(zhNodes) ? (
+      <span className="rounded px-1 bg-gray-50 align-baseline">
+        <InlineRenderer nodes={zhNodes as InlineContent[]} {...inlineRendererBaseProps} />
+      </span>
+    ) : (
+      <span className="rounded px-1 bg-gray-100 text-gray-500 italic align-baseline">
+        该标题组件未配置中文
+      </span>
+    );
+
+    const commonProps = {
+      className: `${headingSizes[block.level]} font-bold text-gray-900 mb-2`,
+      onMouseUp: handleTextSelection,
+      style: { userSelect: 'text' as const },
+      children: (
+        <>
+          {numberPart}
+          {enPart}
+          {slash}
+          {zhPart}
+        </>
+      ),
+    };
+
+    switch (block.level) {
+      case 1:
+        return <h1 {...commonProps} />;
+      case 2:
+        return <h2 {...commonProps} />;
+      case 3:
+        return <h3 {...commonProps} />;
+      case 4:
+        return <h4 {...commonProps} />;
+      case 5:
+        return <h5 {...commonProps} />;
+      case 6:
+        return <h6 {...commonProps} />;
+      default:
+        return <h2 {...commonProps} />;
+    }
+  };
+
+  /** ====== 其他块渲染 ====== */
   const renderContent = useCallback(() => {
     switch (block.type) {
       case 'heading': {
-        const headingSizes = {
-          1: 'text-3xl',
-          2: 'text-2xl',
-          3: 'text-xl',
-          4: 'text-lg',
-          5: 'text-base',
-          6: 'text-sm',
-        } as const;
-
-        const commonProps = {
-          className: `${headingSizes[block.level]} font-bold text-gray-900 mb-2`,
-          onMouseUp: handleTextSelection,
-          style: { userSelect: 'text' as const },
-          children: (
-            <>
-              {block.number && <span className="text-blue-600 mr-2">{block.number}</span>}
-              <InlineRenderer
-                nodes={block.content?.[lang] ?? []}
-                {...inlineRendererBaseProps}
-              />
-            </>
-          ),
-        };
-
-        switch (block.level) {
-          case 1:
-            return <h1 {...commonProps} />;
-          case 2:
-            return <h2 {...commonProps} />;
-          case 3:
-            return <h3 {...commonProps} />;
-          case 4:
-            return <h4 {...commonProps} />;
-          case 5:
-            return <h5 {...commonProps} />;
-          case 6:
-            return <h6 {...commonProps} />;
-          default:
-            return <h2 {...commonProps} />;
-        }
+        return renderBilingualHeading(block);
       }
 
       case 'paragraph': {
@@ -316,13 +424,26 @@ export default function BlockRenderer({
             justify: 'text-justify',
           }[block.align || 'left'] ?? 'text-left';
 
+        const wantZhPlaceholder =
+          lang === 'zh' && !hasZh(block.content?.zh);
+
         return (
           <p
             className={`text-gray-700 leading-relaxed ${alignClass}`}
             onMouseUp={handleTextSelection}
             style={{ userSelect: 'text' }}
           >
-            <InlineRenderer nodes={block.content?.[lang] ?? []} {...inlineRendererBaseProps} />
+            {lang === 'zh' ? (
+              wantZhPlaceholder ? (
+                zhPlaceholder(COMPONENT_LABEL_MAP['paragraph'])
+              ) : (
+                <span className="rounded px-1 bg-gray-50">
+                  <InlineRenderer nodes={block.content?.zh ?? []} {...inlineRendererBaseProps} />
+                </span>
+              )
+            ) : (
+              <InlineRenderer nodes={block.content?.en ?? []} {...inlineRendererBaseProps} />
+            )}
           </p>
         );
       }
@@ -343,9 +464,13 @@ export default function BlockRenderer({
       }
 
       case 'figure': {
+        const wantZhCaptionPlaceholder = lang === 'zh' && !hasZh(block.caption?.zh);
+        const wantZhDescPlaceholder = lang === 'zh' && !hasZh(block.description?.zh);
+
         return (
           <figure className="my-6">
             {block.src ? (
+              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={resolveMediaUrl(block.src)}
                 alt={block.alt || ''}
@@ -380,15 +505,32 @@ export default function BlockRenderer({
                   Figure {block.number}.
                 </span>
               )}
-              <InlineRenderer nodes={block.caption?.[lang] ?? []} {...inlineRendererBaseProps} />
+              {lang === 'zh' ? (
+                wantZhCaptionPlaceholder ? (
+                  zhPlaceholder(COMPONENT_LABEL_MAP.figureCaption)
+                ) : (
+                  <span className="rounded px-1 bg-gray-50">
+                    <InlineRenderer nodes={block.caption?.zh ?? []} {...inlineRendererBaseProps} />
+                  </span>
+                )
+              ) : (
+                <InlineRenderer nodes={block.caption?.en ?? []} {...inlineRendererBaseProps} />
+              )}
             </figcaption>
 
-            {block.description?.[lang] && (
+            { (block.description?.en || block.description?.zh) && (
               <div className="mt-2 px-4 text-center text-xs text-gray-500">
-                <InlineRenderer
-                  nodes={block.description[lang] ?? []}
-                  {...inlineRendererBaseProps}
-                />
+                {lang === 'zh' ? (
+                  wantZhDescPlaceholder ? (
+                    zhPlaceholder(COMPONENT_LABEL_MAP.figureDesc)
+                  ) : (
+                    <span className="rounded px-1 bg-gray-50">
+                      <InlineRenderer nodes={block.description?.zh ?? []} {...inlineRendererBaseProps} />
+                    </span>
+                  )
+                ) : (
+                  <InlineRenderer nodes={block.description?.en ?? []} {...inlineRendererBaseProps} />
+                )}
               </div>
             )}
           </figure>
@@ -396,16 +538,29 @@ export default function BlockRenderer({
       }
 
       case 'table': {
+        const wantZhCaptionPlaceholder = lang === 'zh' && !hasZh(block.caption?.zh);
+        const wantZhDescPlaceholder = lang === 'zh' && !hasZh(block.description?.zh);
+
         return (
           <div className="my-6 overflow-x-auto">
-            {block.caption?.[lang] && (
+            { (block.caption?.en || block.caption?.zh) && (
               <div className="mb-2 text-center text-sm font-medium text-gray-600">
                 {block.number && (
                   <span className="mr-1 font-semibold text-gray-800">
                     Table {block.number}.
                   </span>
                 )}
-                <InlineRenderer nodes={block.caption[lang] ?? []} {...inlineRendererBaseProps} />
+                {lang === 'zh' ? (
+                  wantZhCaptionPlaceholder ? (
+                    zhPlaceholder(COMPONENT_LABEL_MAP.tableCaption)
+                  ) : (
+                    <span className="rounded px-1 bg-gray-50">
+                      <InlineRenderer nodes={block.caption?.zh ?? []} {...inlineRendererBaseProps} />
+                    </span>
+                  )
+                ) : (
+                  <InlineRenderer nodes={block.caption?.en ?? []} {...inlineRendererBaseProps} />
+                )}
               </div>
             )}
 
@@ -419,7 +574,10 @@ export default function BlockRenderer({
                         className="border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-900"
                         style={{ textAlign: block.align?.[i] || 'left' }}
                       >
-                        {renderInlineValue(header, lang, inlineRendererBaseProps)}
+                        {renderInlineValue(header, lang, inlineRendererBaseProps, {
+                          componentLabel: COMPONENT_LABEL_MAP.tableHeader,
+                          wrapZhBg: true,
+                        })}
                       </th>
                     ))}
                   </tr>
@@ -434,7 +592,10 @@ export default function BlockRenderer({
                         className="border border-gray-300 px-3 py-2 text-sm text-gray-700"
                         style={{ textAlign: block.align?.[c] || 'left' }}
                       >
-                        {renderInlineValue(cell, lang, inlineRendererBaseProps)}
+                        {renderInlineValue(cell, lang, inlineRendererBaseProps, {
+                          componentLabel: COMPONENT_LABEL_MAP.tableCell,
+                          wrapZhBg: true,
+                        })}
                       </td>
                     ))}
                   </tr>
@@ -442,9 +603,19 @@ export default function BlockRenderer({
               </tbody>
             </table>
 
-            {block.description?.[lang] && (
+            {(block.description?.en || block.description?.zh) && (
               <div className="mt-2 text-center text-xs text-gray-500">
-                <InlineRenderer nodes={block.description[lang] ?? []} {...inlineRendererBaseProps} />
+                {lang === 'zh' ? (
+                  wantZhDescPlaceholder ? (
+                    zhPlaceholder(COMPONENT_LABEL_MAP.tableDesc)
+                  ) : (
+                    <span className="rounded px-1 bg-gray-50">
+                      <InlineRenderer nodes={block.description?.zh ?? []} {...inlineRendererBaseProps} />
+                    </span>
+                  )
+                ) : (
+                  <InlineRenderer nodes={block.description?.en ?? []} {...inlineRendererBaseProps} />
+                )}
               </div>
             )}
           </div>
@@ -452,11 +623,22 @@ export default function BlockRenderer({
       }
 
       case 'code': {
+        const wantZhCaptionPlaceholder = lang === 'zh' && !hasZh(block.caption?.zh);
         return (
           <div className="my-4">
-            {block.caption?.[lang] && (
+            {(block.caption?.en || block.caption?.zh) && (
               <div className="mb-2 text-xs text-gray-500">
-                <InlineRenderer nodes={block.caption[lang] ?? []} {...inlineRendererBaseProps} />
+                {lang === 'zh' ? (
+                  wantZhCaptionPlaceholder ? (
+                    zhPlaceholder(COMPONENT_LABEL_MAP.codeCaption)
+                  ) : (
+                    <span className="rounded px-1 bg-gray-50">
+                      <InlineRenderer nodes={block.caption?.zh ?? []} {...inlineRendererBaseProps} />
+                    </span>
+                  )
+                ) : (
+                  <InlineRenderer nodes={block.caption?.en ?? []} {...inlineRendererBaseProps} />
+                )}
               </div>
             )}
             <pre className="relative overflow-auto rounded-lg bg-gray-900 p-4 text-sm text-gray-100 shadow-md">
@@ -474,11 +656,25 @@ export default function BlockRenderer({
       case 'ordered-list': {
         return (
           <ol start={block.start ?? 1} className="my-3 list-decimal space-y-1.5 pl-6">
-            {block.items.map((item, i) => (
-              <li key={i} className="leading-relaxed text-gray-700">
-                <InlineRenderer nodes={item.content?.[lang] ?? []} {...inlineRendererBaseProps} />
-              </li>
-            ))}
+            {block.items.map((item, i) => {
+              const wantZh = lang === 'zh';
+              const zhMissing = wantZh && !hasZh(item.content?.zh);
+              return (
+                <li key={i} className="leading-relaxed text-gray-700">
+                  {wantZh ? (
+                    zhMissing ? (
+                      zhPlaceholder(COMPONENT_LABEL_MAP.listItem)
+                    ) : (
+                      <span className="rounded px-1 bg-gray-50">
+                        <InlineRenderer nodes={item.content?.zh ?? []} {...inlineRendererBaseProps} />
+                      </span>
+                    )
+                  ) : (
+                    <InlineRenderer nodes={item.content?.en ?? []} {...inlineRendererBaseProps} />
+                  )}
+                </li>
+              );
+            })}
           </ol>
         );
       }
@@ -486,19 +682,44 @@ export default function BlockRenderer({
       case 'unordered-list': {
         return (
           <ul className="my-3 list-disc space-y-1.5 pl-6">
-            {block.items.map((item, i) => (
-              <li key={i} className="leading-relaxed text-gray-700">
-                <InlineRenderer nodes={item.content?.[lang] ?? []} {...inlineRendererBaseProps} />
-              </li>
-            ))}
+            {block.items.map((item, i) => {
+              const wantZh = lang === 'zh';
+              const zhMissing = wantZh && !hasZh(item.content?.zh);
+              return (
+                <li key={i} className="leading-relaxed text-gray-700">
+                  {wantZh ? (
+                    zhMissing ? (
+                      zhPlaceholder(COMPONENT_LABEL_MAP.listItem)
+                    ) : (
+                      <span className="rounded px-1 bg-gray-50">
+                        <InlineRenderer nodes={item.content?.zh ?? []} {...inlineRendererBaseProps} />
+                      </span>
+                    )
+                  ) : (
+                    <InlineRenderer nodes={item.content?.en ?? []} {...inlineRendererBaseProps} />
+                  )}
+                </li>
+              );
+            })}
           </ul>
         );
       }
 
       case 'quote': {
+        const wantZhPlaceholder = lang === 'zh' && !hasZh(block.content?.zh);
         return (
           <blockquote className="my-4 rounded-r-lg border-l-4 border-blue-500 bg-blue-50 py-2 pl-4 italic text-gray-600">
-            <InlineRenderer nodes={block.content?.[lang] ?? []} {...inlineRendererBaseProps} />
+            {lang === 'zh' ? (
+              wantZhPlaceholder ? (
+                zhPlaceholder(COMPONENT_LABEL_MAP.quote)
+              ) : (
+                <span className="rounded px-1 bg-gray-50 not-italic">
+                  <InlineRenderer nodes={block.content?.zh ?? []} {...inlineRendererBaseProps} />
+                </span>
+              )
+            ) : (
+              <InlineRenderer nodes={block.content?.en ?? []} {...inlineRendererBaseProps} />
+            )}
             {block.author && (
               <div className="mt-2 text-right text-sm font-medium not-italic text-gray-500">
                 — {block.author}

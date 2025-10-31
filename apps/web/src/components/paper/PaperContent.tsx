@@ -17,7 +17,7 @@ interface PaperContentProps {
   highlightedRefs: string[];
   setHighlightedRefs: (refs: string[]) => void;
   contentRef: React.RefObject<HTMLDivElement | null>;
-  setSearchResults: (results: string[]) => void; // blockId[]
+  setSearchResults: (results: string[]) => void;
   setCurrentSearchIndex: (index: number) => void;
 }
 
@@ -44,7 +44,10 @@ export default function PaperContent({
     const re = new RegExp(`(${escapeRegExp(q)})`, 'gi');
     return text.split(re).map((part, i) =>
       part.toLowerCase() === q.toLowerCase() ? (
-        <mark key={i} className="bg-yellow-200 dark:bg-yellow-700 text-gray-900 dark:text-white">
+        <mark
+          key={i}
+          className="bg-yellow-200 dark:bg-yellow-700 text-gray-900 dark:text-white"
+        >
           {part}
         </mark>
       ) : (
@@ -138,7 +141,9 @@ export default function PaperContent({
       case 'unordered-list':
         return Array.isArray(block.items)
           ? block.items
-              .map((it: any) => [extractInlineText(it?.content?.en), extractInlineText(it?.content?.zh)].join(' '))
+              .map((it: any) =>
+                [extractInlineText(it?.content?.en), extractInlineText(it?.content?.zh)].join(' ')
+              )
               .join(' ')
           : '';
       case 'quote':
@@ -178,12 +183,10 @@ export default function PaperContent({
   const formatReference = (ref: Reference): React.ReactNode => {
     const parts: React.ReactNode[] = [];
 
-    // [Authors]
     if (ref.authors?.length) {
       parts.push(<strong key="authors">{ref.authors.join(', ')}</strong>);
     }
 
-    // (Year)
     if (ref.year) {
       parts.push(
         <span key="year" className="text-gray-500 dark:text-slate-400">
@@ -192,12 +195,10 @@ export default function PaperContent({
       );
     }
 
-    // Title.
     if (ref.title) {
       parts.push(<span key="title">. {ref.title}</span>);
     }
 
-    // Publication + volume(issue):pages
     const pubBits: string[] = [];
     if (ref.publication) pubBits.push(ref.publication);
     const volIssue: string[] = [];
@@ -209,7 +210,6 @@ export default function PaperContent({
       parts.push(<span key="pub">. {pubBits.join(', ')}</span>);
     }
 
-    // DOI / URL
     if (ref.doi) {
       parts.push(
         <span key="doi">
@@ -243,21 +243,33 @@ export default function PaperContent({
     return <>{parts}</>;
   };
 
+  // ---------- 渲染 ----------
   return (
     <div className="space-y-8">
       {sections.map((section, sectionIndex) => {
         const sectionNumber = generateSectionNumber(section, sectionIndex);
 
-        // 标题归一化后判断是否是“参考文献”分节
         const normalizedEn = (section.title?.en ?? '')
           .trim()
           .toLowerCase()
-          .replace(/^\d+[\.\)]?\s*/, ''); // 去掉类似 "7. "
+          .replace(/^\d+[\.\)]?\s*/, '');
         const normalizedZh = (section.title?.zh ?? '').trim();
         const isReferences =
           normalizedEn === 'references' ||
           normalizedEn === 'bibliography' ||
           normalizedZh === '参考文献';
+
+        // 双语标题结构
+        const hasZh = !!section.title?.zh?.trim();
+        const zhPart = hasZh ? (
+          <span className="rounded px-1 bg-gray-50 text-gray-700">
+            {highlightText(section.title!.zh!, searchQuery)}
+          </span>
+        ) : (
+          <span className="rounded px-1 bg-gray-100 text-gray-500 italic">
+            该标题组件未配置中文
+          </span>
+        );
 
         return (
           <section
@@ -265,32 +277,28 @@ export default function PaperContent({
             id={section.id}
             className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 p-6"
           >
-            {/* 章节标题 */}
+            {/* Section 双语标题 */}
             <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-4 flex items-baseline gap-3">
               {sectionNumber && (
-                <span className="text-blue-600 dark:text-blue-400">{sectionNumber}</span>
+                <span className="text-blue-600 dark:text-blue-400">{sectionNumber}.</span>
               )}
               <span>{highlightText(section.title?.en ?? '', searchQuery)}</span>
+              <span className="text-gray-400 mx-1">/</span>
+              {zhPart}
             </h2>
 
-            {/* 中文标题 */}
-            {section.title?.zh && lang === 'both' && (
-              <h3 className="text-lg text-gray-600 dark:text-slate-400 mb-4 ml-8">
-                {highlightText(section.title.zh, searchQuery)}
-              </h3>
-            )}
-
-            {/* 章节内容块 */}
+            {/* 内容块 */}
             <div className="space-y-4">
               {section.content?.map((block: any) => (
                 <BlockRenderer
                   key={block.id}
                   block={block}
-                  lang={lang}
-                  sectionNumber={sectionNumber}
+                  lang={lang === 'both' ? 'zh' : 'en'}
                   searchQuery={searchQuery}
                   isActive={activeBlockId === block.id}
-                  onClick={() => onBlockClick?.(block.id)}
+                  onMouseEnter={() => setActiveBlockId(block.id)}
+                  onMouseLeave={() => setActiveBlockId(null)}
+                  onBlockUpdate={() => {}}
                   highlightedRefs={highlightedRefs}
                   setHighlightedRefs={setHighlightedRefs}
                   contentRef={contentRef}
@@ -299,7 +307,7 @@ export default function PaperContent({
               ))}
             </div>
 
-            {/* References 区域（按 id 锚点 + 高亮） */}
+            {/* References 区域 */}
             {isReferences && references.length > 0 && (
               <div className="mt-6 space-y-3">
                 {references.map((ref, idx) => (
@@ -312,7 +320,9 @@ export default function PaperContent({
                         : 'bg-gray-50 dark:bg-slate-800'
                     }`}
                   >
-                    <span className="font-medium text-gray-700 dark:text-slate-300">[{idx + 1}]</span>{' '}
+                    <span className="font-medium text-gray-700 dark:text-slate-300">
+                      [{idx + 1}]
+                    </span>{' '}
                     <span className="text-gray-600 dark:text-slate-400">
                       {formatReference(ref)}
                     </span>

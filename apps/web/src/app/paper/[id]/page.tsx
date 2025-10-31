@@ -1,8 +1,9 @@
 'use client';
 
-import { useMemo, useState, useRef } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+
 import { useTabStore } from '@/stores/useTabStore';
 import { ViewerSource } from '@/types/paper/viewer';
 import { usePaperLoader } from '@/lib/hooks/usePaperLoader';
@@ -10,7 +11,9 @@ import { useViewerCapabilities } from '@/lib/hooks/useViewerCapabilities';
 import PaperHeader from '@/components/paper/PaperHeader';
 import PaperMetadata from '@/components/paper/PaperMetadata';
 import PaperContent from '@/components/paper/PaperContent';
-import type { Paper } from '@/types/paper';
+import type { Paper, PaperContent as PaperContentModel } from '@/types/paper';
+import EditingWorkspacePlaceholder from '@/components/paper/editor/EditingWorkspacePlaceholder';
+import { useAuth } from '@/contexts/AuthContext';
 
 type Lang = 'en' | 'both';
 
@@ -18,6 +21,7 @@ export default function PaperPage() {
   const params = useParams();
   const searchParams = useSearchParams();
   const { tabs } = useTabStore();
+  const { user, isAdmin } = useAuth();
 
   const paperId = Array.isArray(params?.id) ? params.id[0] : (params?.id as string);
 
@@ -32,7 +36,16 @@ export default function PaperPage() {
   }, [tabs, paperId]);
 
   const urlSource = (searchParams?.get('source') ?? null) as ViewerSource | null;
-  const source = tabData.source ?? urlSource ?? ('public-guest' as ViewerSource);
+
+  const sessionSource: ViewerSource = useMemo(() => {
+    if (tabData.source) return tabData.source;
+    if (urlSource) return urlSource;
+    if (isAdmin) return 'public-admin';
+    if (user) return 'personal-owner';
+    return 'public-guest';
+  }, [tabData.source, urlSource, isAdmin, user]);
+
+  const source = tabData.source ?? urlSource ?? sessionSource;
 
   const { paper, isLoading, error } = usePaperLoader(
     paperId,
@@ -48,8 +61,41 @@ export default function PaperPage() {
   const [highlightedRefs, setHighlightedRefs] = useState<string[]>([]);
   const [searchResults, setSearchResults] = useState<string[]>([]);
   const [currentSearchIndex, setCurrentSearchIndex] = useState(0);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editableDraft, setEditableDraft] = useState<PaperContentModel | null>(null);
 
   const contentRef = useRef<HTMLDivElement>(null);
+
+  const canToggleEditMode =
+    capabilities.canEditPersonalPaper || capabilities.canEditPublicPaper;
+
+  useEffect(() => {
+    if (!paper) {
+      setEditableDraft(null);
+      setIsEditing(false);
+      return;
+    }
+
+    setEditableDraft({
+      metadata: paper.metadata,
+      abstract: paper.abstract,
+      keywords: paper.keywords,
+      sections: paper.sections,
+      references: paper.references,
+      attachments: paper.attachments,
+    });
+  }, [paper]);
+
+  const handleToggleEditMode = () => {
+    if (!canToggleEditMode || !paper) return;
+
+    setIsEditing((prev) => !prev);
+    setSearchQuery('');
+    setSearchResults([]);
+    setCurrentSearchIndex(0);
+    setHighlightedRefs([]);
+    setActiveBlockId(null);
+  };
 
   const handleSearchNavigate = (direction: 'next' | 'prev') => {
     if (!searchResults.length) return;
@@ -119,6 +165,9 @@ export default function PaperPage() {
             onSearchNavigate={handleSearchNavigate}
             actions={{
               ...capabilities,
+              canToggleEditMode,
+              isEditing,
+              onToggleEditMode: canToggleEditMode ? handleToggleEditMode : undefined,
               onAddNote: capabilities.canAddNotes
                 ? () => {
                     /* TODO: 打开笔记面板 */
@@ -145,24 +194,32 @@ export default function PaperPage() {
       </div>
 
       <div className="h-full overflow-hidden">
-        <div ref={contentRef} className="h-full overflow-y-auto">
-          <div className="max-w-5xl mx-auto p-8 pt-28">
-            <PaperMetadata metadata={paper.metadata} />
-            <PaperContent
-              sections={paper.sections}
-              references={paper.references}
-              lang={lang}
-              searchQuery={searchQuery}
-              activeBlockId={activeBlockId}
-              setActiveBlockId={setActiveBlockId}
-              highlightedRefs={highlightedRefs}
-              setHighlightedRefs={setHighlightedRefs}
-              contentRef={contentRef}
-              setSearchResults={setSearchResults}
-              setCurrentSearchIndex={setCurrentSearchIndex}
-            />
+        {isEditing && editableDraft ? (
+          <EditingWorkspacePlaceholder
+            content={editableDraft}
+            lang={lang}
+            onExit={handleToggleEditMode}
+          />
+        ) : (
+          <div ref={contentRef} className="h-full overflow-y-auto">
+            <div className="max-w-5xl mx-auto p-8 pt-28">
+              <PaperMetadata metadata={paper.metadata} />
+              <PaperContent
+                sections={paper.sections}
+                references={paper.references}
+                lang={lang}
+                searchQuery={searchQuery}
+                activeBlockId={activeBlockId}
+                setActiveBlockId={setActiveBlockId}
+                highlightedRefs={highlightedRefs}
+                setHighlightedRefs={setHighlightedRefs}
+                contentRef={contentRef}
+                setSearchResults={setSearchResults}
+                setCurrentSearchIndex={setCurrentSearchIndex}
+              />
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

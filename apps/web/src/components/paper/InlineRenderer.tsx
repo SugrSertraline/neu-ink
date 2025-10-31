@@ -1,7 +1,14 @@
 'use client';
 
-import React, { useMemo, useCallback, useEffect, useRef } from 'react';
-import type { InlineContent } from '@/types/paper'; // 确保导出 InlineContent
+import React, {
+  useMemo,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from 'react';
+import { createPortal } from 'react-dom';
+import type { InlineContent } from '@/types/paper';
 import type { Reference } from '@/types/paper';
 import katex from 'katex';
 import InlineMathSpan from './InlineMathSpan';
@@ -15,6 +22,54 @@ interface InlineRendererProps {
   references: Reference[];
 }
 
+/** ---------- 小工具 ---------- */
+const clamp = (n: number, min: number, max: number) => Math.max(min, Math.min(max, n));
+const truncate = (s: string | undefined | null, len = 160) =>
+  (s ?? '').trim().replace(/\s+/g, ' ').slice(0, len) + ((s ?? '').length > len ? '…' : '');
+
+/** ---------- 悬浮卡片 ---------- */
+function HoverCard({
+  open,
+  x,
+  y,
+  width = 360,
+  children,
+  onMouseEnter,
+  onMouseLeave,
+}: {
+  open: boolean;
+  x: number;
+  y: number;
+  width?: number;
+  children: React.ReactNode;
+  onMouseEnter?: () => void;
+  onMouseLeave?: () => void;
+}) {
+  if (!open) return null;
+  const style: React.CSSProperties = {
+    position: 'fixed',
+    left: x,
+    top: y,
+    width,
+    maxWidth: '95vw',
+    zIndex: 60_000,
+  };
+  const card = (
+    <div
+      role="tooltip"
+      aria-hidden={!open}
+      onMouseEnter={onMouseEnter}
+      onMouseLeave={onMouseLeave}
+      className="pointer-events-auto rounded-xl border border-gray-200 dark:border-gray-700 shadow-xl bg-white/95 dark:bg-gray-900/95 backdrop-blur p-3"
+      style={style}
+    >
+      <div className="text-xs text-gray-500 dark:text-gray-400 mb-1">Preview</div>
+      <div className="prose prose-sm dark:prose-invert max-w-none">{children}</div>
+    </div>
+  );
+  return createPortal(card, document.body);
+}
+
 export default function InlineRenderer({
   nodes,
   searchQuery,
@@ -23,7 +78,7 @@ export default function InlineRenderer({
   contentRef,
   references,
 }: InlineRendererProps) {
-  // --- utils ---
+  /** ---------- utils ---------- */
   const escapeRegExp = useCallback(
     (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
     []
@@ -54,7 +109,7 @@ export default function InlineRenderer({
   // 引用编号映射：refId -> 1-based index
   const refNoMap = useMemo(() => {
     const m = new Map<string, number>();
-    references.forEach((r, idx) => m.set(r.id, idx + 1));
+    references.forEach((r, idx) => m.set((r as any).id ?? (r as any).refId ?? (r as any), idx + 1));
     return m;
   }, [references]);
 
@@ -98,12 +153,278 @@ export default function InlineRenderer({
     [contentRef, setHighlightedRefs]
   );
 
-  // 递归渲染
+  /** ---------- 悬浮预览状态 ---------- */
+  type PreviewKind =
+    | 'figure'
+    | 'table'
+    | 'section'
+    | 'equation'
+    | 'footnote'
+    | 'citation';
+
+  const [hoverOpen, setHoverOpen] = useState(false);
+  const [hoverXY, setHoverXY] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [hoverContent, setHoverContent] = useState<React.ReactNode>(null);
+  const anchorElRef = useRef<HTMLElement | null>(null);
+  const openTimerRef = useRef<number | null>(null);
+  const closeTimerRef = useRef<number | null>(null);
+
+  const clearTimers = () => {
+    if (openTimerRef.current) {
+      window.clearTimeout(openTimerRef.current);
+      openTimerRef.current = null;
+    }
+    if (closeTimerRef.current) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  };
+
+  // 计算悬浮卡片位置
+  const positionForAnchor = (el: HTMLElement, width = 360) => {
+    const r = el.getBoundingClientRect();
+    const margin = 8;
+    const x = clamp(r.left, 8, window.innerWidth - width - 8);
+    const y = clamp(r.bottom + margin, 8, window.innerHeight - 8);
+    return { x, y };
+  };
+
+  // 预览内容生成（从 DOM 或 references 中提取）
+  const renderEquationHTML = (latex: string) => {
+    try {
+      const html = katex.renderToString(latex, {
+        displayMode: true,
+        throwOnError: false,
+        trust: true,
+        strict: 'ignore',
+        output: 'html',
+      });
+      return <div dangerouslySetInnerHTML={{ __html: html }} />;
+    } catch {
+      return <code className="text-red-600 dark:text-red-400">{latex}</code>;
+    }
+  };
+
+  const buildFigurePreview = (host: HTMLElement) => {
+    const img = host.querySelector('img') as HTMLImageElement | null;
+    const cap =
+      (host as any).dataset?.caption ||
+      host.getAttribute('data-caption') ||
+      host.querySelector('figcaption')?.textContent ||
+      host.getAttribute('aria-label') ||
+      '';
+    if (img?.src) {
+      return (
+        <div className="space-y-2">
+          {/* eslint-disable @next/next/no-img-element */}
+          <img
+            src={img.currentSrc || img.src}
+            alt={img.alt || 'figure'}
+            className="max-h-48 w-auto max-w-full rounded-md border border-gray-200 dark:border-gray-700"
+          />
+          {cap ? <div className="text-sm text-gray-600 dark:text-gray-300">{truncate(cap, 200)}</div> : null}
+        </div>
+      );
+    }
+    return (
+      <div className="text-sm text-gray-700 dark:text-gray-200">
+        {truncate(cap || host.textContent, 200)}
+      </div>
+    );
+  };
+
+  const buildTablePreview = (host: HTMLElement) => {
+    const tbl = host.querySelector('table') as HTMLTableElement | null;
+    if (!tbl) {
+      return (
+        <div className="text-sm text-gray-700 dark:text-gray-200">
+          {truncate(host.textContent, 200)}
+        </div>
+      );
+    }
+    const rows = Array.from(tbl.rows).slice(0, 6);
+    const colCount = rows[0]?.cells?.length ?? 0;
+    const cols = Math.min(colCount, 6);
+    const cells = rows.map((tr, i) =>
+      Array.from(tr.cells)
+        .slice(0, cols)
+        .map((td, j) => ({ key: `${i}-${j}`, text: truncate(td.textContent, 40) }))
+    );
+    return (
+      <div className="overflow-x-auto">
+        <table className="min-w-[280px] w-full border border-gray-200 dark:border-gray-700 text-[13px]">
+          <tbody>
+            {cells.map((row, i) => (
+              <tr key={i} className={i === 0 ? 'bg-gray-50 dark:bg-gray-800/70' : ''}>
+                {row.map((c) => (
+                  <td
+                    key={c.key}
+                    className="px-2 py-1 border border-gray-200 dark:border-gray-700 whitespace-nowrap"
+                    title={c.text}
+                  >
+                    {c.text}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {colCount > cols ? (
+          <div className="text-xs mt-1 text-gray-500 dark:text-gray-400">… columns truncated</div>
+        ) : null}
+      </div>
+    );
+  };
+
+  const buildSectionPreview = (host: HTMLElement) => {
+    const title =
+      (host as any).dataset?.title ||
+      host.getAttribute('data-title') ||
+      host.querySelector('h1,h2,h3,h4,h5,h6')?.textContent ||
+      host.getAttribute('aria-label') ||
+      '';
+    const para =
+      host.querySelector('p')?.textContent ||
+      host.textContent ||
+      '';
+    return (
+      <div>
+        {title ? <div className="font-semibold mb-1">{truncate(title, 120)}</div> : null}
+        {para ? <div className="text-sm text-gray-700 dark:text-gray-200">{truncate(para, 200)}</div> : null}
+      </div>
+    );
+  };
+
+  const buildFootnotePreview = (host: HTMLElement) => {
+    const t = host.textContent || '';
+    return <div className="text-sm text-gray-700 dark:text-gray-200">{truncate(t, 220)}</div>;
+  };
+
+  const buildEquationPreview = (host: HTMLElement) => {
+    const latex =
+      (host as any).dataset?.latex ||
+      host.getAttribute('data-latex') ||
+      host.getAttribute('aria-label') ||
+      host.textContent ||
+      '';
+    return renderEquationHTML(latex);
+  };
+
+  const buildCitationPreview = (ids: string[]) => {
+    const items = ids
+      .map((id) => ({
+        id,
+        no: refNoMap.get(id),
+        ref: references.find((r) => (r as any).id === id || (r as any).refId === id) as any,
+      }))
+      .sort((a, b) => (a.no ?? 9_999) - (b.no ?? 9_999));
+
+    return (
+      <div className="space-y-2">
+        {items.map((it, i) => {
+          const r = it.ref ?? {};
+          const title = r.title ?? r.name ?? r.citationText ?? r.text ?? '';
+          const authors = Array.isArray(r.authors) ? r.authors.join(', ') : (r.author ?? r.authors ?? '');
+          const year = r.year ?? r.date ?? '';
+          const venue = r.journal ?? r.booktitle ?? r.venue ?? '';
+          return (
+            <div key={i} className="text-sm">
+              <div className="font-medium">
+                {typeof it.no === 'number' ? `[${it.no}] ` : ''}{truncate(title || r.id || it.id, 140)}
+              </div>
+              <div className="text-gray-600 dark:text-gray-300">
+                {truncate([authors, venue, year].filter(Boolean).join(' · '), 160)}
+              </div>
+              {r.url ? (
+                <a
+                  className="text-xs text-blue-600 dark:text-blue-400 hover:underline"
+                  href={r.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  Open link
+                </a>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+
+  const openHover = (kind: PreviewKind, ids: string[], anchor: HTMLElement) => {
+    clearTimers();
+    openTimerRef.current = window.setTimeout(() => {
+      let content: React.ReactNode = null;
+
+      if (kind === 'citation') {
+        content = buildCitationPreview(ids);
+      } else {
+        const id = ids[0];
+        const host = id ? document.getElementById(id) : null;
+        if (!host) {
+          content = (
+            <div className="text-sm text-gray-600 dark:text-gray-300">
+              未找到对应元素（id="{id}"）。请检查锚点是否存在。
+            </div>
+          );
+        } else {
+          switch (kind) {
+            case 'figure':
+              content = buildFigurePreview(host);
+              break;
+            case 'table':
+              content = buildTablePreview(host);
+              break;
+            case 'section':
+              content = buildSectionPreview(host);
+              break;
+            case 'equation':
+              content = buildEquationPreview(host);
+              break;
+            case 'footnote':
+              content = buildFootnotePreview(host);
+              break;
+          }
+        }
+      }
+
+      setHoverContent(content);
+      setHoverXY(positionForAnchor(anchor));
+      anchorElRef.current = anchor;
+      setHoverOpen(true);
+    }, 120);
+  };
+
+  const closeHover = () => {
+    clearTimers();
+    closeTimerRef.current = window.setTimeout(() => {
+      setHoverOpen(false);
+      setHoverContent(null);
+      anchorElRef.current = null;
+    }, 120);
+  };
+
+  useEffect(() => {
+    if (!hoverOpen || !anchorElRef.current) return;
+    const handle = () => {
+      const pos = positionForAnchor(anchorElRef.current!);
+      setHoverXY(pos);
+    };
+    window.addEventListener('resize', handle);
+    window.addEventListener('scroll', handle, true);
+    return () => {
+      window.removeEventListener('resize', handle);
+      window.removeEventListener('scroll', handle, true);
+    };
+  }, [hoverOpen]);
+
+  /** ---------- 递归渲染 ---------- */
   const renderNode = useCallback(
     (node: InlineContent, key?: React.Key): React.ReactNode => {
       switch (node.type) {
         case 'text': {
-          const s = node.style ?? {};
+          const s = (node as any).style ?? {};
           const style: React.CSSProperties = {
             color: s.color,
             backgroundColor: s.backgroundColor,
@@ -115,35 +436,35 @@ export default function InlineRenderer({
             ]
               .filter(Boolean)
               .join(' ') || undefined,
+            // 代码风格在下面另行处理
           };
           if (s.code) {
-            // 代码内一般不做搜索高亮，避免破坏等宽布局
             return (
               <code
                 key={key}
                 style={style}
                 className="rounded px-1 py-0.5 font-mono"
               >
-                {node.content}
+                {(node as any).content}
               </code>
             );
           }
           return (
             <span key={key} style={style}>
-              {highlightText(node.content)}
+              {highlightText((node as any).content)}
             </span>
           );
         }
 
         case 'link': {
-          const children = node.children?.map((ch, i) =>
+          const children = (node as any).children?.map((ch: InlineContent, i: number) =>
             renderNode(ch, `${key}-c${i}`)
           );
           return (
             <a
               key={key}
-              href={node.url}
-              title={node.title}
+              href={(node as any).url}
+              title={(node as any).title}
               className="text-blue-600 dark:text-blue-400 hover:underline"
               target="_blank"
               rel="noopener noreferrer"
@@ -154,11 +475,12 @@ export default function InlineRenderer({
         }
 
         case 'inline-math':
-  return <InlineMathSpan key={key} latex={node.latex} />;
+          return <InlineMathSpan key={key} latex={(node as any).latex} />;
 
         case 'citation': {
-          const nums = Array.from(
-            new Set(
+          const n = node as any;
+          const nums = Array.from<number>(
+            new Set<number>(
               node.referenceIds
                 .map((id) => refNoMap.get(id))
                 .filter((n): n is number => typeof n === 'number')
@@ -166,8 +488,8 @@ export default function InlineRenderer({
           ).sort((a, b) => a - b);
 
           const label =
-            node.displayText && node.displayText.trim().length > 0
-              ? node.displayText
+            n.displayText && n.displayText.trim().length > 0
+              ? n.displayText
               : nums.length
                 ? `[${nums.join(', ')}]`
                 : '[?]';
@@ -178,10 +500,12 @@ export default function InlineRenderer({
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                scrollAndHighlight(node.referenceIds);
+                scrollAndHighlight(n.referenceIds);
               }}
+              onMouseEnter={(e) => openHover('citation', n.referenceIds, e.currentTarget)}
+              onMouseLeave={closeHover}
               className="inline-flex items-center text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline text-sm font-medium mx-0.5 transition-colors"
-              aria-label={`Jump to reference ${nums.join(', ')}`}
+              aria-label={`Jump to reference ${nums.join(', ')}` }
               title={`跳转到引用 ${label}`}
             >
               {label}
@@ -190,15 +514,18 @@ export default function InlineRenderer({
         }
 
         case 'figure-ref': {
-          const label = node.displayText || 'Fig.';
+          const n = node as any;
+          const label = n.displayText || 'Fig.';
           return (
             <button
               key={key}
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                scrollAndHighlight([node.figureId]);
+                scrollAndHighlight([n.figureId]);
               }}
+              onMouseEnter={(e) => openHover('figure', [n.figureId], e.currentTarget)}
+              onMouseLeave={closeHover}
               className="inline text-blue-600 dark:text-blue-400 hover:underline"
               title={`跳转到图：${label}`}
             >
@@ -208,15 +535,18 @@ export default function InlineRenderer({
         }
 
         case 'table-ref': {
-          const label = node.displayText || 'Table';
+          const n = node as any;
+          const label = n.displayText || 'Table';
           return (
             <button
               key={key}
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                scrollAndHighlight([node.tableId]);
+                scrollAndHighlight([n.tableId]);
               }}
+              onMouseEnter={(e) => openHover('table', [n.tableId], e.currentTarget)}
+              onMouseLeave={closeHover}
               className="inline text-blue-600 dark:text-blue-400 hover:underline"
               title={`跳转到表：${label}`}
             >
@@ -226,15 +556,18 @@ export default function InlineRenderer({
         }
 
         case 'section-ref': {
-          const label = node.displayText || 'Section';
+          const n = node as any;
+          const label = n.displayText || 'Section';
           return (
             <button
               key={key}
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                scrollAndHighlight([node.sectionId]);
+                scrollAndHighlight([n.sectionId]);
               }}
+              onMouseEnter={(e) => openHover('section', [n.sectionId], e.currentTarget)}
+              onMouseLeave={closeHover}
               className="inline text-blue-600 dark:text-blue-400 hover:underline"
               title={`跳转到章节：${label}`}
             >
@@ -244,15 +577,18 @@ export default function InlineRenderer({
         }
 
         case 'equation-ref': {
-          const label = node.displayText || 'Eq.';
+          const n = node as any;
+          const label = n.displayText || 'Eq.';
           return (
             <button
               key={key}
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                scrollAndHighlight([node.equationId]);
+                scrollAndHighlight([n.equationId]);
               }}
+              onMouseEnter={(e) => openHover('equation', [n.equationId], e.currentTarget)}
+              onMouseLeave={closeHover}
               className="inline text-blue-600 dark:text-blue-400 hover:underline"
               title={`跳转到公式：${label}`}
             >
@@ -262,15 +598,18 @@ export default function InlineRenderer({
         }
 
         case 'footnote': {
-          const label = node.displayText || node.id;
+          const n = node as any;
+          const label = n.displayText || n.id;
           return (
             <button
               key={key}
               type="button"
               onClick={(e) => {
                 e.stopPropagation();
-                scrollAndHighlight([node.id]);
+                scrollAndHighlight([n.id]);
               }}
+              onMouseEnter={(e) => openHover('footnote', [n.id], e.currentTarget)}
+              onMouseLeave={closeHover}
               className="align-super text-xs text-blue-600 dark:text-blue-400 hover:underline"
               title={`跳转到脚注：${label}`}
             >
@@ -286,5 +625,23 @@ export default function InlineRenderer({
     [highlightText, refNoMap, scrollAndHighlight]
   );
 
-  return <>{nodes.map((n, i) => renderNode(n, `n-${i}`))}</>;
+  return (
+    <>
+      {nodes.map((n, i) => renderNode(n, `n-${i}`))}
+      <HoverCard
+        open={hoverOpen}
+        x={hoverXY.x}
+        y={hoverXY.y}
+        onMouseEnter={() => {
+          if (closeTimerRef.current) {
+            window.clearTimeout(closeTimerRef.current);
+            closeTimerRef.current = null;
+          }
+        }}
+        onMouseLeave={closeHover}
+      >
+        {hoverContent}
+      </HoverCard>
+    </>
+  );
 }

@@ -4,7 +4,7 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import { TabProvider } from '@/stores/useTabStore';
 import MainLayout from '@/components/layout/MainLayout';
 import { Toaster } from '@/components/ui/sonner'
-
+import 'katex/dist/katex.min.css';
 export const metadata: Metadata = {
   title: 'NeuInk - 论文阅读与共享平台',
   description: '智能论文阅读与共享平台',

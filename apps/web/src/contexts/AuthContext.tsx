@@ -16,6 +16,7 @@ import { AuthAwareResult, shouldResetAuth } from '@/lib/http/normalize';
 import type { User, LoginResponse } from '@/types/user';
 import type { UnifiedResult } from '@/types/api';
 import { ResponseCode } from '@/types/api';
+import { apiClient } from '@/lib/http/client';
 
 interface LoginResult {
   ok: boolean;
@@ -31,19 +32,13 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<LoginResult>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
-  requireAuth: (message?: string) => boolean; // ✅ 新增：用于检查登录状态
+  requireAuth: (message?: string) => boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-// ✅ 定义无需登录即可访问的公开路径
-const PUBLIC_PATHS = [
-  '/',                    // 首页（公共论文库列表）
-  '/login',              // 登录页
-  '/register',           // 注册页（如果有）
-];
+const PUBLIC_PATHS = ['/', '/login', '/register'];
 
-// ✅ 检查路径是否为公开路径
 function isPublicPath(pathname: string): boolean {
   return PUBLIC_PATHS.some(path => pathname === path || pathname.startsWith(path));
 }
@@ -96,11 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     (uni?: AuthAwareResult<unknown>, message?: string) => {
       if (!uni && !message) return false;
       if (uni?.authReset) return true;
-      return shouldResetAuth(
-        uni?.topCode ?? ResponseCode.SUCCESS,
-        uni?.bizCode,
-        message,
-      );
+      return shouldResetAuth(uni?.topCode ?? ResponseCode.SUCCESS, uni?.bizCode, message);
     },
     [],
   );
@@ -111,9 +102,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         const uni = await authService.login({ username, password });
         if (isSuccess(uni)) {
-          const { user: userData } = (uni.data || {}) as LoginResponse;
+          const { user: userData, token } = (uni.data || {}) as LoginResponse;
           if (!userData) {
             return { ok: false, message: '登录响应数据异常', businessCode: uni.bizCode };
+          }
+          if (token) {
+            apiClient.setToken(token);
           }
           setUser(userData);
           clearRedirectGuard();
@@ -130,6 +124,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   const refreshUser = useCallback(async () => {
+    const token = apiClient.getToken();
+    if (!token) {
+      setUser(null);
+      if (!isPublicPath(pathname)) {
+        redirectToLogin();
+      }
+      return;
+    }
+
     try {
       const uni = await authService.getCurrentUser();
       if (isSuccess(uni) && uni.data) {
@@ -137,17 +140,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearRedirectGuard();
         return;
       }
+      apiClient.clearToken();
       setUser(null);
-      
-      // ✅ 修改：只在非公开路径时才重定向
+
       if (!isPublicPath(pathname) && needsRedirect(uni)) {
         redirectToLogin();
       }
     } catch (error) {
       const err = error as { authReset?: boolean; message?: string };
+      apiClient.clearToken();
       setUser(null);
-      
-      // ✅ 修改：只在非公开路径时才重定向
+
       if (!isPublicPath(pathname) && (err?.authReset || needsRedirect(undefined, err?.message))) {
         redirectToLogin();
       } else if (!isPublicPath(pathname)) {
@@ -162,20 +165,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       console.error('[AuthContext] Logout API call failed:', error);
     } finally {
+      apiClient.clearToken();
       setUser(null);
       redirectToLogin({ includeFrom: false });
     }
   }, [redirectToLogin]);
 
-  // ✅ 新增：用于组件内部检查登录状态的方法
-  const requireAuth = useCallback((message?: string): boolean => {
-    if (isAuthenticated) {
-      return true;
-    }
-    // 未登录，重定向到登录页
-    redirectToLogin({ includeFrom: true });
-    return false;
-  }, [isAuthenticated, redirectToLogin]);
+  const requireAuth = useCallback(
+    (message?: string): boolean => {
+      if (isAuthenticated) {
+        return true;
+      }
+      redirectToLogin({ includeFrom: true });
+      return false;
+    },
+    [isAuthenticated, redirectToLogin],
+  );
 
   useEffect(() => {
     const init = async () => {
@@ -197,7 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       login,
       logout,
       refreshUser,
-      requireAuth, // ✅ 导出新方法
+      requireAuth,
     }),
     [user, isLoading, isAuthenticated, isAdmin, login, logout, refreshUser, requireAuth],
   );

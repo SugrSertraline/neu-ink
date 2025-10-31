@@ -11,7 +11,6 @@ import {
   Eye,
   EyeOff,
 } from 'lucide-react';
-import type { PaperMetadata } from '@/types/paper';
 
 type Lang = 'en' | 'both';
 
@@ -20,11 +19,14 @@ interface PaperHeaderActions {
   canEditPublicPaper?: boolean;
   canEditPersonalPaper?: boolean;
   canToggleVisibility?: boolean;
+  canToggleEditMode?: boolean;
   isPublicVisible?: boolean;
+  isEditing?: boolean;
   onAddNote?: () => void;
   onEditPublicPaper?: () => void;
   onEditPersonalPaper?: () => void;
   onToggleVisibility?: () => void;
+  onToggleEditMode?: () => void;
   extraActions?: React.ReactNode;
 }
 
@@ -72,7 +74,7 @@ export default function PaperHeader({
 
   return (
     <div className="w-full px-6 py-3">
-      <div className="mx-auto w-full bg-white/10 dark:bg-slate-900/50 backdrop-blur-sm rounded-xl shadow-xl  dark:border-slate-700/30">
+      <div className="mx-auto w-full bg-white/10 dark:bg-slate-900/50 backdrop-blur-sm rounded-xl shadow-xl dark:border-slate-700/30">
         <div className="px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-1 min-w-0">
             <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
@@ -117,6 +119,12 @@ export default function PaperHeader({
             {actions && (
               <div className="flex items-center gap-2">
                 {renderActionButton(
+                  actions.canToggleEditMode,
+                  actions.isEditing ? '退出编辑' : '进入编辑',
+                  actions.isEditing ? BookOpen : PencilLine,
+                  actions.onToggleEditMode,
+                )}
+                {renderActionButton(
                   actions.canAddNotes,
                   '添加笔记',
                   StickyNote,
@@ -145,10 +153,12 @@ export default function PaperHeader({
             )}
 
             <div className="flex bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full p-1 shadow-sm border border-white/20 dark:border-slate-600/20">
-              {([
-                { value: 'en' as Lang, label: 'EN' },
-                { value: 'both' as Lang, label: '双语' },
-              ]).map(({ value, label }) => (
+              {(
+                [
+                  { value: 'en' as Lang, label: 'EN' },
+                  { value: 'both' as Lang, label: '双语' },
+                ] as const
+              ).map(({ value, label }) => (
                 <button
                   key={value}
                   type="button"

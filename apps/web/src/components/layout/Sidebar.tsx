@@ -92,7 +92,7 @@ export default function Sidebar({
         )}
 
         {isLoading ? (
-          <Loader2 className="w-4 h-4 animate-spin " shrink-0/>
+          <Loader2 className="w-4 h-4 animate-spin shrink-0 "/>
         ) : (
           <item.icon className={cn(
             "w-4 h-4 transition-all duration-300 shrink-0",

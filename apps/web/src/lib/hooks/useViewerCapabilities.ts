@@ -21,6 +21,8 @@ const capabilityMap: Record<ViewerSource, ViewerCapabilities> = {
   },
 };
 
+const fallbackCapabilities = capabilityMap['public-guest'];
+
 export function useViewerCapabilities(source: ViewerSource): ViewerCapabilities {
-  return capabilityMap[source];
+  return capabilityMap[source] ?? fallbackCapabilities;
 }
