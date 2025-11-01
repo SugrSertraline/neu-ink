@@ -30,7 +30,7 @@ export default function PaperMetadata({ metadata }: PaperMetadataProps) {
       {/* 作者信息 */}
       {metadata.authors && metadata.authors.length > 0 && (
         <div className="flex items-start gap-2 mb-3">
-          <Users className="w-5 h-5 text-gray-500 dark:text-slate-400 mt-0.5 flex-shrink-0" />
+          <Users className="w-5 h-5 text-gray-500 dark:text-slate-400 mt-0.5 shrink-0" />
           <div className="flex flex-wrap gap-2">
             {metadata.authors.map((author, idx) => (
               <span
@@ -49,7 +49,7 @@ export default function PaperMetadata({ metadata }: PaperMetadataProps) {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
         {metadata.publication && (
           <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-gray-500 dark:text-slate-400 flex-shrink-0" />
+            <FileText className="w-5 h-5 text-gray-500 dark:text-slate-400 shrink-0" />
             <span className="text-sm text-gray-700 dark:text-slate-300">
               {metadata.publication}
             </span>
@@ -58,7 +58,7 @@ export default function PaperMetadata({ metadata }: PaperMetadataProps) {
 
         {(metadata.year || metadata.date) && (
           <div className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-gray-500 dark:text-slate-400 flex-shrink-0" />
+            <Calendar className="w-5 h-5 text-gray-500 dark:text-slate-400 shrink-0" />
             <span className="text-sm text-gray-700 dark:text-slate-300">
               {metadata.date || metadata.year}
             </span>
@@ -67,7 +67,7 @@ export default function PaperMetadata({ metadata }: PaperMetadataProps) {
 
         {metadata.articleType && (
           <div className="flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-gray-500 dark:text-slate-400 flex-shrink-0" />
+            <BookOpen className="w-5 h-5 text-gray-500 dark:text-slate-400 shrink-0" />
             <span className="text-sm text-gray-700 dark:text-slate-300 capitalize">
               {metadata.articleType}
             </span>
@@ -78,7 +78,7 @@ export default function PaperMetadata({ metadata }: PaperMetadataProps) {
       {/* 分区和影响因子 */}
       {(metadata.sciQuartile || metadata.casQuartile || metadata.ccfRank || metadata.impactFactor) && (
         <div className="flex items-start gap-2 mb-4">
-          <Award className="w-5 h-5 text-gray-500 dark:text-slate-400 mt-0.5 flex-shrink-0" />
+          <Award className="w-5 h-5 text-gray-500 dark:text-slate-400 mt-0.5 shrink-0" />
           <div className="flex flex-wrap gap-2">
             {metadata.sciQuartile && metadata.sciQuartile !== '无' && (
               <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-xs font-medium">
@@ -122,7 +122,7 @@ export default function PaperMetadata({ metadata }: PaperMetadataProps) {
       {/* 标签 */}
       {metadata.tags && metadata.tags.length > 0 && (
         <div className="flex items-start gap-2 mb-4">
-          <Tag className="w-5 h-5 text-gray-500 dark:text-slate-400 mt-0.5 flex-shrink-0" />
+          <Tag className="w-5 h-5 text-gray-500 dark:text-slate-400 mt-0.5 shrink-0" />
           <div className="flex flex-wrap gap-2">
             {metadata.tags.map((tag, idx) => (
               <span

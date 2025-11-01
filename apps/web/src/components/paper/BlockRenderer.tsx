@@ -1,3 +1,4 @@
+// apps/web/src/components/paper/BlockRenderer.tsx
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -8,6 +9,7 @@ import {
   HeadingBlock,
   InlineContent,
   Reference,
+  Section,
 } from '@/types/paper';
 import InlineRenderer from './InlineRenderer';
 import TextSelectionToolbar from './TextSelectionToolbar';
@@ -20,12 +22,15 @@ import {
   clearAllStyles,
 } from './utils/inlineContentUtils';
 import katex from 'katex';
+import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
+import { useEditingState } from '@/stores/useEditingState';
+import BlockEditor from './editor/BlockEditor';
 
 /** ===================== 工具与类型 ===================== */
 
 interface BlockRendererProps {
   block: BlockContent;
-  lang: 'en' | 'zh';
+  lang: 'en' | 'zh' | 'both';
   isActive?: boolean;
   onMouseEnter?: () => void;
   onMouseLeave?: () => void;
@@ -36,6 +41,15 @@ interface BlockRendererProps {
   onBlockUpdate?: (block: BlockContent) => void;
   highlightedRefs?: string[];
   setHighlightedRefs?: (refs: string[]) => void;
+  /** 以下为编辑态需要的额外回调，若父组件无需开放可忽略 */
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onDelete?: () => void;
+  onDuplicate?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onAddBlockAfter?: (type: BlockContent['type']) => void;
+  allSections?: Section[];
 }
 
 type InlineRendererBaseProps = Omit<ComponentProps<typeof InlineRenderer>, 'nodes'>;
@@ -62,7 +76,6 @@ const COMPONENT_LABEL_MAP: Record<
   'unordered-list': '列表',
   quote: '引用',
   divider: '分割线',
-  // 细粒度部位
   tableHeader: '表格',
   tableCell: '表格',
   figureCaption: '图片',
@@ -96,7 +109,6 @@ const renderInlineValue = (
 ): ReactNode => {
   if (value === null || value === undefined) return null;
 
-  // 直接数组 → 按当前语言视为节点
   if (Array.isArray(value)) {
     if (lang === 'zh' && opts?.wrapZhBg) {
       return (
@@ -108,17 +120,14 @@ const renderInlineValue = (
     return <InlineRenderer nodes={value as InlineContent[]} {...baseProps} />;
   }
 
-  // 本地化对象
   if (hasLocalizedContent(value)) {
     const lv = value as LocalizedInlineValue;
     const preferred = lv[lang] ?? lv.en ?? lv.zh ?? [];
 
     if (lang === 'zh') {
-      // zh 缺失 → 占位
       if (!hasZh(lv.zh)) {
         return zhPlaceholder(opts?.componentLabel ?? '组件');
       }
-      // zh 存在 → 浅灰底
       if (Array.isArray(preferred)) {
         return (
           <span className="rounded px-1 bg-gray-50">
@@ -129,14 +138,12 @@ const renderInlineValue = (
       return <span className="rounded px-1 bg-gray-50">{preferred as any}</span>;
     }
 
-    // 英文
     if (Array.isArray(preferred)) {
       return <InlineRenderer nodes={preferred as InlineContent[]} {...baseProps} />;
     }
     return preferred as any;
   }
 
-  // 原始字符串/数值
   if (typeof value === 'string' || typeof value === 'number') {
     if (lang === 'zh' && opts?.wrapZhBg) {
       return <span className="rounded px-1 bg-gray-50">{String(value)}</span>;
@@ -196,13 +203,80 @@ export default function BlockRenderer({
   onBlockUpdate,
   highlightedRefs,
   setHighlightedRefs,
+  onMoveUp,
+  onMoveDown,
+  onDelete,
+  onDuplicate,
+  canMoveUp,
+  canMoveDown,
+  onAddBlockAfter,
+  allSections = [],
 }: BlockRendererProps) {
+  const { canEditContent } = usePaperEditPermissionsContext();
+  const { hasUnsavedChanges, setHasUnsavedChanges, switchToEdit } = useEditingState();
+  const inlineEditingEnabled = canEditContent && typeof onBlockUpdate === 'function';
+
+  const previewLang: 'en' | 'zh' = lang === 'both' ? 'en' : lang;
+
   const [showToolbar, setShowToolbar] = useState(false);
   const [toolbarPos, setToolbarPos] = useState({ x: 0, y: 0 });
   const [selectedText, setSelectedText] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [draftBlock, setDraftBlock] = useState<BlockContent>(block);
+
+  // 监听draftBlock的变化，如果有变化则设置hasUnsavedChanges
+  useEffect(() => {
+    if (isEditing && JSON.stringify(draftBlock) !== JSON.stringify(block)) {
+      setHasUnsavedChanges(true);
+    } else if (isEditing && JSON.stringify(draftBlock) === JSON.stringify(block)) {
+      setHasUnsavedChanges(false);
+    }
+  }, [draftBlock, block, isEditing, setHasUnsavedChanges]);
+
   const blockRef = useRef<HTMLDivElement>(null);
+  const editPanelRef = useRef<HTMLDivElement>(null);
   const fallbackContentRef = useRef<HTMLDivElement | null>(null);
   const [localHighlightedRefs, setLocalHighlightedRefs] = useState<string[]>([]);
+  const wasEditingRef = useRef<boolean>(false);
+
+  useEffect(() => {
+    if (!inlineEditingEnabled && showToolbar) {
+      setShowToolbar(false);
+    }
+  }, [inlineEditingEnabled, showToolbar]);
+
+  useEffect(() => {
+    if (!isEditing) {
+      setDraftBlock(block);
+    }
+  }, [block, isEditing]);
+
+  useEffect(() => {
+    if (!inlineEditingEnabled && isEditing) {
+      setIsEditing(false);
+      setDraftBlock(block);
+    }
+  }, [inlineEditingEnabled, isEditing, block]);
+
+  useEffect(() => {
+    if (isEditing && showToolbar) {
+      setShowToolbar(false);
+    }
+  }, [isEditing, showToolbar]);
+
+  useEffect(() => {
+    if (isEditing) {
+      const target = editPanelRef.current ?? blockRef.current;
+      requestAnimationFrame(() => {
+        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    } else if (wasEditingRef.current) {
+      requestAnimationFrame(() => {
+        blockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      });
+    }
+    wasEditingRef.current = isEditing;
+  }, [isEditing]);
 
   const effectiveContentRef = contentRef ?? fallbackContentRef;
   const effectiveHighlightedRefs = highlightedRefs ?? localHighlightedRefs;
@@ -233,11 +307,45 @@ export default function BlockRenderer({
     isActive ? 'bg-blue-50 ring-2 ring-blue-200 shadow-sm' : ''
   }`;
 
+  const enterEditMode = useCallback(() => {
+    if (!inlineEditingEnabled || isEditing) return;
+    switchToEdit(block.id);
+    setDraftBlock(block);
+    setIsEditing(true);
+  }, [inlineEditingEnabled, isEditing, block, switchToEdit]);
+
+  const handleWrapperClick = useCallback(
+    (event: MouseEvent<HTMLDivElement>) => {
+      // 移除左键点击进入编辑状态的功能
+      // 现在只能通过右键菜单或点击右上角的"编辑"按钮进入编辑状态
+      return;
+    },
+    []
+  );
+
+  const handleCancelEdit = useCallback(() => {
+    setDraftBlock(block);
+    setHasUnsavedChanges(false);
+    setIsEditing(false);
+  }, [block, setHasUnsavedChanges]);
+
+  const handleSaveEdit = useCallback(() => {
+    if (!onBlockUpdate) {
+      setIsEditing(false);
+      return;
+    }
+    if (JSON.stringify(draftBlock) !== JSON.stringify(block)) {
+      onBlockUpdate(draftBlock);
+    }
+    setHasUnsavedChanges(false);
+    setIsEditing(false);
+  }, [draftBlock, block, onBlockUpdate, setHasUnsavedChanges]);
+
   /** ====== 文本选择工具条 ====== */
   const handleTextSelection = useCallback(
     (e: MouseEvent<HTMLElement>) => {
       if (block.type !== 'paragraph' && block.type !== 'heading') return;
-      if (!onBlockUpdate) return;
+      if (!inlineEditingEnabled || !onBlockUpdate || isEditing) return;
 
       setTimeout(() => {
         const selection = window.getSelection();
@@ -270,10 +378,10 @@ export default function BlockRenderer({
         console.log('=== 文本选择调试 ===');
         console.log('选中的文本:', text);
         console.log('块类型:', block.type);
-        console.log('当前内容:', (block as ParagraphBlock | HeadingBlock).content?.[lang]);
+        console.log('当前内容:', (block as ParagraphBlock | HeadingBlock).content?.[previewLang]);
       }, 10);
     },
-    [block, lang, onBlockUpdate]
+    [block, inlineEditingEnabled, previewLang, onBlockUpdate, isEditing]
   );
 
   const applyStyle = useCallback(
@@ -281,10 +389,10 @@ export default function BlockRenderer({
       styleType: 'bold' | 'italic' | 'underline' | 'color' | 'bg' | 'clear',
       value?: string
     ) => {
-      if (!onBlockUpdate || !selectedText) return;
+      if (!inlineEditingEnabled || !onBlockUpdate || !selectedText) return;
 
       const currentBlock = block as ParagraphBlock | HeadingBlock;
-      const currentContent = currentBlock.content?.[lang];
+      const currentContent = currentBlock.content?.[previewLang];
       if (!currentContent) return;
 
       console.log('=== 应用样式 ===');
@@ -326,8 +434,8 @@ export default function BlockRenderer({
         ...currentBlock,
         content: {
           ...currentBlock.content,
-          [lang]: newContent,
-        },
+          [previewLang]: newContent,
+        } as typeof currentBlock.content,
       };
 
       onBlockUpdate(updatedBlock);
@@ -337,11 +445,11 @@ export default function BlockRenderer({
         window.getSelection()?.removeAllRanges();
       }, 100);
     },
-    [block, lang, onBlockUpdate, selectedText]
+    [block, inlineEditingEnabled, previewLang, onBlockUpdate, selectedText]
   );
 
   /** ====== 标题渲染（中英并排：编号.英文/中文） ====== */
-  const renderBilingualHeading = (block: HeadingBlock) => {
+  const renderBilingualHeading = (headingBlock: HeadingBlock) => {
     const headingSizes = {
       1: 'text-3xl',
       2: 'text-2xl',
@@ -351,11 +459,11 @@ export default function BlockRenderer({
       6: 'text-sm',
     } as const;
 
-    const enNodes = block.content?.en ?? [];
-    const zhNodes = block.content?.zh;
+    const enNodes = headingBlock.content?.en ?? [];
+    const zhNodes = headingBlock.content?.zh;
 
-    const numberPart = block.number ? (
-      <span className="text-blue-600 mr-2">{`${block.number}.`}</span>
+    const numberPart = headingBlock.number ? (
+      <span className="text-blue-600 mr-2">{`${headingBlock.number}.`}</span>
     ) : null;
 
     const enPart = (
@@ -377,8 +485,8 @@ export default function BlockRenderer({
     );
 
     const commonProps = {
-      className: `${headingSizes[block.level]} font-bold text-gray-900 mb-2`,
-      onMouseUp: handleTextSelection,
+      className: `${headingSizes[headingBlock.level]} font-bold text-gray-900 mb-2`,
+      onMouseUp: inlineEditingEnabled && !isEditing ? handleTextSelection : undefined,
       style: { userSelect: 'text' as const },
       children: (
         <>
@@ -390,7 +498,7 @@ export default function BlockRenderer({
       ),
     };
 
-    switch (block.level) {
+    switch (headingBlock.level) {
       case 1:
         return <h1 {...commonProps} />;
       case 2:
@@ -425,15 +533,15 @@ export default function BlockRenderer({
           }[block.align || 'left'] ?? 'text-left';
 
         const wantZhPlaceholder =
-          lang === 'zh' && !hasZh(block.content?.zh);
+          previewLang === 'zh' && !hasZh(block.content?.zh);
 
         return (
           <p
             className={`text-gray-700 leading-relaxed ${alignClass}`}
-            onMouseUp={handleTextSelection}
+            onMouseUp={inlineEditingEnabled && !isEditing ? handleTextSelection : undefined}
             style={{ userSelect: 'text' }}
           >
-            {lang === 'zh' ? (
+            {previewLang === 'zh' ? (
               wantZhPlaceholder ? (
                 zhPlaceholder(COMPONENT_LABEL_MAP['paragraph'])
               ) : (
@@ -464,8 +572,8 @@ export default function BlockRenderer({
       }
 
       case 'figure': {
-        const wantZhCaptionPlaceholder = lang === 'zh' && !hasZh(block.caption?.zh);
-        const wantZhDescPlaceholder = lang === 'zh' && !hasZh(block.description?.zh);
+        const wantZhCaptionPlaceholder = previewLang === 'zh' && !hasZh(block.caption?.zh);
+        const wantZhDescPlaceholder = previewLang === 'zh' && !hasZh(block.description?.zh);
 
         return (
           <figure className="my-6">
@@ -505,7 +613,7 @@ export default function BlockRenderer({
                   Figure {block.number}.
                 </span>
               )}
-              {lang === 'zh' ? (
+              {previewLang === 'zh' ? (
                 wantZhCaptionPlaceholder ? (
                   zhPlaceholder(COMPONENT_LABEL_MAP.figureCaption)
                 ) : (
@@ -518,9 +626,9 @@ export default function BlockRenderer({
               )}
             </figcaption>
 
-            { (block.description?.en || block.description?.zh) && (
+            {(block.description?.en || block.description?.zh) && (
               <div className="mt-2 px-4 text-center text-xs text-gray-500">
-                {lang === 'zh' ? (
+                {previewLang === 'zh' ? (
                   wantZhDescPlaceholder ? (
                     zhPlaceholder(COMPONENT_LABEL_MAP.figureDesc)
                   ) : (
@@ -538,19 +646,19 @@ export default function BlockRenderer({
       }
 
       case 'table': {
-        const wantZhCaptionPlaceholder = lang === 'zh' && !hasZh(block.caption?.zh);
-        const wantZhDescPlaceholder = lang === 'zh' && !hasZh(block.description?.zh);
+        const wantZhCaptionPlaceholder = previewLang === 'zh' && !hasZh(block.caption?.zh);
+        const wantZhDescPlaceholder = previewLang === 'zh' && !hasZh(block.description?.zh);
 
         return (
           <div className="my-6 overflow-x-auto">
-            { (block.caption?.en || block.caption?.zh) && (
+            {(block.caption?.en || block.caption?.zh) && (
               <div className="mb-2 text-center text-sm font-medium text-gray-600">
                 {block.number && (
                   <span className="mr-1 font-semibold text-gray-800">
                     Table {block.number}.
                   </span>
                 )}
-                {lang === 'zh' ? (
+                {previewLang === 'zh' ? (
                   wantZhCaptionPlaceholder ? (
                     zhPlaceholder(COMPONENT_LABEL_MAP.tableCaption)
                   ) : (
@@ -574,7 +682,7 @@ export default function BlockRenderer({
                         className="border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-900"
                         style={{ textAlign: block.align?.[i] || 'left' }}
                       >
-                        {renderInlineValue(header, lang, inlineRendererBaseProps, {
+                        {renderInlineValue(header, previewLang, inlineRendererBaseProps, {
                           componentLabel: COMPONENT_LABEL_MAP.tableHeader,
                           wrapZhBg: true,
                         })}
@@ -592,7 +700,7 @@ export default function BlockRenderer({
                         className="border border-gray-300 px-3 py-2 text-sm text-gray-700"
                         style={{ textAlign: block.align?.[c] || 'left' }}
                       >
-                        {renderInlineValue(cell, lang, inlineRendererBaseProps, {
+                        {renderInlineValue(cell, previewLang, inlineRendererBaseProps, {
                           componentLabel: COMPONENT_LABEL_MAP.tableCell,
                           wrapZhBg: true,
                         })}
@@ -605,7 +713,7 @@ export default function BlockRenderer({
 
             {(block.description?.en || block.description?.zh) && (
               <div className="mt-2 text-center text-xs text-gray-500">
-                {lang === 'zh' ? (
+                {previewLang === 'zh' ? (
                   wantZhDescPlaceholder ? (
                     zhPlaceholder(COMPONENT_LABEL_MAP.tableDesc)
                   ) : (
@@ -623,12 +731,12 @@ export default function BlockRenderer({
       }
 
       case 'code': {
-        const wantZhCaptionPlaceholder = lang === 'zh' && !hasZh(block.caption?.zh);
+        const wantZhCaptionPlaceholder = previewLang === 'zh' && !hasZh(block.caption?.zh);
         return (
           <div className="my-4">
             {(block.caption?.en || block.caption?.zh) && (
               <div className="mb-2 text-xs text-gray-500">
-                {lang === 'zh' ? (
+                {previewLang === 'zh' ? (
                   wantZhCaptionPlaceholder ? (
                     zhPlaceholder(COMPONENT_LABEL_MAP.codeCaption)
                   ) : (
@@ -657,7 +765,7 @@ export default function BlockRenderer({
         return (
           <ol start={block.start ?? 1} className="my-3 list-decimal space-y-1.5 pl-6">
             {block.items.map((item, i) => {
-              const wantZh = lang === 'zh';
+              const wantZh = previewLang === 'zh';
               const zhMissing = wantZh && !hasZh(item.content?.zh);
               return (
                 <li key={i} className="leading-relaxed text-gray-700">
@@ -683,7 +791,7 @@ export default function BlockRenderer({
         return (
           <ul className="my-3 list-disc space-y-1.5 pl-6">
             {block.items.map((item, i) => {
-              const wantZh = lang === 'zh';
+              const wantZh = previewLang === 'zh';
               const zhMissing = wantZh && !hasZh(item.content?.zh);
               return (
                 <li key={i} className="leading-relaxed text-gray-700">
@@ -706,10 +814,10 @@ export default function BlockRenderer({
       }
 
       case 'quote': {
-        const wantZhPlaceholder = lang === 'zh' && !hasZh(block.content?.zh);
+        const wantZhPlaceholder = previewLang === 'zh' && !hasZh(block.content?.zh);
         return (
           <blockquote className="my-4 rounded-r-lg border-l-4 border-blue-500 bg-blue-50 py-2 pl-4 italic text-gray-600">
-            {lang === 'zh' ? (
+            {previewLang === 'zh' ? (
               wantZhPlaceholder ? (
                 zhPlaceholder(COMPONENT_LABEL_MAP.quote)
               ) : (
@@ -735,21 +843,84 @@ export default function BlockRenderer({
       default:
         return null;
     }
-  }, [block, lang, handleTextSelection, inlineRendererBaseProps]);
+  }, [
+    block,
+    inlineEditingEnabled,
+    isEditing,
+    previewLang,
+    handleTextSelection,
+    inlineRendererBaseProps,
+  ]);
 
   return (
     <>
       <div
         ref={blockRef}
         id={block.id}
-        className={`${baseClass} mb-3 p-2`}
+        className={`${baseClass} group relative mb-3 p-2 ${isEditing ? 'border-2 border-blue-300 bg-white shadow-lg ring-2 ring-blue-200' : ''}`}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
+        onClick={handleWrapperClick}
       >
-        {renderContent()}
+        {isEditing ? (
+          <div ref={editPanelRef} className="flex flex-col gap-3">
+            <BlockEditor
+              block={draftBlock}
+              lang={lang}
+              references={references}
+              allSections={allSections}
+              onChange={setDraftBlock}
+              onMoveUp={onMoveUp}
+              onMoveDown={onMoveDown}
+              onDelete={() => {
+                onDelete?.();
+                setIsEditing(false);
+              }}
+              onDuplicate={onDuplicate}
+              canMoveUp={canMoveUp}
+              canMoveDown={canMoveDown}
+              onAddBlockAfter={onAddBlockAfter}
+            />
+            <div className="flex justify-end gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 rounded-b-lg">
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="px-4 py-2 rounded border border-gray-300 text-gray-600 hover:bg-gray-100"
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveEdit}
+                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+              >
+                保存
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {renderContent()}
+            {inlineEditingEnabled && (
+              <div className="pointer-events-none absolute right-3 top-3 opacity-0 transition group-hover:opacity-100">
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    enterEditMode();
+                  }}
+                  className="pointer-events-auto rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow hover:bg-blue-700"
+                >
+                  编辑
+                </button>
+              </div>
+            )}
+          </>
+        )}
       </div>
 
-      {showToolbar && (
+      {showToolbar && inlineEditingEnabled && (
         <TextSelectionToolbar
           onBold={() => applyStyle('bold')}
           onItalic={() => applyStyle('italic')}

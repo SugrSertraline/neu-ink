@@ -168,7 +168,7 @@ export default function PaperCard({
           {/* 作者列表 */}
           {paper.authors.length > 0 && (
             <div className="flex items-start gap-2">
-              <FileText className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-500" />
+              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
               <div>
                 <p className="text-xs font-medium text-gray-700 dark:text-gray-300">作者</p>
                 <p className="text-xs text-gray-600 dark:text-gray-400">
@@ -181,7 +181,7 @@ export default function PaperCard({
           {/* 发表信息 */}
           {(paper.publication || paper.date) && (
             <div className="flex items-start gap-2">
-              <BookOpen className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-500" />
+              <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
               <div>
                 <p className="text-xs font-medium text-gray-700 dark:text-gray-300">发表信息</p>
                 {paper.publication && (
@@ -197,7 +197,7 @@ export default function PaperCard({
           {/* 评级信息 */}
           {(paper.sciQuartile || paper.casQuartile || paper.ccfRank || paper.impactFactor) && (
             <div className="flex items-start gap-2">
-              <Award className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-500" />
+              <Award className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
               <div className="flex-1">
                 <p className="mb-1 text-xs font-medium text-gray-700 dark:text-gray-300">评级信息</p>
                 <div className="flex flex-wrap gap-1.5">
@@ -229,7 +229,7 @@ export default function PaperCard({
           {/* 文章类型 */}
           {paper.articleType && (
             <div className="flex items-start gap-2">
-              <Calendar className="mt-0.5 h-4 w-4 flex-shrink-0 text-gray-500" />
+              <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
               <div>
                 <p className="text-xs font-medium text-gray-700 dark:text-gray-300">文章类型</p>
                 <p className="text-xs text-gray-600 dark:text-gray-400">{paper.articleType}</p>

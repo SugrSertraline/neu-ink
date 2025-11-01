@@ -1,4 +1,3 @@
-// frontend/app/papers/[id]/components/editor/RichTextEditor.tsx
 'use client';
 
 import React, { useEffect, useMemo, useState, useReducer } from 'react';
@@ -15,7 +14,8 @@ import {
   FileText, Image, Table, Sigma, Hash, StickyNote, X, Search, Check
 } from 'lucide-react';
 
-import type { InlineContent, Reference, Section } from '../../../../types/paper';
+// ✅ 修复：更新导入路径
+import type { InlineContent, Reference, Section } from '@/types/paper';
 import { inlineContentToTiptap, tiptapToInlineContent } from './TiptapConverters';
 import { Citation, FigureRef, TableRef, EquationRef, SectionRef, Footnote, InlineMath } from './TiptapExtensions';
 
@@ -51,10 +51,7 @@ export default function RichTextEditor({
   const [refSearchQuery, setRefSearchQuery] = useState('');
   const [showColorPicker, setShowColorPicker] = useState(false);
   const [showBgPicker, setShowBgPicker] = useState(false);
-  
-  // ✅ 新增：多选引用状态
   const [selectedCitations, setSelectedCitations] = useState<Set<string>>(new Set());
-  
   const [updateCounter, forceUpdate] = useReducer((x: number) => x + 1, 0);
 
   const TEXT_COLORS = [
@@ -82,6 +79,7 @@ export default function RichTextEditor({
   ];
 
   const editor = useEditor({
+    immediatelyRender: false, // ✅ 关键修复：避免 SSR 水合错误
     extensions: [
       StarterKit.configure({
         heading: false,
@@ -123,7 +121,6 @@ export default function RichTextEditor({
         class: 'prose prose-sm max-w-none focus:outline-none min-h-[240px] p-4',
       },
     },
-    immediatelyRender: false,
   });
 
   useEffect(() => {
@@ -241,7 +238,6 @@ export default function RichTextEditor({
     }
   };
 
-  // ✅ 修改：切换文献选择（多选）
   const toggleCitationSelection = (citationId: string) => {
     setSelectedCitations(prev => {
       const newSet = new Set(prev);
@@ -254,27 +250,17 @@ export default function RichTextEditor({
     });
   };
 
-  // ✅ 修改：确认插入多个文献引用
   const insertSelectedCitations = () => {
     if (!editor || selectedCitations.size === 0) return;
 
-    // 将选中的引用按 number 排序
     const selectedRefs = Array.from(selectedCitations)
       .map(id => references.find(r => r.id === id))
       .filter(ref => ref !== undefined)
       .sort((a, b) => (a!.number || 0) - (b!.number || 0));
 
-    // 生成 displayText
     const numbers = selectedRefs.map(ref => ref!.number).filter(num => num !== undefined);
     const displayText = numbers.length > 0 ? `[${numbers.join(',')}]` : '';
-
-    // 生成 referenceIds
     const referenceIds = selectedRefs.map(ref => ref!.id);
-
-    console.log('=== 插入多个引用 ===');
-    console.log('选中的引用:', selectedRefs.map(r => ({ id: r!.id, number: r!.number })));
-    console.log('生成的 displayText:', displayText);
-    console.log('referenceIds:', referenceIds);
 
     editor.chain().focus().insertContent({
       type: 'citation',
@@ -284,12 +270,10 @@ export default function RichTextEditor({
       },
     }).run();
 
-    // 关闭选择器并清空选择
     setShowRefPicker(false);
     setSelectedCitations(new Set());
   };
 
-  // ✅ 修改：单选引用（非文献类型）
   const insertSingleReference = (item: ReferenceItem) => {
     if (!editor) return;
     
@@ -353,7 +337,7 @@ export default function RichTextEditor({
   const openRefPicker = (type: ReferenceType) => {
     setRefPickerType(type);
     setRefSearchQuery('');
-    setSelectedCitations(new Set()); // ✅ 清空之前的选择
+    setSelectedCitations(new Set());
     setShowRefPicker(true);
   };
 
@@ -520,7 +504,6 @@ export default function RichTextEditor({
                       refPickerType === 'table' ? '表格' :
                         refPickerType === 'equation' ? '公式' : '章节'}
                 </h3>
-                {/* ✅ 显示已选数量 */}
                 {refPickerType === 'citation' && selectedCitations.size > 0 && (
                   <p className="text-sm text-blue-600 mt-1">
                     已选择 {selectedCitations.size} 篇文献
@@ -555,7 +538,6 @@ export default function RichTextEditor({
               ) : (
                 <div className="space-y-3">
                   {filteredReferences.map(item => {
-                    // ✅ 文献引用使用复选框
                     if (item.type === 'citation') {
                       const isSelected = selectedCitations.has(item.id);
                       return (
@@ -568,8 +550,7 @@ export default function RichTextEditor({
                               : 'border-gray-200 hover:bg-blue-50 hover:border-blue-400'
                           }`}
                         >
-                          {/* ✅ 复选框 */}
-                          <div className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center mt-0.5 transition-all ${
+                          <div className={`shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center mt-0.5 transition-all ${
                             isSelected 
                               ? 'bg-blue-500 border-blue-500' 
                               : 'border-gray-300 bg-white'
@@ -590,7 +571,6 @@ export default function RichTextEditor({
                       );
                     }
                     
-                    // ✅ 其他类型保持单选
                     return (
                       <button
                         key={item.id}
@@ -609,7 +589,6 @@ export default function RichTextEditor({
               )}
             </div>
 
-            {/* ✅ 底部操作栏（仅文献引用显示） */}
             {refPickerType === 'citation' && (
               <div className="p-4 border-t bg-gray-50 flex items-center justify-between">
                 <div className="text-sm text-gray-600">

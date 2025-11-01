@@ -135,7 +135,7 @@ export default function EditablePaperContent({
   return (
     <div className="h-full flex overflow-hidden bg-gray-50">
       {/* ========== 左侧导航树 ========== */}
-      <div className="w-64 flex-shrink-0">
+      <div className="w-64 shrink-0">
         <NavigationTree
           sections={numberedContent.sections}
           onNavigate={handleNavigate}

@@ -68,7 +68,7 @@ export default function PaperHeader({
         </button>
         {/* 左侧：Logo + 搜索 */}
         <div className="flex items-center gap-4 flex-1 min-w-0">
-          <BookOpen className="w-5 h-5 text-blue-600 flex-shrink-0" />
+          <BookOpen className="w-5 h-5 text-blue-600 shrink-0" />
           <div className="relative flex-1 max-w-md">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
             <input
@@ -105,7 +105,7 @@ export default function PaperHeader({
         </div>
         
         {/* 右侧：语言切换 + 笔记/编辑按钮 */}
-        <div className="flex items-center gap-3 flex-shrink-0">
+        <div className="flex items-center gap-3 shrink-0">
           {/* 语言切换 */}
           <div className="flex bg-gray-100 dark:bg-slate-800 rounded-lg p-1">
             {[

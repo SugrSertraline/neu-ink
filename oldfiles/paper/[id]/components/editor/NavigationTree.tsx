@@ -211,7 +211,7 @@ export default function NavigationTree({
                 e.stopPropagation();
                 toggleNode(node.id);
               }}
-              className="flex-shrink-0 p-0.5 hover:bg-gray-200 rounded"
+              className="shrink-0 p-0.5 hover:bg-gray-200 rounded"
             >
               {isExpanded ? (
                 <ChevronDown className="w-3.5 h-3.5" />
@@ -223,7 +223,7 @@ export default function NavigationTree({
             <div className="w-4" />
           )}
 
-          <div className={`flex-shrink-0 ${node.type === 'section' ? 'text-blue-600' : 'text-gray-500'}`}>
+          <div className={`shrink-0 ${node.type === 'section' ? 'text-blue-600' : 'text-gray-500'}`}>
             {node.type === 'section' ? (
               <FileText className="w-3.5 h-3.5" />
             ) : (

@@ -241,7 +241,7 @@ export default function TabBar({
               const canClose = isTabClosable(tab.id);
 
               const baseBtn =
-                'relative inline-flex items-center gap-2 px-3 py-2 rounded-lg transition-colors duration-200 text-sm font-medium group overflow-hidden flex-shrink-0 max-w-[220px] backdrop-blur-md border focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-900';
+                'relative inline-flex items-center gap-2 px-3 py-2 rounded-lg transition-colors duration-200 text-sm font-medium group overflow-hidden shrink-0 max-w-[220px] backdrop-blur-md border focus:outline-none focus-visible:ring-2 focus-visible:ring-neutral-400 focus-visible:ring-offset-1 focus-visible:ring-offset-white dark:focus-visible:ring-offset-neutral-900';
               const activeStyles = isActive
                 ? 'bg-neutral-900/85 text-white border-neutral-700 shadow-[0_12px_28px_-14px_rgba(15,15,15,0.65)]'
                 : 'text-neutral-700 dark:text-neutral-200 bg-white/75 dark:bg-neutral-800/70 hover:bg-neutral-100/80 dark:hover:bg-neutral-700 border-neutral-200/70 dark:border-neutral-600/40';

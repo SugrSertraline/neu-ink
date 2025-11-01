@@ -6,27 +6,21 @@ import {
   BookOpen,
   ChevronUp,
   ChevronDown,
-  PencilLine,
   Eye,
   EyeOff,
+  Save,
+  Sparkles,
 } from 'lucide-react';
 
 type Lang = 'en' | 'both';
 
 interface PaperHeaderActions {
-  // 统一“编辑”入口
-  editEnabled?: boolean;
-  editLabel?: string; // 默认“编辑”；如需要可用 isEditing 切换为“退出编辑”
-  isEditing?: boolean; // 页面内编辑模式时用于切换按钮图标与文案
-  onEdit?: () => void;
-
-  // 可见性切换（通常管理员可用）
   canToggleVisibility?: boolean;
   isPublicVisible?: boolean;
   onToggleVisibility?: () => void;
-
-  // 预留扩展
-  extraActions?: React.ReactNode;
+  onSave?: () => void;
+  saveLabel?: string;
+  extraActionsHint?: string;
 }
 
 interface PaperHeaderProps {
@@ -63,7 +57,7 @@ export default function PaperHeader({
         type="button"
         onClick={handler}
         disabled={disabled || !handler}
-        className="flex items-center gap-1 rounded-full bg-white/50 dark:bg-slate-800/50 backdrop-blur-md px-3 py-1.5 text-sm text-gray-700 transition-all hover:bg-white/70 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-300 dark:hover:bg-slate-700/70 border border-white/20 dark:border-slate-600/20"
+        className="flex items-center gap-1 rounded-full bg-white/60 dark:bg-slate-800/50 backdrop-blur-md px-3 py-1.5 text-sm text-gray-700 transition-all hover:bg-white/80 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-200 dark:hover:bg-slate-700/70 border border-white/30 dark:border-slate-600/30"
       >
         <Icon className="h-4 w-4" />
         {label}
@@ -76,7 +70,7 @@ export default function PaperHeader({
       <div className="mx-auto w-full bg-white/10 dark:bg-slate-900/50 backdrop-blur-sm rounded-xl shadow-xl dark:border-slate-700/30">
         <div className="px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-1 min-w-0">
-            <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+            <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-slate-500" />
               <input
@@ -114,22 +108,27 @@ export default function PaperHeader({
             </div>
           </div>
 
-          <div className="flex items-center gap-3 flex-shrink-0">
+          <div className="flex items-center gap-3 shrink-0">
             {actions && (
               <div className="flex items-center gap-2">
-                {renderActionButton(
-                  actions.editEnabled,
-                  actions.isEditing ? '退出编辑' : actions.editLabel ?? '编辑',
-                  actions.isEditing ? BookOpen : PencilLine,
-                  actions.onEdit,
-                )}
                 {renderActionButton(
                   actions.canToggleVisibility,
                   actions.isPublicVisible ? '设为私有' : '设为公开',
                   actions.isPublicVisible ? EyeOff : Eye,
                   actions.onToggleVisibility,
                 )}
-                {actions.extraActions}
+                {renderActionButton(
+                  !!actions.onSave,
+                  actions.saveLabel ?? '保存',
+                  Save,
+                  actions.onSave,
+                )}
+                {actions.extraActionsHint && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 px-3 py-1 text-xs font-medium">
+                    <Sparkles className="w-3 h-3" />
+                    {actions.extraActionsHint}
+                  </span>
+                )}
               </div>
             )}
 

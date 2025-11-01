@@ -247,7 +247,7 @@ export default function UnifiedNotesPanel({
             className="w-full flex items-center justify-between gap-2 px-4 py-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-600 rounded-lg hover:bg-gray-50 dark:hover:bg-slate-800 transition-colors"
           >
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              <FolderOpen className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+              <FolderOpen className="w-4 h-4 text-emerald-600 shrink-0" />
               <span className="text-sm font-medium text-gray-700 dark:text-slate-300 truncate">
                 {selectedChecklist ? selectedChecklist.fullPath : '选择清单...'}
               </span>
@@ -280,7 +280,7 @@ export default function UnifiedNotesPanel({
                         }`}
                       >
                         <div className="flex items-center gap-2">
-                          <FolderOpen className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                          <FolderOpen className="w-4 h-4 text-emerald-600 shrink-0" />
                           <div className="flex-1 min-w-0">
                             <div className="font-medium text-gray-900 dark:text-white truncate">
                               {checklist.name}
@@ -290,7 +290,7 @@ export default function UnifiedNotesPanel({
                             </div>
                           </div>
                           {activeChecklistId === checklist.id && (
-                            <div className="w-2 h-2 bg-emerald-600 rounded-full flex-shrink-0" />
+                            <div className="w-2 h-2 bg-emerald-600 rounded-full shrink-0" />
                           )}
                         </div>
                       </button>
