@@ -61,7 +61,8 @@ class UserPaperModel:
         }
 
         self.collection.insert_one(user_paper)
-        return user_paper
+        # 返回前查询一次，确保不包含任何MongoDB特定对象
+        return self.find_by_id(user_paper_id)
 
     def find_by_id(self, user_paper_id: str) -> Optional[Dict[str, Any]]:
         """

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useEditingState } from '@/stores/useEditingState';
 import type {
   BlockContent,
@@ -54,6 +54,9 @@ interface BlockEditorProps {
   lang?: 'en' | 'zh' | 'both';
 }
 
+const cloneBlock = <T extends BlockContent>(target: T): T =>
+  JSON.parse(JSON.stringify(target));
+
 export default function BlockEditor({
   block,
   onChange,
@@ -71,33 +74,60 @@ export default function BlockEditor({
 }: BlockEditorProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
-  const { isEditing, setEditingId, clearEditing } = useEditingState();
+  const { isEditing, clearEditing, setHasUnsavedChanges, switchToEdit } = useEditingState();
+
+  const originalBlockRef = useRef<BlockContent>(cloneBlock(block));
+  const originalSerializedRef = useRef<string>(JSON.stringify(block));
+  const wasEditingRef = useRef(false);
 
   const config = getBlockTypeConfig(block.type);
   const Icon = config.icon;
 
-  // 检查当前块是否正在编辑
+  const serializedBlock = useMemo(() => JSON.stringify(block), [block]);
   const isCurrentlyEditing = isEditing(block.id);
 
-  // 当组件挂载时，设置编辑状态
   useEffect(() => {
-    if (isCurrentlyEditing) {
-      // 如果当前块正在编辑，不做任何操作
-      return;
+    if (isCurrentlyEditing && !wasEditingRef.current) {
+      originalBlockRef.current = cloneBlock(block);
+      originalSerializedRef.current = serializedBlock;
     }
-  }, [isCurrentlyEditing, block.id]);
-
-  // 开始编辑
-  const handleStartEditing = () => {
-    setEditingId(block.id);
-  };
-
-  // 停止编辑
-  const handleStopEditing = () => {
-    if (isCurrentlyEditing) {
-      clearEditing();
+    if (!isCurrentlyEditing && wasEditingRef.current) {
+      setHasUnsavedChanges(false);
     }
-  };
+    wasEditingRef.current = isCurrentlyEditing;
+  }, [isCurrentlyEditing, block, serializedBlock, setHasUnsavedChanges]);
+
+  useEffect(() => {
+    if (!isCurrentlyEditing) return;
+    setHasUnsavedChanges(serializedBlock !== originalSerializedRef.current);
+  }, [isCurrentlyEditing, serializedBlock, setHasUnsavedChanges]);
+
+  const handleCompleteEditing = useCallback(() => {
+    originalBlockRef.current = cloneBlock(block);
+    originalSerializedRef.current = serializedBlock;
+    setHasUnsavedChanges(false);
+    clearEditing();
+  }, [block, serializedBlock, clearEditing, setHasUnsavedChanges]);
+
+  const handleCancelEditing = useCallback(() => {
+    if (serializedBlock !== originalSerializedRef.current) {
+      onChange(cloneBlock(originalBlockRef.current));
+    }
+    setHasUnsavedChanges(false);
+    clearEditing();
+  }, [serializedBlock, onChange, setHasUnsavedChanges, clearEditing]);
+
+  const handleStartEditing = useCallback(() => {
+    if (isCurrentlyEditing) return;
+    const switched = switchToEdit(block.id, {
+      onRequestSave: ({ currentId }) => {
+        if (currentId === block.id) {
+          handleCompleteEditing();
+        }
+      },
+    });
+    if (!switched) return;
+  }, [isCurrentlyEditing, switchToEdit, block.id, handleCompleteEditing]);
 
   const blockTypes: Array<{ type: BlockContent['type']; label: string; icon: string }> = [
     { type: 'paragraph', label: '段落', icon: '📝' },
@@ -347,11 +377,18 @@ export default function BlockEditor({
       </div>
 
       {isCurrentlyEditing && (
-        <div className="absolute top-2 right-2 z-10">
+        <div className="absolute top-2 right-2 z-10 flex gap-2">
           <button
             type="button"
-            onClick={handleStopEditing}
-            className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors"
+            onClick={handleCancelEditing}
+            className="px-3 py-1 bg-gray-500 text-white text-sm rounded hover:bg-gray-600 transition-colors"
+          >
+            取消
+          </button>
+          <button
+            type="button"
+            onClick={handleCompleteEditing}
+            className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
           >
             完成编辑
           </button>
@@ -437,21 +474,19 @@ function HeadingEditor({
         placeholder="输入英文标题..."
       />
 
-      {(lang === 'both' || lang === 'zh') && (
-        <InlineEditor
-          value={block.content?.zh ?? []}
-          onChange={(newContent) =>
-            onChange({
-              ...block,
-              content: { ...block.content, zh: newContent },
-            })
-          }
-          references={references}
-          allSections={allSections}
-          label="中文"
-          placeholder="输入中文标题..."
-        />
-      )}
+      <InlineEditor
+        value={block.content?.zh ?? []}
+        onChange={(newContent) =>
+          onChange({
+            ...block,
+            content: { ...block.content, zh: newContent },
+          })
+        }
+        references={references}
+        allSections={allSections}
+        label="中文"
+        placeholder="输入中文标题..."
+      />
     </div>
   );
 }
@@ -501,21 +536,19 @@ function ParagraphEditor({
         placeholder="输入英文段落内容..."
       />
 
-      {(lang === 'both' || lang === 'zh') && (
-        <InlineEditor
-          value={block.content?.zh ?? []}
-          onChange={(newContent) =>
-            onChange({
-              ...block,
-              content: { ...block.content, zh: newContent },
-            })
-          }
-          references={references}
-          allSections={allSections}
-          label="中文"
-          placeholder="输入中文段落内容..."
-        />
-      )}
+      <InlineEditor
+        value={block.content?.zh ?? []}
+        onChange={(newContent) =>
+          onChange({
+            ...block,
+            content: { ...block.content, zh: newContent },
+          })
+        }
+        references={references}
+        allSections={allSections}
+        label="中文"
+        placeholder="输入中文段落内容..."
+      />
     </div>
   );
 }
@@ -671,7 +704,7 @@ function FigureEditor({
                 />
               </div>
 
-              <div className="flex gap-2 justify-center">
+              <div className="flex gap-2 justify中心">
                 <label
                   htmlFor={`file-input-${block.id}`}
                   className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer inline-flex items-center gap-2"
@@ -771,21 +804,19 @@ function FigureEditor({
         placeholder="输入图片英文标题..."
       />
 
-      {(lang === 'both' || lang === 'zh') && (
-        <InlineEditor
-          value={block.caption?.zh ?? []}
-          onChange={(newContent) =>
-            onChange({
-              ...block,
-              caption: { ...block.caption, zh: newContent },
-            })
-          }
-          references={references}
-          allSections={allSections}
-          label="图片标题 (中文)"
-          placeholder="输入图片中文标题..."
-        />
-      )}
+      <InlineEditor
+        value={block.caption?.zh ?? []}
+        onChange={(newContent) =>
+          onChange({
+            ...block,
+            caption: { ...block.caption, zh: newContent },
+          })
+        }
+        references={references}
+        allSections={allSections}
+        label="图片标题 (中文)"
+        placeholder="输入图片中文标题..."
+      />
 
       <InlineEditor
         value={block.description?.en ?? []}
@@ -801,21 +832,19 @@ function FigureEditor({
         placeholder="输入图片英文描述..."
       />
 
-      {(lang === 'both' || lang === 'zh') && (
-        <InlineEditor
-          value={block.description?.zh ?? []}
-          onChange={(newContent) =>
-            onChange({
-              ...block,
-              description: { ...block.description, zh: newContent },
-            })
-          }
-          references={references}
-          allSections={allSections}
-          label="图片描述 (中文, 可选)"
-          placeholder="输入图片中文描述..."
-        />
-      )}
+      <InlineEditor
+        value={block.description?.zh ?? []}
+        onChange={(newContent) =>
+          onChange({
+            ...block,
+            description: { ...block.description, zh: newContent },
+          })
+        }
+        references={references}
+        allSections={allSections}
+        label="图片描述 (中文, 可选)"
+        placeholder="输入图片中文描述..."
+      />
     </div>
   );
 }
@@ -861,20 +890,18 @@ function TableEditor({
         label="表格标题 (英文)"
       />
 
-      {(lang === 'both' || lang === 'zh') && (
-        <InlineEditor
-          value={block.caption?.zh ?? []}
-          onChange={(newContent) =>
-            onChange({
-              ...block,
-              caption: { ...block.caption, zh: newContent },
-            })
-          }
-          references={references}
-          allSections={allSections}
-          label="表格标题 (中文)"
-        />
-      )}
+      <InlineEditor
+        value={block.caption?.zh ?? []}
+        onChange={(newContent) =>
+          onChange({
+            ...block,
+            caption: { ...block.caption, zh: newContent },
+          })
+        }
+        references={references}
+        allSections={allSections}
+        label="表格标题 (中文)"
+      />
 
       <div>
         <label className="block text-sm font-medium text-gray-700 mb-1">
@@ -976,21 +1003,19 @@ function CodeEditor({
         placeholder="输入代码英文标题..."
       />
 
-      {(lang === 'both' || lang === 'zh') && (
-        <InlineEditor
-          value={block.caption?.zh ?? []}
-          onChange={(newContent) =>
-            onChange({
-              ...block,
-              caption: { ...block.caption, zh: newContent },
-            })
-          }
-          references={references}
-          allSections={allSections}
-          label="代码标题 (中文, 可选)"
-          placeholder="输入代码中文标题..."
-        />
-      )}
+      <InlineEditor
+        value={block.caption?.zh ?? []}
+        onChange={(newContent) =>
+          onChange({
+            ...block,
+            caption: { ...block.caption, zh: newContent },
+          })
+        }
+        references={references}
+        allSections={allSections}
+        label="代码标题 (中文, 可选)"
+        placeholder="输入代码中文标题..."
+      />
     </div>
   );
 }
@@ -1109,23 +1134,21 @@ function OrderedListEditor({
               />
             </div>
 
-            {(lang === 'both' || lang === 'zh') && (
-              <InlineEditor
-                value={item.content?.zh ?? []}
-                onChange={(content) => updateItem(index, 'zh', content)}
-                references={references}
-                allSections={allSections}
-                label="中文"
-                placeholder="输入列表项中文内容..."
-              />
-            )}
+            <InlineEditor
+              value={item.content?.zh ?? []}
+              onChange={(content) => updateItem(index, 'zh', content)}
+              references={references}
+              allSections={allSections}
+              label="中文"
+              placeholder="输入列表项中文内容..."
+            />
           </div>
         ))}
 
         <button
           type="button"
           onClick={addItem}
-          className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+          className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover.border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
         >
           <Plus className="w-4 h-4" />
           添加列表项
@@ -1160,7 +1183,7 @@ function UnorderedListEditor({
 
   const moveItem = (index: number, direction: 'up' | 'down') => {
     const items = block.items ?? [];
-    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+       const targetIndex = direction === 'up' ? index - 1 : index + 1;
 
     if (targetIndex < 0 || targetIndex >= items.length) return;
 
@@ -1188,7 +1211,7 @@ function UnorderedListEditor({
 
       {(block.items ?? []).map((item, index) => (
         <div key={index} className="border border-gray-300 rounded-lg p-4 bg-gray-50">
-          <div className="flex items-center justify-between mb-3">
+          <div className="flex items.center justify-between mb-3">
             <span className="text-sm font-medium text-gray-600">• 项目 {index + 1}</span>
             <div className="flex gap-1">
               <button
@@ -1236,23 +1259,21 @@ function UnorderedListEditor({
             />
           </div>
 
-          {(lang === 'both' || lang === 'zh') && (
-            <InlineEditor
-              value={item.content?.zh ?? []}
-              onChange={(content) => updateItem(index, 'zh', content)}
-              references={references}
-              allSections={allSections}
-              label="中文"
-              placeholder="输入列表项中文内容..."
-            />
-          )}
+          <InlineEditor
+            value={item.content?.zh ?? []}
+            onChange={(content) => updateItem(index, 'zh', content)}
+            references={references}
+            allSections={allSections}
+            label="中文"
+            placeholder="输入列表项中文内容..."
+          />
         </div>
       ))}
 
       <button
         type="button"
         onClick={addItem}
-        className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+        className="w全 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify中心 gap-2"
       >
         <Plus className="w-4 h-4" />
         添加列表项
@@ -1303,21 +1324,19 @@ function QuoteEditor({
         placeholder="输入英文引用内容..."
       />
 
-      {(lang === 'both' || lang === 'zh') && (
-        <InlineEditor
-          value={block.content?.zh ?? []}
-          onChange={(newContent) =>
-            onChange({
-              ...block,
-              content: { ...block.content, zh: newContent },
-            })
-          }
-          references={references}
-          allSections={allSections}
-          label="引用内容 (中文)"
-          placeholder="输入中文引用内容..."
-        />
-      )}
+      <InlineEditor
+        value={block.content?.zh ?? []}
+        onChange={(newContent) =>
+          onChange({
+            ...block,
+            content: { ...block.content, zh: newContent },
+          })
+        }
+        references={references}
+        allSections={allSections}
+        label="引用内容 (中文)"
+        placeholder="输入中文引用内容..."
+      />
     </div>
   );
 }

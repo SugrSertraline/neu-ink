@@ -1,11 +1,13 @@
 'use client';
 
 import React, { useCallback, useEffect } from 'react';
-import { useRouter, usePathname } from 'next/navigation';
+import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { BookOpen, Library, Settings, CheckSquare } from 'lucide-react';
+
 import { useAuth } from '@/contexts/AuthContext';
 import { useTabStore } from '@/stores/useTabStore';
 import { NavItem } from '@/types/navigation';
+
 import TabBar from './TabBar';
 import Sidebar from './Sidebar';
 
@@ -13,23 +15,43 @@ interface MainLayoutProps {
   children: React.ReactNode;
 }
 
+/** 将 pathname 与 search params 拼成完整 href，便于比较 */
+function useCurrentHref(pathname: string | null, searchParams: ReturnType<typeof useSearchParams>) {
+  return React.useMemo(() => {
+    const base = pathname ?? '';
+    const query = searchParams?.toString();
+    return query ? `${base}?${query}` : base;
+  }, [pathname, searchParams]);
+}
+
 export default function MainLayout({ children }: MainLayoutProps) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, isAdmin, isAuthenticated } = useAuth();
-  const { tabs, activeTabId, addTab, setActiveTab, removeTab, loadingTabId, setLoading } = useTabStore();
+  const searchParams = useSearchParams();
 
-  // ✅ 统一的导航配置
+  const currentHref = useCurrentHref(pathname, searchParams);
+
+  const { user, isAdmin, isAuthenticated } = useAuth();
+  const {
+    tabs,
+    activeTabId,
+    addTab,
+    setActiveTab,
+    removeTab,
+    loadingTabId,
+    setLoading,
+  } = useTabStore();
+
   const navigationConfig: NavItem[] = [
     {
       id: 'public-library',
       type: 'public-library',
       label: '论文库',
       icon: BookOpen,
-      path: '/',
+      path: '/library?section=public',
       requiresAuth: false,
       activeColor: 'purple',
-      badge: (user, isAdmin) => isAdmin ? '管理' : undefined,
+      badge: (user, isAdmin) => (isAdmin ? '管理' : undefined),
       closable: false,
       showInSidebar: true,
       isPermanentTab: true,
@@ -39,7 +61,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
       type: 'library',
       label: '我的论文库',
       icon: Library,
-      path: '/library',
+      path: '/library?section=personal',
       requiresAuth: true,
       activeColor: 'indigo',
       closable: false,
@@ -57,7 +79,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
       closable: false,
       showInSidebar: true,
       isPermanentTab: false,
-      disabled: true, // 即将推出
+      disabled: true,
     },
     {
       id: 'settings',
@@ -73,138 +95,160 @@ export default function MainLayout({ children }: MainLayoutProps) {
     },
   ];
 
-  // ✅ 根据登录状态过滤可见的导航项
   const visibleNavItems = React.useMemo(() => {
     return navigationConfig.filter(item => {
-      if (!isAuthenticated && item.requiresAuth) {
-        return false;
-      }
+      if (!isAuthenticated && item.requiresAuth) return false;
       return true;
     });
   }, [isAuthenticated]);
 
-  // ✅ 统一的导航处理函数
-  const handleNavigate = useCallback(async (item: NavItem) => {
-    // 检查是否需要登录
-    if (item.requiresAuth && !isAuthenticated) {
-      router.push('/login');
-      return;
-    }
-
-    // 检查是否禁用
-    if (item.disabled) {
-      return;
-    }
-
-    const existingTab = tabs.find(t => t.id === item.id);
-
-    // 如果已经在目标路径，只需切换标签
-    if (pathname === item.path) {
-      if (existingTab) {
-        setActiveTab(item.id);
-      } else {
-        addTab({ id: item.id, type: item.type, title: item.label, path: item.path });
-        setActiveTab(item.id);
+  const handleNavigate = useCallback(
+    async (item: NavItem) => {
+      if (item.requiresAuth && !isAuthenticated) {
+        router.push('/login');
+        return;
       }
-      setLoading(false, null);
-      return;
-    }
+      if (item.disabled) return;
 
-    // 设置加载状态
-    setLoading(true, item.id);
+      const targetHref = item.path ?? '/';
+      const [targetPathname] = targetHref.split('?');
+      const existingTab = tabs.find(t => t.id === item.id);
 
-    try {
-      // 添加或激活标签
-      if (existingTab) {
-        setActiveTab(item.id);
-      } else {
-        addTab({ id: item.id, type: item.type, title: item.label, path: item.path });
-        setActiveTab(item.id);
-      }
-
-      // 导航到目标路径
-      await router.push(item.path);
-    } catch (error) {
-      console.error('Navigation error:', error);
-      setLoading(false, null);
-    }
-  }, [isAuthenticated, pathname, tabs, router, addTab, setActiveTab, setLoading]);
-
-  // ✅ 统一的关闭标签函数
-  const handleCloseTab = useCallback(async (tabId: string) => {
-    // 找到要关闭的标签配置
-    const tabConfig = navigationConfig.find(item => item.id === tabId);
-
-    // 不可关闭的标签不处理
-    if (tabConfig && !tabConfig.closable) {
-      return;
-    }
-
-    // 找到要关闭的标签
-    const tabToClose = tabs.find(t => t.id === tabId);
-    if (!tabToClose) return;
-
-    // 如果关闭的是当前激活的标签，需要切换到其他标签
-    if (tabId === activeTabId) {
-      const visibleTabs = tabs.filter(tab => {
-        const config = navigationConfig.find(item => item.id === tab.id);
-        if (!isAuthenticated && config?.requiresAuth) return false;
-        return true;
-      });
-
-      const currentIndex = visibleTabs.findIndex(t => t.id === tabId);
-      let targetTab = null;
-
-      // 优先切换到前一个标签
-      if (currentIndex > 0) {
-        targetTab = visibleTabs[currentIndex - 1];
-      } else if (visibleTabs.length > 1) {
-        targetTab = visibleTabs[currentIndex + 1];
-      }
-
-      if (targetTab) {
-        if (pathname === targetTab.path) {
-          setActiveTab(targetTab.id);
-          setLoading(false, null);
+      if (currentHref === targetHref) {
+        if (existingTab) {
+          setActiveTab(item.id);
         } else {
-          setLoading(true, targetTab.id);
-          try {
+          addTab({
+            id: item.id,
+            type: item.type,
+            title: item.label,
+            path: targetHref,
+          });
+          setActiveTab(item.id);
+        }
+        setLoading(false, null);
+        return;
+      }
+
+      setLoading(true, item.id);
+
+      if (existingTab) {
+        setActiveTab(item.id);
+      } else {
+        addTab({
+          id: item.id,
+          type: item.type,
+          title: item.label,
+          path: targetHref,
+        });
+        setActiveTab(item.id);
+      }
+
+      try {
+        if (pathname === targetPathname && currentHref !== targetHref) {
+          await router.push(targetHref);
+        } else {
+          await router.push(targetHref);
+        }
+      } catch (error) {
+        console.error('Navigation error:', error);
+        setLoading(false, null);
+      }
+    },
+    [
+      currentHref,
+      isAuthenticated,
+      pathname,
+      tabs,
+      router,
+      addTab,
+      setActiveTab,
+      setLoading,
+    ],
+  );
+
+  const handleCloseTab = useCallback(
+    async (tabId: string) => {
+      const tabConfig = navigationConfig.find(item => item.id === tabId);
+      if (tabConfig && !tabConfig.closable) return;
+
+      const tabToClose = tabs.find(t => t.id === tabId);
+      if (!tabToClose) return;
+
+      if (tabId === activeTabId) {
+        const visibleTabs = tabs.filter(tab => {
+          const config = navigationConfig.find(item => item.id === tab.id);
+          if (!isAuthenticated && config?.requiresAuth) return false;
+          return true;
+        });
+
+        const currentIndex = visibleTabs.findIndex(t => t.id === tabId);
+        let targetTab: typeof visibleTabs[number] | null = null;
+
+        if (currentIndex > 0) {
+          targetTab = visibleTabs[currentIndex - 1];
+        } else if (visibleTabs.length > 1) {
+          targetTab = visibleTabs[currentIndex + 1];
+        }
+
+        if (targetTab) {
+          const targetHref = targetTab.path;
+          const [targetPathname] = targetHref.split('?');
+
+          if (currentHref === targetHref) {
             setActiveTab(targetTab.id);
-            await router.push(targetTab.path);
-          } catch (error) {
-            console.error('Navigation error:', error);
             setLoading(false, null);
+          } else {
+            setLoading(true, targetTab.id);
+            try {
+              setActiveTab(targetTab.id);
+              if (pathname === targetPathname && currentHref !== targetHref) {
+                await router.push(targetHref);
+              } else {
+                await router.push(targetHref);
+              }
+            } catch (error) {
+              console.error('Navigation error:', error);
+              setLoading(false, null);
+            }
           }
         }
       }
-    }
 
-    // 从 store 中移除标签
-    removeTab(tabId);
-  }, [tabs, activeTabId, pathname, isAuthenticated, router, setActiveTab, setLoading, removeTab]);
+      removeTab(tabId);
+    },
+    [
+      tabs,
+      activeTabId,
+      currentHref,
+      pathname,
+      isAuthenticated,
+      router,
+      setActiveTab,
+      setLoading,
+      removeTab,
+    ],
+  );
+
   useEffect(() => {
-    // 仅识别单/复数：/paper/... 或 /papers/...
     const isPaperPath = /^\/(paper|papers)\//.test(pathname || '');
-
     if (!isPaperPath) return;
 
     const hasPaperTab = tabs.some(t => t.type === 'paper' && t.path === pathname);
 
-    // “初始态”的判定：只有一个默认标签，且激活的就是它
     const isPristine =
       tabs.length === 1 &&
       tabs[0]?.id === 'public-library' &&
       activeTabId === 'public-library';
 
-    // 仅当“刷新落在论文页 + 没有论文标签 + 是初始态”时才跳转
     if (!hasPaperTab && isPristine) {
       setLoading(true, 'public-library');
-      router.replace('/'); // 自动切回“公共论文库”
+      router.replace('/library?section=public');
     }
   }, [pathname, tabs, activeTabId, setLoading, router]);
+
   return (
     <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
-      {/* 侧边栏 */}
       <Sidebar
         navItems={visibleNavItems}
         activeTabId={activeTabId}
@@ -215,9 +259,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
         isAuthenticated={isAuthenticated}
       />
 
-      {/* 主内容区域 */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Tab栏 */}
         <TabBar
           navItems={navigationConfig}
           onNavigate={handleNavigate}
@@ -225,10 +267,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
           isAuthenticated={isAuthenticated}
         />
 
-        {/* 页面内容 */}
-       <main className="flex-1 min-h-0 overflow-hidden">
-        {children}
-        </main>
+        <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
       </div>
     </div>
   );

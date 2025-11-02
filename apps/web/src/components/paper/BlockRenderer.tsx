@@ -1,4 +1,3 @@
-// apps/web/src/components/paper/BlockRenderer.tsx
 'use client';
 
 import { useState, useRef, useEffect, useCallback } from 'react';
@@ -53,8 +52,9 @@ interface BlockRendererProps {
 }
 
 type InlineRendererBaseProps = Omit<ComponentProps<typeof InlineRenderer>, 'nodes'>;
-
 type LocalizedInlineValue = Partial<Record<'en' | 'zh', InlineContent[] | string | number>>;
+
+const cloneBlock = (b: BlockContent): BlockContent => JSON.parse(JSON.stringify(b));
 
 const hasLocalizedContent = (value: unknown): value is LocalizedInlineValue => {
   if (typeof value !== 'object' || value === null) return false;
@@ -92,15 +92,13 @@ const zhPlaceholder = (label: string) => (
   </span>
 );
 
-/** zh 是否存在有效内容（InlineContent[] 或 string/number） */
 const hasZh = (v?: InlineContent[] | string | number | null): boolean => {
   if (v == null) return false;
   if (Array.isArray(v)) return v.length > 0;
   if (typeof v === 'string') return v.trim().length > 0;
-  return true; // number 等
+  return true;
 };
 
-/** 封装：在表格等“可能是本地化值”的场景渲染 value */
 const renderInlineValue = (
   value: unknown,
   lang: 'en' | 'zh',
@@ -213,7 +211,7 @@ export default function BlockRenderer({
   allSections = [],
 }: BlockRendererProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
-  const { hasUnsavedChanges, setHasUnsavedChanges, switchToEdit } = useEditingState();
+  const { hasUnsavedChanges, setHasUnsavedChanges, switchToEdit, clearEditing } = useEditingState();
   const inlineEditingEnabled = canEditContent && typeof onBlockUpdate === 'function';
 
   const previewLang: 'en' | 'zh' = lang === 'both' ? 'en' : lang;
@@ -222,15 +220,12 @@ export default function BlockRenderer({
   const [toolbarPos, setToolbarPos] = useState({ x: 0, y: 0 });
   const [selectedText, setSelectedText] = useState('');
   const [isEditing, setIsEditing] = useState(false);
-  const [draftBlock, setDraftBlock] = useState<BlockContent>(block);
+  const [draftBlock, setDraftBlock] = useState<BlockContent>(() => cloneBlock(block));
 
-  // 监听draftBlock的变化，如果有变化则设置hasUnsavedChanges
   useEffect(() => {
-    if (isEditing && JSON.stringify(draftBlock) !== JSON.stringify(block)) {
-      setHasUnsavedChanges(true);
-    } else if (isEditing && JSON.stringify(draftBlock) === JSON.stringify(block)) {
-      setHasUnsavedChanges(false);
-    }
+    if (!isEditing) return;
+    const unchanged = JSON.stringify(draftBlock) === JSON.stringify(block);
+    setHasUnsavedChanges(!unchanged);
   }, [draftBlock, block, isEditing, setHasUnsavedChanges]);
 
   const blockRef = useRef<HTMLDivElement>(null);
@@ -247,14 +242,14 @@ export default function BlockRenderer({
 
   useEffect(() => {
     if (!isEditing) {
-      setDraftBlock(block);
+      setDraftBlock(cloneBlock(block));
     }
   }, [block, isEditing]);
 
   useEffect(() => {
     if (!inlineEditingEnabled && isEditing) {
       setIsEditing(false);
-      setDraftBlock(block);
+      setDraftBlock(cloneBlock(block));
     }
   }, [inlineEditingEnabled, isEditing, block]);
 
@@ -309,41 +304,46 @@ export default function BlockRenderer({
 
   const enterEditMode = useCallback(() => {
     if (!inlineEditingEnabled || isEditing) return;
-    switchToEdit(block.id);
-    setDraftBlock(block);
+    const switched = switchToEdit(block.id, {
+      onRequestSave: ({ currentId }) => {
+        console.info('[BlockRenderer] TODO: auto-save before switching block ->', currentId);
+      },
+    });
+    if (!switched) return;
+    setDraftBlock(cloneBlock(block));
     setIsEditing(true);
   }, [inlineEditingEnabled, isEditing, block, switchToEdit]);
 
-  const handleWrapperClick = useCallback(
-    (event: MouseEvent<HTMLDivElement>) => {
-      // 移除左键点击进入编辑状态的功能
-      // 现在只能通过右键菜单或点击右上角的"编辑"按钮进入编辑状态
-      return;
-    },
-    []
-  );
+  const handleWrapperClick = useCallback((_event: MouseEvent<HTMLDivElement>) => {
+    // 移除左键点击进入编辑状态的功能
+    return;
+  }, []);
 
   const handleCancelEdit = useCallback(() => {
-    setDraftBlock(block);
+    setDraftBlock(cloneBlock(block));
     setHasUnsavedChanges(false);
     setIsEditing(false);
-  }, [block, setHasUnsavedChanges]);
+    clearEditing();
+  }, [block, setHasUnsavedChanges, clearEditing]);
 
   const handleSaveEdit = useCallback(() => {
     if (!onBlockUpdate) {
+      setDraftBlock(cloneBlock(block));
       setIsEditing(false);
+      clearEditing();
       return;
     }
     if (JSON.stringify(draftBlock) !== JSON.stringify(block)) {
       onBlockUpdate(draftBlock);
     }
+    setDraftBlock(cloneBlock(draftBlock));
     setHasUnsavedChanges(false);
     setIsEditing(false);
-  }, [draftBlock, block, onBlockUpdate, setHasUnsavedChanges]);
+    clearEditing();
+  }, [draftBlock, block, onBlockUpdate, setHasUnsavedChanges, clearEditing]);
 
-  /** ====== 文本选择工具条 ====== */
   const handleTextSelection = useCallback(
-    (e: MouseEvent<HTMLElement>) => {
+    (_e: MouseEvent<HTMLElement>) => {
       if (block.type !== 'paragraph' && block.type !== 'heading') return;
       if (!inlineEditingEnabled || !onBlockUpdate || isEditing) return;
 
@@ -374,14 +374,9 @@ export default function BlockRenderer({
           y: rect.top - 10,
         });
         setShowToolbar(true);
-
-        console.log('=== 文本选择调试 ===');
-        console.log('选中的文本:', text);
-        console.log('块类型:', block.type);
-        console.log('当前内容:', (block as ParagraphBlock | HeadingBlock).content?.[previewLang]);
       }, 10);
     },
-    [block, inlineEditingEnabled, previewLang, onBlockUpdate, isEditing]
+    [block, inlineEditingEnabled, onBlockUpdate, isEditing]
   );
 
   const applyStyle = useCallback(
@@ -394,12 +389,6 @@ export default function BlockRenderer({
       const currentBlock = block as ParagraphBlock | HeadingBlock;
       const currentContent = currentBlock.content?.[previewLang];
       if (!currentContent) return;
-
-      console.log('=== 应用样式 ===');
-      console.log('样式类型:', styleType);
-      console.log('样式值:', value);
-      console.log('选中文本:', selectedText);
-      console.log('原内容:', currentContent);
 
       let newContent = currentContent;
 
@@ -428,8 +417,6 @@ export default function BlockRenderer({
           break;
       }
 
-      console.log('新内容:', newContent);
-
       const updatedBlock: BlockContent = {
         ...currentBlock,
         content: {
@@ -448,7 +435,6 @@ export default function BlockRenderer({
     [block, inlineEditingEnabled, previewLang, onBlockUpdate, selectedText]
   );
 
-  /** ====== 标题渲染（中英并排：编号.英文/中文） ====== */
   const renderBilingualHeading = (headingBlock: HeadingBlock) => {
     const headingSizes = {
       1: 'text-3xl',
@@ -516,12 +502,10 @@ export default function BlockRenderer({
     }
   };
 
-  /** ====== 其他块渲染 ====== */
   const renderContent = useCallback(() => {
     switch (block.type) {
-      case 'heading': {
+      case 'heading':
         return renderBilingualHeading(block);
-      }
 
       case 'paragraph': {
         const alignClass =
@@ -532,8 +516,7 @@ export default function BlockRenderer({
             justify: 'text-justify',
           }[block.align || 'left'] ?? 'text-left';
 
-        const wantZhPlaceholder =
-          previewLang === 'zh' && !hasZh(block.content?.zh);
+        const wantZhPlaceholder = previewLang === 'zh' && !hasZh(block.content?.zh);
 
         return (
           <p
@@ -556,7 +539,7 @@ export default function BlockRenderer({
         );
       }
 
-      case 'math': {
+      case 'math':
         return (
           <div className="my-4">
             <div className="relative flex items-center justify-center rounded-lg border border-gray-200 bg-gray-50 px-4 py-4">
@@ -569,7 +552,6 @@ export default function BlockRenderer({
             </div>
           </div>
         );
-      }
 
       case 'figure': {
         const wantZhCaptionPlaceholder = previewLang === 'zh' && !hasZh(block.caption?.zh);
@@ -578,7 +560,6 @@ export default function BlockRenderer({
         return (
           <figure className="my-6">
             {block.src ? (
-              // eslint-disable-next-line @next/next/no-img-element
               <img
                 src={resolveMediaUrl(block.src)}
                 alt={block.alt || ''}
@@ -761,7 +742,7 @@ export default function BlockRenderer({
         );
       }
 
-      case 'ordered-list': {
+      case 'ordered-list':
         return (
           <ol start={block.start ?? 1} className="my-3 list-decimal space-y-1.5 pl-6">
             {block.items.map((item, i) => {
@@ -785,9 +766,8 @@ export default function BlockRenderer({
             })}
           </ol>
         );
-      }
 
-      case 'unordered-list': {
+      case 'unordered-list':
         return (
           <ul className="my-3 list-disc space-y-1.5 pl-6">
             {block.items.map((item, i) => {
@@ -811,7 +791,6 @@ export default function BlockRenderer({
             })}
           </ul>
         );
-      }
 
       case 'quote': {
         const wantZhPlaceholder = previewLang === 'zh' && !hasZh(block.content?.zh);
@@ -875,6 +854,7 @@ export default function BlockRenderer({
               onDelete={() => {
                 onDelete?.();
                 setIsEditing(false);
+                clearEditing();
               }}
               onDuplicate={onDuplicate}
               canMoveUp={canMoveUp}

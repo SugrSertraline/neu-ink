@@ -1,3 +1,4 @@
+// apps/web/src/stores/useTabStore.tsx
 'use client';
 
 import React, {
@@ -41,8 +42,9 @@ const DEFAULT_TAB: Tab = {
   id: 'public-library',
   type: 'public-library',
   title: '论文库',
-  path: '/',
+  path: '/library?section=public', 
 };
+
 
 function mergeTab(existing: Tab, incoming: Tab): Tab {
   return {
@@ -63,14 +65,13 @@ function normalizeTabForPaper(tab: Tab): Tab {
       data.source = 'public-admin';
     } else if (/^\/user\/papers?\//.test(path)) {
       data.source = 'personal-owner';
-    } else if (/^\/papers?\//.test(path)) { // 同时匹配 /paper/ 与 /papers/
+    } else if (/^\/papers?\//.test(path)) {
       data.source = 'public-guest';
     }
   }
 
   return { ...tab, data };
 }
-
 
 let currentStoreSnapshot: TabContextType | null = null;
 
@@ -80,10 +81,10 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
   const [loadingTabId, setLoadingTabId] = useState<string | null>(null);
 
   const addTab = useCallback((tab: Tab) => {
-    setTabs((currentTabs) => {
+    setTabs(currentTabs => {
       const normalized = normalizeTabForPaper(tab);
       const incoming = { ...normalized, data: normalized.data ?? {} };
-      const index = currentTabs.findIndex((t) => t.id === incoming.id);
+      const index = currentTabs.findIndex(t => t.id === incoming.id);
 
       if (index >= 0) {
         const updated = mergeTab(currentTabs[index], incoming);
@@ -100,13 +101,13 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
     (tabId: string) => {
       if (tabId === DEFAULT_TAB.id) return;
 
-      setTabs((currentTabs) => {
+      setTabs(currentTabs => {
         if (currentTabs.length <= 1) return currentTabs;
 
-        const currentIndex = currentTabs.findIndex((tab) => tab.id === tabId);
+        const currentIndex = currentTabs.findIndex(tab => tab.id === tabId);
         if (currentIndex === -1) return currentTabs;
 
-        const nextTabs = currentTabs.filter((tab) => tab.id !== tabId);
+        const nextTabs = currentTabs.filter(tab => tab.id !== tabId);
 
         if (activeTabId === tabId) {
           const fallback =
@@ -137,8 +138,8 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateTab = useCallback((tabId: string, updates: Partial<Tab>) => {
-    setTabs((currentTabs) =>
-      currentTabs.map((tab) => {
+    setTabs(currentTabs =>
+      currentTabs.map(tab => {
         if (tab.id !== tabId) return tab;
 
         const merged = { ...tab, ...updates };

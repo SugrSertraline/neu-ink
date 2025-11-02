@@ -10,6 +10,7 @@ import {
 import { useParams, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { useTabStore } from '@/stores/useTabStore';
+import { useEditingState } from '@/stores/useEditingState';
 import { ViewerSource } from '@/types/paper/viewer';
 import { usePaperLoader } from '@/lib/hooks/usePaperLoader';
 import PaperHeader from '@/components/paper/PaperHeader';
@@ -26,6 +27,7 @@ import type {
 import { useAuth } from '@/contexts/AuthContext';
 import { usePaperEditPermissions } from '@/lib/hooks/usePaperEditPermissions';
 import { PaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
+import { adminPaperService } from '@/lib/services/paper';
 
 type Lang = 'en' | 'both';
 
@@ -34,8 +36,39 @@ const HEADER_HEIGHT = 112;
 const generateId = (prefix: string) =>
   `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
-const cloneBlock = (block: BlockContent): BlockContent =>
-  JSON.parse(JSON.stringify(block));
+const cloneBlock = (block: BlockContent): BlockContent => {
+  // 检查 block 是否有效
+  if (!block || !block.type) {
+    console.error('无效的块对象:', block);
+    // 返回一个默认的段落块
+    return {
+      id: generateId('paragraph'),
+      type: 'paragraph',
+      align: 'left',
+      content: {
+        en: [{ type: 'text', content: 'New paragraph' }],
+      },
+    };
+  }
+  
+  // 使用结构化克隆或安全的深拷贝方法，避免 undefined 值导致的 JSON 解析错误
+  try {
+    // 首先尝试使用结构化克隆（如果可用）
+    if (typeof structuredClone !== 'undefined') {
+      return structuredClone(block);
+    }
+    // 回退到安全的 JSON 方法，过滤掉 undefined 值
+    return JSON.parse(JSON.stringify(block, (key, value) =>
+      value === undefined ? null : value
+    ));
+  } catch (error) {
+    console.error('克隆块时出错:', error);
+    // 如果所有方法都失败，返回一个浅拷贝并重新生成 ID
+    const cloned = { ...block };
+    cloned.id = generateId(block.type);
+    return cloned;
+  }
+};
 
 const createEmptySection = (): Section => ({
   id: generateId('section'),
@@ -43,6 +76,142 @@ const createEmptySection = (): Section => ({
   content: [],
   subsections: [],
 });
+
+// 创建不同类型的 block 的工厂函数
+const createBlock = (type: BlockContent['type'], lang: Lang): BlockContent => {
+  const id = generateId(type);
+  
+  switch (type) {
+    case 'paragraph':
+      return {
+        id,
+        type: 'paragraph',
+        align: 'left',
+        content: {
+          en: [{ type: 'text', content: 'New paragraph' }],
+          ...(lang === 'both' && { zh: [{ type: 'text', content: '新的段落' }] }),
+        },
+      };
+    
+    case 'heading':
+      return {
+        id,
+        type: 'heading',
+        level: 2,
+        content: {
+          en: [{ type: 'text', content: 'New Heading' }],
+          ...(lang === 'both' && { zh: [{ type: 'text', content: '新标题' }] }),
+        },
+      };
+    
+    case 'math':
+      return {
+        id,
+        type: 'math',
+        latex: 'E = mc^2',
+      };
+    
+    case 'figure':
+      return {
+        id,
+        type: 'figure',
+        src: '',
+        caption: {
+          en: [{ type: 'text', content: 'Figure caption' }],
+          ...(lang === 'both' && { zh: [{ type: 'text', content: '图片标题' }] }),
+        },
+      };
+    
+    case 'table':
+      return {
+        id,
+        type: 'table',
+        headers: ['Column 1', 'Column 2'],
+        rows: [
+          ['Row 1 Col 1', 'Row 1 Col 2'],
+          ['Row 2 Col 1', 'Row 2 Col 2'],
+        ],
+        caption: {
+          en: [{ type: 'text', content: 'Table caption' }],
+          ...(lang === 'both' && { zh: [{ type: 'text', content: '表格标题' }] }),
+        },
+      };
+    
+    case 'code':
+      return {
+        id,
+        type: 'code',
+        language: 'javascript',
+        code: '// Your code here\nconsole.log("Hello, World!");',
+        caption: {
+          en: [{ type: 'text', content: 'Code example' }],
+          ...(lang === 'both' && { zh: [{ type: 'text', content: '代码示例' }] }),
+        },
+      };
+    
+    case 'ordered-list':
+      return {
+        id,
+        type: 'ordered-list',
+        start: 1,
+        items: [
+          {
+            content: {
+              en: [{ type: 'text', content: 'First item' }],
+              ...(lang === 'both' && { zh: [{ type: 'text', content: '第一项' }] }),
+            },
+          },
+          {
+            content: {
+              en: [{ type: 'text', content: 'Second item' }],
+              ...(lang === 'both' && { zh: [{ type: 'text', content: '第二项' }] }),
+            },
+          },
+        ],
+      };
+    
+    case 'unordered-list':
+      return {
+        id,
+        type: 'unordered-list',
+        items: [
+          {
+            content: {
+              en: [{ type: 'text', content: 'First item' }],
+              ...(lang === 'both' && { zh: [{ type: 'text', content: '第一项' }] }),
+            },
+          },
+          {
+            content: {
+              en: [{ type: 'text', content: 'Second item' }],
+              ...(lang === 'both' && { zh: [{ type: 'text', content: '第二项' }] }),
+            },
+          },
+        ],
+      };
+    
+    case 'quote':
+      return {
+        id,
+        type: 'quote',
+        author: 'Author',
+        content: {
+          en: [{ type: 'text', content: 'Quote text' }],
+          ...(lang === 'both' && { zh: [{ type: 'text', content: '引用文本' }] }),
+        },
+      };
+    
+    case 'divider':
+      return {
+        id,
+        type: 'divider',
+      };
+    
+    default:
+      // 默认返回段落
+      return createBlock('paragraph', lang);
+  }
+};
 
 export default function PaperPage() {
   const params = useParams();
@@ -111,6 +280,7 @@ export default function PaperPage() {
     effectiveSource === 'personal-owner' && permissions.canEditPersonalPaper;
 
   const canEditContent = permissions.canEditContent;
+  const { setHasUnsavedChanges } = useEditingState();
 
   const [lang, setLang] = useState<Lang>('en');
   const [searchQuery, setSearchQuery] = useState('');
@@ -137,7 +307,9 @@ export default function PaperPage() {
       references: paper.references,
       attachments: paper.attachments,
     });
-  }, [paper]);
+    // 重置未保存状态，因为这是从服务器加载的新数据
+    setHasUnsavedChanges(false);
+  }, [paper, setHasUnsavedChanges]);
 
   const displayContent = editableDraft ?? paper ?? null;
 
@@ -192,10 +364,13 @@ export default function PaperPage() {
       setEditableDraft((prev) => {
         if (!prev) return prev;
         const { sections, touched } = updater(prev.sections);
+        if (touched) {
+          setHasUnsavedChanges(true);
+        }
         return touched ? { ...prev, sections } : prev;
       });
     },
-    []
+    [setHasUnsavedChanges]
   );
 
   const updateSectionTree = useCallback(
@@ -248,9 +423,38 @@ export default function PaperPage() {
         ...section,
         title: { ...section.title, ...nextTitle },
       }));
+      // 标记为有未保存的更改
+      setHasUnsavedChanges(true);
     },
-    [updateSectionTree]
+    [updateSectionTree, setHasUnsavedChanges]
   );
+
+  // 处理元数据更新
+  const handleMetadataUpdate = useCallback((metadata: PaperContentModel['metadata']) => {
+    setEditableDraft(prev => {
+      if (!prev) return prev;
+      setHasUnsavedChanges(true);
+      return { ...prev, metadata };
+    });
+  }, [setHasUnsavedChanges]);
+
+  // 处理摘要更新
+  const handleAbstractUpdate = useCallback((abstract: PaperContentModel['abstract']) => {
+    setEditableDraft(prev => {
+      if (!prev) return prev;
+      setHasUnsavedChanges(true);
+      return { ...prev, abstract };
+    });
+  }, [setHasUnsavedChanges]);
+
+  // 处理关键词更新
+  const handleKeywordsUpdate = useCallback((keywords: PaperContentModel['keywords']) => {
+    setEditableDraft(prev => {
+      if (!prev) return prev;
+      setHasUnsavedChanges(true);
+      return { ...prev, keywords };
+    });
+  }, [setHasUnsavedChanges]);
 
   const handleSectionAddSubsection = useCallback(
     (sectionId: string) => {
@@ -334,7 +538,8 @@ export default function PaperPage() {
               }
             }
 
-            const result = apply(section, section.content.find((b) => b.id === blockId)!);
+            const foundBlock = section.content.find((b) => b.id === blockId);
+            const result = foundBlock ? apply(section, foundBlock) : {};
             if (result.insertAfter) {
               const idx = nextContent.findIndex((b) => b.id === blockId);
               if (idx >= 0) {
@@ -364,9 +569,12 @@ export default function PaperPage() {
 
   const handleBlockDuplicate = useCallback(
     (blockId: string) => {
-      updateBlockTree(blockId, (_, block) => ({
-        insertAfter: { ...cloneBlock(block), id: generateId(`${block.type}`) },
-      }));
+      updateBlockTree(blockId, (_, block) => {
+        if (!block) return {};
+        return {
+          insertAfter: { ...cloneBlock(block), id: generateId(`${block.type}`) },
+        };
+      });
     },
     [updateBlockTree]
   );
@@ -500,6 +708,49 @@ export default function PaperPage() {
     [updateSections]
   );
 
+  const handleBlockAddComponent = useCallback(
+    (blockId: string, type: BlockContent['type']) => {
+      let newBlockId: string | null = null;
+
+      updateSections((sections) => {
+        let touched = false;
+
+        const walk = (nodes: Section[]): Section[] =>
+          nodes.map((section) => {
+            const idx = section.content.findIndex((block) => block.id === blockId);
+            let nextSection = section;
+
+            if (idx !== -1) {
+              const newBlock = createBlock(type, lang);
+              newBlockId = newBlock.id;
+              const nextContent = [...section.content];
+              nextContent.splice(idx + 1, 0, newBlock);
+              nextSection = { ...section, content: nextContent };
+              touched = true;
+            }
+
+            if (section.subsections?.length) {
+              const nextSubsections = walk(section.subsections);
+              if (nextSubsections !== section.subsections) {
+                nextSection = { ...nextSection, subsections: nextSubsections };
+                touched = true;
+              }
+            }
+
+            return nextSection;
+          });
+
+        const nextSections = walk(sections);
+        return { sections: touched ? nextSections : sections, touched };
+      });
+
+      if (newBlockId) {
+        setActiveBlockId(newBlockId);
+      }
+    },
+    [lang, setActiveBlockId, updateSections]
+  );
+
   const handlePreviewBlockClick = useCallback((blockId: string) => {
     // 只设置活动块ID，不再触发编辑状态
     setActiveBlockId(blockId);
@@ -507,9 +758,27 @@ export default function PaperPage() {
 
   const handleSave = useCallback(async () => {
     if (!editableDraft) return;
-    // TODO: 按需将 editableDraft 提交给后端
-    console.log('准备保存草稿：', editableDraft);
-  }, [editableDraft]);
+    
+    try {
+      console.log('准备保存草稿：', editableDraft);
+      
+      const result = await adminPaperService.updatePaper(paperId, editableDraft);
+      
+      if (result.bizCode === 0) { // BusinessCode.SUCCESS = 0
+        console.log('保存成功：', result.data);
+        // 更新本地状态
+        // TODO: 更新本地paper状态
+        setHasUnsavedChanges(false);
+      } else {
+        console.error('保存失败：', result.bizMessage);
+        // 显示错误提示
+        alert(`保存失败：${result.bizMessage}`);
+      }
+    } catch (error) {
+      console.error('保存过程中出错：', error);
+      alert('保存过程中出错，请稍后重试');
+    }
+  }, [editableDraft, paperId, setHasUnsavedChanges]);
 
   if (isLoading) {
     return (
@@ -600,6 +869,7 @@ export default function PaperPage() {
                 onBlockInsert={handleBlockInsert}
                 onBlockMove={handleBlockMove}
                 onBlockAppendSubsection={handleBlockAppendSubsection}
+                onBlockAddComponent={handleBlockAddComponent}
               />
               <PaperReferences
                 references={displayContent.references}

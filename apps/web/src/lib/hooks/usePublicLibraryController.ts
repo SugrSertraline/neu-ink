@@ -1,0 +1,451 @@
+'use client';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';
+import { toast } from 'sonner';
+
+import { useAuth } from '@/contexts/AuthContext';
+import { useTabStore } from '@/stores/useTabStore';
+import { usePaperService } from '@/lib/services/paper';
+import { isSuccess } from '@/lib/http';
+import type {
+  Author,
+  Paper,
+  PaperListData,
+  PaperListItem,
+  ParseStatus,
+  ViewerSource,
+} from '@/types/paper';
+
+type ViewMode = 'card' | 'table' | 'compact';
+
+type PublicLibraryFilters = {
+  page?: number;
+  pageSize?: number;
+  limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
+  search?: string;
+  articleType?: string;
+  year?: number;
+  yearFrom?: number;
+  yearTo?: number;
+  sciQuartile?: string;
+  casQuartile?: string;
+  ccfRank?: string;
+  tag?: string;
+  author?: string;
+  publication?: string;
+  doi?: string;
+};
+
+type AdminLibraryFilters = PublicLibraryFilters & {
+  isPublic?: boolean;
+  parseStatus?: ParseStatus['status'];
+  createdBy?: string;
+};
+
+const PARSE_STATUS_SET = new Set<ParseStatus['status']>([
+  'pending',
+  'parsing',
+  'completed',
+  'failed',
+]);
+
+function extractPaperListData(payload: unknown): PaperListData | null {
+  if (!payload || typeof payload !== 'object') return null;
+
+  if (Array.isArray((payload as PaperListData).papers)) {
+    return payload as PaperListData;
+  }
+
+  const nested = (payload as { data?: unknown }).data;
+  if (nested && typeof nested === 'object' && Array.isArray((nested as PaperListData).papers)) {
+    return nested as PaperListData;
+  }
+
+  return null;
+}
+
+function transformPaperToListItem(paper: Paper): PaperListItem {
+  const metadata = paper.metadata ?? ({} as Paper['metadata']);
+
+  return {
+    id: paper.id,
+    isPublic: paper.isPublic,
+    createdBy: paper.createdBy,
+    createdAt: paper.createdAt,
+    updatedAt: paper.updatedAt,
+    parseStatus: paper.parseStatus,
+    title: metadata.title ?? '未命名论文',
+    titleZh: metadata.titleZh,
+    shortTitle: metadata.shortTitle,
+    authors: metadata.authors ?? [],
+    publication: metadata.publication,
+    year: metadata.year,
+    date: metadata.date,
+    doi: metadata.doi,
+    articleType: metadata.articleType,
+    sciQuartile: metadata.sciQuartile,
+    casQuartile: metadata.casQuartile,
+    ccfRank: metadata.ccfRank,
+    impactFactor: metadata.impactFactor,
+    tags: metadata.tags ?? [],
+  };
+}
+
+function matchesImpactPriority(impactFactor: number | undefined, level: string): boolean {
+  if (!impactFactor || Number.isNaN(impactFactor)) return false;
+
+  switch (level) {
+    case 'high':
+      return impactFactor >= 10;
+    case 'medium':
+      return impactFactor >= 5 && impactFactor < 10;
+    case 'low':
+      return impactFactor > 0 && impactFactor < 5;
+    default:
+      return true;
+  }
+}
+
+export function usePublicLibraryController() {
+  const router = useRouter();
+  const { isAuthenticated, isAdmin } = useAuth();
+  const { addTab, setActiveTab } = useTabStore();
+  const { publicPaperService, adminPaperService, userPaperService, paperCache } = usePaperService();
+
+  const [viewMode, setViewMode] = useState<ViewMode>('card');
+
+  const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
+
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [filterPriority, setFilterPriority] = useState('all');
+  const [filterType, setFilterType] = useState('all');
+  const [filterSciQuartile, setFilterSciQuartile] = useState('all');
+  const [filterCasQuartile, setFilterCasQuartile] = useState('all');
+  const [filterCcfRank, setFilterCcfRank] = useState('all');
+  const [filterYear, setFilterYear] = useState('all');
+  const [showAdvancedFilter, setShowAdvancedFilter] = useState(false);
+
+  const [papers, setPapers] = useState<PaperListItem[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [totalCount, setTotalCount] = useState(0);
+  const [availableYears, setAvailableYears] = useState<number[]>([]);
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+
+  const [showLoginHint, setShowLoginHint] = useState(false);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => setDebouncedSearchTerm(searchTerm), 500);
+    return () => window.clearTimeout(timer);
+  }, [searchTerm]);
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [
+    debouncedSearchTerm,
+    filterStatus,
+    filterPriority,
+    filterType,
+    filterSciQuartile,
+    filterCasQuartile,
+    filterCcfRank,
+    filterYear,
+  ]);
+
+  const parseStatusFilter = useMemo<ParseStatus['status'] | undefined>(() => {
+    if (PARSE_STATUS_SET.has(filterStatus as ParseStatus['status'])) {
+      return filterStatus as ParseStatus['status'];
+    }
+    return undefined;
+  }, [filterStatus]);
+
+  const applyClientSideFilters = useCallback(
+    (items: PaperListItem[]): PaperListItem[] => {
+      let result = items;
+
+      if (parseStatusFilter) {
+        result = result.filter(item => item.parseStatus?.status === parseStatusFilter);
+      }
+
+      if (filterPriority !== 'all') {
+        result = result.filter(item => matchesImpactPriority(item.impactFactor, filterPriority));
+      }
+
+      return result;
+    },
+    [filterPriority, parseStatusFilter],
+  );
+
+  const loadPapers = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const parsedYear = Number(filterYear);
+      const yearFilter =
+        filterYear === 'all' || Number.isNaN(parsedYear) ? undefined : parsedYear;
+
+      const baseFilters: PublicLibraryFilters = {
+        page: currentPage,
+        pageSize,
+        limit: pageSize,
+        search: debouncedSearchTerm || undefined,
+        articleType: filterType !== 'all' ? filterType : undefined,
+        year: yearFilter,
+        sciQuartile: filterSciQuartile !== 'all' ? filterSciQuartile : undefined,
+        casQuartile: filterCasQuartile !== 'all' ? filterCasQuartile : undefined,
+        ccfRank: filterCcfRank !== 'all' ? filterCcfRank : undefined,
+      };
+
+      const adminFilters: AdminLibraryFilters = {
+        ...baseFilters,
+        ...(parseStatusFilter ? { parseStatus: parseStatusFilter } : {}),
+      };
+
+      const response = isAdmin
+        ? await adminPaperService.getAdminPapers(adminFilters)
+        : await publicPaperService.getPublicPapers(baseFilters);
+
+      if (!isSuccess(response) || !response.data) {
+        throw new Error(response.bizMessage || response.topMessage || '获取论文列表失败');
+      }
+
+      const payload = extractPaperListData(response.data);
+      if (!payload) {
+        throw new Error('返回数据结构不符合预期');
+      }
+
+      const rawList = Array.isArray(payload.papers) ? payload.papers : [];
+      const mappedList = rawList.map(transformPaperToListItem);
+      const filteredList = applyClientSideFilters(mappedList);
+
+      setPapers(filteredList);
+      setTotalCount(payload.pagination?.total ?? mappedList.length);
+
+      const years = Array.from(
+        new Set(
+          mappedList
+            .map(item => item.year)
+            .filter((value): value is number => typeof value === 'number' && !Number.isNaN(value)),
+        ),
+      ).sort((a: number, b: number) => b - a);
+      setAvailableYears(years);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '加载失败';
+      setError(message);
+      setPapers([]);
+      setTotalCount(0);
+    } finally {
+      setLoading(false);
+    }
+  }, [
+    adminPaperService,
+    applyClientSideFilters,
+    currentPage,
+    debouncedSearchTerm,
+    filterCasQuartile,
+    filterCcfRank,
+    filterSciQuartile,
+    filterType,
+    filterYear,
+    isAdmin,
+    pageSize,
+    parseStatusFilter,
+    publicPaperService,
+  ]);
+
+  useEffect(() => {
+    void loadPapers();
+  }, [loadPapers]);
+
+  const requestLogin = useCallback(() => setShowLoginHint(true), []);
+  const dismissLoginHint = useCallback(() => setShowLoginHint(false), []);
+
+  const navigateToLogin = useCallback(() => {
+    setShowLoginHint(false);
+    router.push('/login');
+  }, [router]);
+
+  const openPaper = useCallback(
+    async (paper: PaperListItem) => {
+      if (!isAuthenticated) {
+        requestLogin();
+        return;
+      }
+
+      try {
+        let detail = paperCache.get(paper.id);
+        if (!detail) {
+          const res = await publicPaperService.getPublicPaperDetail(paper.id);
+          if (!isSuccess(res)) {
+            throw new Error(res.bizMessage || res.topMessage || '获取论文详情失败');
+          }
+          detail = res.data;
+          paperCache.set(paper.id, detail);
+        }
+
+        const tabId = `paper:${paper.id}`;
+        const path = `/paper/${paper.id}`;
+        const viewerSource: ViewerSource = isAdmin ? 'public-admin' : 'public-guest';
+
+        addTab({
+          id: tabId,
+          type: 'paper',
+          title: paper.title,
+          path,
+          data: {
+            paperId: paper.id,
+            source: viewerSource,
+            initialPaper: detail,
+          },
+        });
+
+        setActiveTab(tabId);
+        router.push(path);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '网络错误';
+        alert(`获取论文详情失败：${message}`);
+      }
+    },
+    [
+      addTab,
+      isAdmin,
+      isAuthenticated,
+      paperCache,
+      publicPaperService,
+      requestLogin,
+      router,
+      setActiveTab,
+    ],
+  );
+
+  const handleDeletePaper = useCallback(
+    async (paperId: string) => {
+      if (!isAdmin) return;
+
+      if (!window.confirm('确定要删除这篇论文吗？此操作不可撤销。')) return;
+
+      try {
+        const result = await adminPaperService.deletePaper(paperId);
+        if (!isSuccess(result)) {
+          throw new Error(result.bizMessage || result.topMessage || '删除失败');
+        }
+        await loadPapers();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '网络错误';
+        alert(`删除失败：${message}`);
+      }
+    },
+    [adminPaperService, isAdmin, loadPapers],
+  );
+
+  const handleAddToLibrary = useCallback(
+    async (paperId: string) => {
+      if (!isAuthenticated) {
+        requestLogin();
+        return;
+      }
+
+      try {
+        const result = await userPaperService.addToLibrary({
+          paperId,
+          extra: {
+            customTags: [],
+            readingStatus: 'unread',
+            priority: 'medium',
+          },
+        });
+
+        if (isSuccess(result)) {
+          toast.success('已成功添加到个人论文库');
+        } else {
+          toast.error(result.bizMessage || result.topMessage || '添加失败');
+        }
+      } catch (error) {
+        console.error('添加到个人论文库失败:', error);
+        toast.error('添加失败，请稍后重试');
+      }
+    },
+    [isAuthenticated, requestLogin, userPaperService],
+  );
+
+  const resetFilters = useCallback(() => {
+    setSearchTerm('');
+    setDebouncedSearchTerm('');
+    setFilterStatus('all');
+    setFilterPriority('all');
+    setFilterType('all');
+    setFilterSciQuartile('all');
+    setFilterCasQuartile('all');
+    setFilterCcfRank('all');
+    setFilterYear('all');
+    setCurrentPage(1);
+  }, []);
+
+  const toggleAdvancedFilter = useCallback(
+    () => setShowAdvancedFilter(current => !current),
+    [],
+  );
+
+  return {
+    // 基础能力
+    isAdmin,
+    isAuthenticated,
+
+    // 展示视图
+    viewMode,
+    setViewMode,
+
+    // 过滤器状态
+    searchTerm,
+    setSearchTerm,
+    filterStatus,
+    setFilterStatus,
+    filterPriority,
+    setFilterPriority,
+    filterType,
+    setFilterType,
+    filterSciQuartile,
+    setFilterSciQuartile,
+    filterCasQuartile,
+    setFilterCasQuartile,
+    filterCcfRank,
+    setFilterCcfRank,
+    filterYear,
+    setFilterYear,
+    showAdvancedFilter,
+    toggleAdvancedFilter,
+
+    // 列表数据
+    papers,
+    loading,
+    error,
+    totalCount,
+    availableYears,
+
+    // 分页
+    currentPage,
+    setCurrentPage,
+    pageSize,
+    setPageSize,
+
+    // 登录提示
+    showLoginHint,
+    requestLogin,
+    dismissLoginHint,
+    navigateToLogin,
+
+    // 操作
+    openPaper,
+    handleDeletePaper,
+    handleAddToLibrary,
+    resetFilters,
+    reload: loadPapers,
+  };
+}

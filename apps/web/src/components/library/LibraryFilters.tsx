@@ -1,3 +1,4 @@
+// apps/web/src/components/library/LibraryFilters.tsx
 'use client';
 
 import React from 'react';
@@ -8,7 +9,6 @@ import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
 
 interface LibraryFiltersProps {
-  // 基础筛选
   searchTerm: string;
   onSearchChange: (value: string) => void;
   filterStatus: string;
@@ -17,8 +17,6 @@ interface LibraryFiltersProps {
   onPriorityChange: (value: string) => void;
   filterType: string;
   onTypeChange: (value: string) => void;
-
-  // 高级筛选
   showAdvancedFilter: boolean;
   onToggleAdvancedFilter: () => void;
   filterSciQuartile: string;
@@ -31,7 +29,33 @@ interface LibraryFiltersProps {
   onYearChange: (value: string) => void;
   availableYears: (number | undefined)[];
   onResetFilters: () => void;
+  canFilterStatus?: boolean;
 }
+
+const STATUS_OPTIONS = [
+  { value: 'all', label: '全部状态' },
+  { value: 'pending', label: '待解析' },
+  { value: 'parsing', label: '解析中' },
+  { value: 'completed', label: '已完成' },
+  { value: 'failed', label: '解析失败' },
+];
+
+const PRIORITY_OPTIONS = [
+  { value: 'all', label: '全部优先级' },
+  { value: 'high', label: '影响力高 (IF≥10)' },
+  { value: 'medium', label: '影响力中 (5≤IF<10)' },
+  { value: 'low', label: '影响力低 (0<IF<5)' },
+];
+
+const ARTICLE_TYPE_OPTIONS = [
+  { value: 'all', label: '全部类型' },
+  { value: 'journal', label: '期刊' },
+  { value: 'conference', label: '会议' },
+  { value: 'preprint', label: '预印本' },
+  { value: 'book', label: '书籍' },
+  { value: 'thesis', label: '学位论文' },
+  { value: 'report', label: '技术报告' },
+];
 
 export default function LibraryFilters({
   searchTerm,
@@ -54,137 +78,128 @@ export default function LibraryFilters({
   onYearChange,
   availableYears,
   onResetFilters,
+  canFilterStatus = false,
 }: LibraryFiltersProps) {
-  // 检查是否有高级筛选被激活
-  const hasActiveAdvancedFilters = 
+  const hasActiveAdvancedFilters =
     filterSciQuartile !== 'all' ||
     filterCasQuartile !== 'all' ||
     filterCcfRank !== 'all' ||
     filterYear !== 'all';
 
-  // 检查是否有任何筛选被激活
-  const hasActiveFilters = 
+  const hasActiveFilters =
     searchTerm !== '' ||
-    filterStatus !== 'all' ||
+    (canFilterStatus && filterStatus !== 'all') ||
     filterPriority !== 'all' ||
     filterType !== 'all' ||
     hasActiveAdvancedFilters;
 
+  const effectiveYears = availableYears.filter(
+    (year): year is number => typeof year === 'number' && !Number.isNaN(year),
+  );
+
   return (
-    <div className="space-y-4 w-full">
-      {/* 主要筛选栏 */}
-      <div className="flex flex-col sm:flex-row gap-4 w-full">
-        {/* 搜索框 */}
-        <div className="relative flex-1 min-w-0">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
+    <div className="w-full space-y-4">
+      <div className="flex w-full flex-col gap-4 sm:flex-row">
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
           <Input
             placeholder="搜索标题、作者、期刊..."
             value={searchTerm}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-10 h-10 text-sm bg-white dark:bg-gray-800 border-gray-300 dark:border-gray-600 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all w-full"
+            onChange={event => onSearchChange(event.target.value)}
+            className="h-10 w-full min-w-0 bg-white pl-10 text-sm transition-all focus:border-transparent focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600"
           />
         </div>
 
-        {/* 筛选控件组 */}
-        <div className="flex flex-wrap gap-2 min-w-0">
-          {/* 状态筛选 */}
-          <select
-            value={filterStatus}
-            onChange={(e) => onStatusChange(e.target.value)}
-            className="px-3 py-2 h-10 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors min-w-[100px]"
-          >
-            <option value="all">全部状态</option>
-            <option value="unread">未读</option>
-            <option value="reading">阅读中</option>
-            <option value="finished">已完成</option>
-          </select>
+        <div className="flex min-w-0 flex-wrap gap-2">
+          {canFilterStatus && (
+            <select
+              value={filterStatus}
+              onChange={event => onStatusChange(event.target.value)}
+              className="h-10 min-w-[120px] rounded-md border border-gray-300 bg-white px-3 py-2 text-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-700"
+            >
+              {STATUS_OPTIONS.map(option => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+          )}
 
-          {/* 优先级筛选 */}
           <select
             value={filterPriority}
-            onChange={(e) => onPriorityChange(e.target.value)}
-            className="px-3 py-2 h-10 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors min-w-20"
+            onChange={event => onPriorityChange(event.target.value)}
+            className="h-10 min-w-[140px] rounded-md border border-gray-300 bg-white px-3 py-2 text-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-700"
           >
-            <option value="all">全部</option>
-            <option value="high">高</ option>
-            <option value="medium">中</option>
-            <option value="low">低</option>
+            {PRIORITY_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
 
-          {/* 类型筛选 */}
           <select
             value={filterType}
-            onChange={(e) => onTypeChange(e.target.value)}
-            className="px-3 py-2 h-10 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors min-w-[100px]"
+            onChange={event => onTypeChange(event.target.value)}
+            className="h-10 min-w-[120px] rounded-md border border-gray-300 bg-white px-3 py-2 text-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-700"
           >
-            <option value="all">全部类型</option>
-            <option value="journal">期刊</option>
-            <option value="conference">会议</option>
-            <option value="preprint">预印本</option>
-            <option value="book">书籍</option>
-            <option value="thesis">论文</option>
+            {ARTICLE_TYPE_OPTIONS.map(option => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
           </select>
 
-          {/* 高级筛选按钮 */}
           <Button
-            variant={hasActiveAdvancedFilters ? "default" : "outline"}
+            variant={hasActiveAdvancedFilters ? 'default' : 'outline'}
             size="sm"
             onClick={onToggleAdvancedFilter}
             className={cn(
-              "gap-2 h-10 px-4 text-sm transition-all duration-200",
-              hasActiveAdvancedFilters && "bg-blue-600 hover:bg-blue-700"
+              'h-10 gap-2 px-4 text-sm transition-all duration-200',
+              hasActiveAdvancedFilters && 'bg-blue-600 hover:bg-blue-700',
             )}
           >
-            <Filter className="w-4 h-4" />
+            <Filter className="h-4 w-4" />
             高级
             {hasActiveAdvancedFilters && (
-              <span className="w-2 h-2 rounded-full bg-white ml-1 shrink-0" />
+              <span className="ml-1 h-2 w-2 shrink-0 rounded-full bg-white" />
             )}
           </Button>
 
-          {/* 重置按钮 */}
           {hasActiveFilters && (
             <Button
               variant="outline"
               size="sm"
               onClick={onResetFilters}
-              className="gap-2 h-10 px-4 text-sm text-gray-600 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+              className="h-10 gap-2 px-4 text-sm text-gray-600 transition-colors hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
             >
-              <RotateCcw className="w-4 h-4" />
+              <RotateCcw className="h-4 w-4" />
               重置
             </Button>
           )}
         </div>
       </div>
 
-      {/* 高级筛选面板 */}
       {showAdvancedFilter && (
-        <div className="p-4 border rounded-lg bg-white dark:bg-gray-800 shadow-sm animate-in slide-in-from-top-1 duration-200">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="font-medium text-sm text-gray-900 dark:text-gray-100">
-              高级筛选
-            </h3>
+        <div className="animate-in slide-in-from-top-1 rounded-lg border bg-white p-4 shadow-sm duration-200 dark:border-gray-700 dark:bg-gray-800">
+          <div className="mb-4 flex items-center justify-between">
+            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">高级筛选</h3>
             <Button
               variant="ghost"
               size="sm"
               onClick={onToggleAdvancedFilter}
-              className="h-8 w-8 p-0 hover:bg-gray-200 dark:hover:bg-gray-700 transition-colors"
+              className="h-8 w-8 p-0 transition-colors hover:bg-gray-200 dark:hover:bg-gray-700"
             >
-              <X className="w-4 h-4" />
+              <X className="h-4 w-4" />
             </Button>
           </div>
 
-          {/* 筛选选项网格 */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-            {/* SCI分区 */}
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                SCI分区
-              </label>
+              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">SCI分区</label>
               <select
                 value={filterSciQuartile}
-                onChange={(e) => onSciQuartileChange(e.target.value)}
-                className="w-full px-3 py-2 h-9 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md"
+                onChange={event => onSciQuartileChange(event.target.value)}
+                className="h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
               >
                 <option value="all">全部</option>
                 <option value="Q1">Q1</option>
@@ -194,15 +209,14 @@ export default function LibraryFilters({
               </select>
             </div>
 
-            {/* 中科院分区 */}
             <div className="space-y-2">
               <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
                 中科院分区
               </label>
               <select
                 value={filterCasQuartile}
-                onChange={(e) => onCasQuartileChange(e.target.value)}
-                className="w-full px-3 py-2 h-9 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md"
+                onChange={event => onCasQuartileChange(event.target.value)}
+                className="h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
               >
                 <option value="all">全部</option>
                 <option value="1区">1区</option>
@@ -212,15 +226,14 @@ export default function LibraryFilters({
               </select>
             </div>
 
-            {/* CCF分级 */}
             <div className="space-y-2">
               <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
                 CCF分级
               </label>
               <select
                 value={filterCcfRank}
-                onChange={(e) => onCcfRankChange(e.target.value)}
-                className="w-full px-3 py-2 h-9 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md"
+                onChange={event => onCcfRankChange(event.target.value)}
+                className="h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
               >
                 <option value="all">全部</option>
                 <option value="A">A类</option>
@@ -229,18 +242,15 @@ export default function LibraryFilters({
               </select>
             </div>
 
-            {/* 年份筛选 */}
             <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                年份
-              </label>
+              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">年份</label>
               <select
                 value={filterYear}
-                onChange={(e) => onYearChange(e.target.value)}
-                className="w-full px-3 py-2 h-9 text-sm bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-md"
+                onChange={event => onYearChange(event.target.value)}
+                className="h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
               >
                 <option value="all">全部年份</option>
-                {availableYears.map(year => (
+                {effectiveYears.map(year => (
                   <option key={year} value={String(year)}>
                     {year}
                   </option>
@@ -251,42 +261,81 @@ export default function LibraryFilters({
         </div>
       )}
 
-      {/* 活动筛选标签 */}
       {hasActiveFilters && (
         <div className="flex flex-wrap gap-2">
           {searchTerm && (
             <Badge variant="outline" className="gap-1">
               搜索: {searchTerm}
-              <X 
-                className="w-3 h-3 cursor-pointer hover:text-red-500" 
+              <X
+                className="h-3 w-3 cursor-pointer hover:text-red-500"
                 onClick={() => onSearchChange('')}
               />
             </Badge>
           )}
-          {filterStatus !== 'all' && (
+          {canFilterStatus && filterStatus !== 'all' && (
             <Badge variant="outline" className="gap-1">
-              状态: {filterStatus}
-              <X 
-                className="w-3 h-3 cursor-pointer hover:text-red-500" 
+              状态:{' '}
+              {STATUS_OPTIONS.find(item => item.value === filterStatus)?.label ?? filterStatus}
+              <X
+                className="h-3 w-3 cursor-pointer hover:text-red-500"
                 onClick={() => onStatusChange('all')}
               />
             </Badge>
           )}
           {filterPriority !== 'all' && (
             <Badge variant="outline" className="gap-1">
-              优先级: {filterPriority}
-              <X 
-                className="w-3 h-3 cursor-pointer hover:text-red-500" 
+              优先级:{' '}
+              {PRIORITY_OPTIONS.find(item => item.value === filterPriority)?.label ??
+                filterPriority}
+              <X
+                className="h-3 w-3 cursor-pointer hover:text-red-500"
                 onClick={() => onPriorityChange('all')}
               />
             </Badge>
           )}
           {filterType !== 'all' && (
             <Badge variant="outline" className="gap-1">
-              类型: {filterType}
-              <X 
-                className="w-3 h-3 cursor-pointer hover:text-red-500" 
+              类型:{' '}
+              {ARTICLE_TYPE_OPTIONS.find(item => item.value === filterType)?.label ?? filterType}
+              <X
+                className="h-3 w-3 cursor-pointer hover:text-red-500"
                 onClick={() => onTypeChange('all')}
+              />
+            </Badge>
+          )}
+          {filterSciQuartile !== 'all' && (
+            <Badge variant="outline" className="gap-1">
+              SCI: {filterSciQuartile}
+              <X
+                className="h-3 w-3 cursor-pointer hover:text-red-500"
+                onClick={() => onSciQuartileChange('all')}
+              />
+            </Badge>
+          )}
+          {filterCasQuartile !== 'all' && (
+            <Badge variant="outline" className="gap-1">
+              中科院: {filterCasQuartile}
+              <X
+                className="h-3 w-3 cursor-pointer hover:text-red-500"
+                onClick={() => onCasQuartileChange('all')}
+              />
+            </Badge>
+          )}
+          {filterCcfRank !== 'all' && (
+            <Badge variant="outline" className="gap-1">
+              CCF: {filterCcfRank}
+              <X
+                className="h-3 w-3 cursor-pointer hover:text-red-500"
+                onClick={() => onCcfRankChange('all')}
+              />
+            </Badge>
+          )}
+          {filterYear !== 'all' && (
+            <Badge variant="outline" className="gap-1">
+              年份: {filterYear}
+              <X
+                className="h-3 w-3 cursor-pointer hover:text-red-500"
+                onClick={() => onYearChange('all')}
               />
             </Badge>
           )}

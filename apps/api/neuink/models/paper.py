@@ -60,7 +60,8 @@ class PaperModel:
         }
 
         self.collection.insert_one(paper)
-        return paper
+        # 返回前查询一次，确保不包含任何MongoDB特定对象
+        return self.find_by_id(paper_id)
 
     def find_by_id(self, paper_id: str) -> Optional[Dict[str, Any]]:
         """

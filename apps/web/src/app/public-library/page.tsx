@@ -1,3 +1,4 @@
+// apps/web/src/app/library/PublicLibraryPage.tsx
 'use client';
 
 import React from 'react';
@@ -14,6 +15,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTabStore } from '@/stores/useTabStore';
 import { usePaperService } from '@/lib/services/paper';
 import { isSuccess } from '@/lib/http';
+import { toast } from 'sonner';
 import {
   ParseStatus,
   Paper,
@@ -277,7 +279,7 @@ export default function PublicLibraryPage() {
       setShowLoginHint(true);
       return;
     }
-  
+
     try {
       let detail = paperCache.get(paper.id);
       if (!detail) {
@@ -288,10 +290,11 @@ export default function PublicLibraryPage() {
         detail = res.data;
         paperCache.set(paper.id, detail);
       }
-  
+
       const tabId = `paper:${paper.id}`;
       const path = `/paper/${paper.id}`;
-  
+      const viewerSource: ViewerSource = isAdmin ? 'public-admin' : 'public-guest';
+
       addTab({
         id: tabId,
         type: 'paper',
@@ -299,20 +302,19 @@ export default function PublicLibraryPage() {
         path,
         data: {
           paperId: paper.id,
-          source: 'public-guest' as ViewerSource,
+          source: viewerSource,
           initialPaper: detail,
         },
       });
-  
+
       setActiveTab(tabId);
       router.push(path);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : '网络错误';
+      const message = error instanceof Error ? error.message : '网络错误';
       alert(`获取论文详情失败：${message}`);
     }
   };
-  
+
   const handleDeletePaper = async (paperId: string) => {
     if (!isAdmin) return;
 
@@ -330,6 +332,7 @@ export default function PublicLibraryPage() {
     }
   };
 
+
   const handleAddToLibrary = async (paperId: string) => {
     if (!isAuthenticated) {
       setShowLoginHint(true);
@@ -339,15 +342,21 @@ export default function PublicLibraryPage() {
     try {
       const result = await userPaperService.addToLibrary({
         paperId,
-        extra: {},
+        extra: {
+          customTags: [],
+          readingStatus: 'unread',
+          priority: 'medium'
+        },
       });
-      if (!isSuccess(result)) {
-        throw new Error(result.bizMessage || result.topMessage || '添加失败');
+      
+      if (isSuccess(result)) {
+        toast.success('已成功添加到个人论文库');
+      } else {
+        toast.error(result.bizMessage || result.topMessage || '添加失败');
       }
-      alert('已添加到个人论文库');
     } catch (error) {
-      const message = error instanceof Error ? error.message : '网络错误';
-      alert(`添加失败：${message}`);
+      console.error('添加到个人论文库失败:', error);
+      toast.error('添加失败，请稍后重试');
     }
   };
 
@@ -367,34 +376,37 @@ export default function PublicLibraryPage() {
   return (
     <div className="flex h-full flex-col">
       {showLoginHint && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-          <div className="mx-4 max-w-md animate-in fade-in zoom-in rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800">
-            <div className="text-center">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
-                <Library className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-              </div>
-              <h3 className="mb-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
-                需要登录
-              </h3>
-              <p className="mb-4 text-gray-600 dark:text-gray-400">
-                查看论文详情或执行该操作前,请先登录账号
-              </p>
-              <div className="flex justify-center gap-3">
-                <Button variant="outline" onClick={() => setShowLoginHint(false)}>
-                  取消
-                </Button>
-                <Button
-                  onClick={() => {
-                    setShowLoginHint(false);
-                    router.push('/login');
-                  }}
-                >
-                  立即登录
-                </Button>
+        <>
+          <div className="fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-sm transition-opacity" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center">
+            <div className="mx-4 max-w-md animate-in fade-in zoom-in rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800">
+              <div className="text-center">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
+                  <Library className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                </div>
+                <h3 className="mb-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  需要登录
+                </h3>
+                <p className="mb-4 text-gray-600 dark:text-gray-400">
+                  查看论文详情或执行该操作前，请先登录账号
+                </p>
+                <div className="flex justify-center gap-3">
+                  <Button variant="outline" onClick={() => setShowLoginHint(false)}>
+                    取消
+                  </Button>
+                  <Button
+                    onClick={() => {
+                      setShowLoginHint(false);
+                      router.push('/login');
+                    }}
+                  >
+                    立即登录
+                  </Button>
+                </div>
               </div>
             </div>
           </div>
-        </div>
+        </>
       )}
 
       <div className="flex-none border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
@@ -448,6 +460,7 @@ export default function PublicLibraryPage() {
             onYearChange={setFilterYear}
             availableYears={availableYears}
             onResetFilters={resetFilters}
+            canFilterStatus={isAdmin}
           />
         </div>
       </div>
@@ -500,9 +513,7 @@ export default function PublicLibraryPage() {
                       onClick={() => openPaper(paper)}
                       onDelete={isAdmin ? () => handleDeletePaper(paper.id) : undefined}
                       onAddToLibrary={
-                        !isAdmin && isAuthenticated
-                          ? () => handleAddToLibrary(paper.id)
-                          : undefined
+                        isAuthenticated ? () => handleAddToLibrary(paper.id) : undefined
                       }
                       showLoginRequired={!isAuthenticated}
                     />
@@ -541,9 +552,7 @@ export default function PublicLibraryPage() {
                           </span>
                         )}
                         {paper.impactFactor && (
-                          <span className="text-xs text-gray-500">
-                            IF: {paper.impactFactor}
-                          </span>
+                          <span className="text-xs text-gray-500">IF: {paper.impactFactor}</span>
                         )}
                       </div>
                     </div>
@@ -569,14 +578,17 @@ export default function PublicLibraryPage() {
       </div>
 
       {showCreateDialog && (
-        <CreatePaperDialog
-          open={showCreateDialog}
-          onClose={() => setShowCreateDialog(false)}
-          onSuccess={() => {
-            setShowCreateDialog(false);
-            void loadPapers();
-          }}
-        />
+        <>
+          <div className="fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-md transition-opacity" />
+          <CreatePaperDialog
+            open={showCreateDialog}
+            onClose={() => setShowCreateDialog(false)}
+            onSuccess={() => {
+              setShowCreateDialog(false);
+              void loadPapers();
+            }}
+          />
+        </>
       )}
     </div>
   );

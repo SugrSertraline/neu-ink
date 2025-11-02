@@ -2,6 +2,13 @@
 
 import { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 
+type SwitchToEditOptions = {
+  beforeSwitch?: () => void;
+  onRequestSave?: (context: { currentId: string; targetId: string }) => void;
+};
+
+type SaveFunction = () => Promise<boolean>;
+
 interface EditingContextType {
   currentEditingId: string | null;
   setEditingId: (id: string | null) => void;
@@ -9,7 +16,9 @@ interface EditingContextType {
   clearEditing: () => void;
   hasUnsavedChanges: boolean;
   setHasUnsavedChanges: (hasChanges: boolean) => void;
-  switchToEdit: (id: string, onConfirm?: () => void) => void;
+  switchToEdit: (id: string, options?: SwitchToEditOptions) => boolean;
+  saveFunction?: SaveFunction;
+  setSaveFunction?: (fn: SaveFunction) => void;
 }
 
 const EditingContext = createContext<EditingContextType | undefined>(undefined);
@@ -21,39 +30,49 @@ interface EditingProviderProps {
 export function EditingProvider({ children }: EditingProviderProps) {
   const [currentEditingId, setCurrentEditingId] = useState<string | null>(null);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [saveFunction, setSaveFunction] = useState<SaveFunction | undefined>(undefined);
 
-  const setEditingId = (id: string | null) => {
+  const setEditingId = useCallback((id: string | null) => {
     setCurrentEditingId(id);
     setHasUnsavedChanges(false);
-  };
+  }, []);
 
-  const isEditing = (id: string) => {
-    return currentEditingId === id;
-  };
+  const isEditing = useCallback(
+    (id: string) => currentEditingId === id,
+    [currentEditingId],
+  );
 
-  const clearEditing = () => {
+  const clearEditing = useCallback(() => {
     setCurrentEditingId(null);
     setHasUnsavedChanges(false);
-  };
+  }, []);
 
-  const switchToEdit = useCallback((id: string, onConfirm?: () => void) => {
-    if (currentEditingId === id) return;
-    
-    if (currentEditingId && hasUnsavedChanges) {
-      // 如果有未保存的更改，显示确认对话框
-      const shouldSwitch = window.confirm('当前编辑的内容尚未保存，是否要放弃更改并编辑其他内容？');
-      if (!shouldSwitch) return;
-      
-      // 如果用户确认切换，先调用确认回调
-      if (onConfirm) onConfirm();
-    }
-    
-    // 切换到新的编辑元素
-    setCurrentEditingId(id);
-    setHasUnsavedChanges(false);
-  }, [currentEditingId, hasUnsavedChanges]);
+  const switchToEdit = useCallback(
+    (targetId: string, options: SwitchToEditOptions = {}) => {
+      if (currentEditingId === targetId) {
+        return true;
+      }
 
-  const value = {
+      if (currentEditingId && hasUnsavedChanges) {
+        if (options.onRequestSave) {
+          options.onRequestSave({ currentId: currentEditingId, targetId });
+          setHasUnsavedChanges(false);
+        } else {
+          const abandon = window.confirm('当前编辑的内容尚未保存，确认要放弃更改并切换吗？');
+          if (!abandon) return false;
+          setHasUnsavedChanges(false);
+        }
+      }
+
+      options.beforeSwitch?.();
+      setCurrentEditingId(targetId);
+      setHasUnsavedChanges(false);
+      return true;
+    },
+    [currentEditingId, hasUnsavedChanges, saveFunction],
+  );
+
+  const value: EditingContextType = {
     currentEditingId,
     setEditingId,
     isEditing,
@@ -61,13 +80,11 @@ export function EditingProvider({ children }: EditingProviderProps) {
     hasUnsavedChanges,
     setHasUnsavedChanges,
     switchToEdit,
+    saveFunction,
+    setSaveFunction,
   };
 
-  return (
-    <EditingContext.Provider value={value}>
-      {children}
-    </EditingContext.Provider>
-  );
+  return <EditingContext.Provider value={value}>{children}</EditingContext.Provider>;
 }
 
 export function useEditingState() {

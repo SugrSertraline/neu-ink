@@ -1,11 +1,6 @@
 'use client';
 
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import type {
   Section,
   InlineContent,
@@ -43,10 +38,14 @@ interface PaperContentProps {
   onBlockInsert?: (blockId: string, position: 'above' | 'below') => void;
   onBlockMove?: (blockId: string, direction: 'up' | 'down') => void;
   onBlockAppendSubsection?: (blockId: string) => void;
+  onBlockAddComponent?: (blockId: string, type: BlockContent['type']) => void;
 }
 
-/** 带 content 的块类型 + 类型守卫 */
 type ContentBlock = HeadingBlock | ParagraphBlock | QuoteBlock;
+
+const cloneBlock = <T extends BlockContent>(block: T): T =>
+  JSON.parse(JSON.stringify(block));
+
 function hasContent(block: BlockContent): block is ContentBlock {
   return block.type === 'heading' || block.type === 'paragraph' || block.type === 'quote';
 }
@@ -71,6 +70,7 @@ export default function PaperContent({
   onBlockInsert,
   onBlockMove,
   onBlockAppendSubsection,
+  onBlockAddComponent,
 }: PaperContentProps) {
   const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -80,10 +80,7 @@ export default function PaperContent({
     const re = new RegExp(`(${escapeRegExp(q)})`, 'gi');
     return text.split(re).map((part, i) =>
       part.toLowerCase() === q.toLowerCase() ? (
-        <mark
-          key={i}
-          className="bg-yellow-200 dark:bg-yellow-700 text-gray-900 dark:text-white"
-        >
+        <mark key={i} className="bg-yellow-200 dark:bg-yellow-700 text-gray-900 dark:text-white">
           {part}
         </mark>
       ) : (
@@ -207,11 +204,7 @@ export default function PaperContent({
   };
 
   const traverseSections = useCallback(
-    (
-      nodes: Section[],
-      visitor: (section: Section, path: number[]) => void,
-      path: number[] = [],
-    ) => {
+    (nodes: Section[], visitor: (section: Section, path: number[]) => void, path: number[] = []) => {
       nodes.forEach((section, index) => {
         const nextPath = [...path, index + 1];
         visitor(section, nextPath);
@@ -241,19 +234,14 @@ export default function PaperContent({
 
     setSearchResults(results);
     setCurrentSearchIndex(0);
-  }, [
-    searchQuery,
-    sections,
-    traverseSections,
-    setSearchResults,
-    setCurrentSearchIndex,
-  ]);
+  }, [searchQuery, sections, traverseSections, setSearchResults, setCurrentSearchIndex]);
 
   const generateSectionNumber = (path: number[]): string => path.join('.');
 
   const { canEditContent } = usePaperEditPermissionsContext();
-  const { isEditing, setEditingId, clearEditing, hasUnsavedChanges, setHasUnsavedChanges, switchToEdit } = useEditingState();
+  const { isEditing, clearEditing, setHasUnsavedChanges, switchToEdit } = useEditingState();
   const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
+  const [hoveredSectionId, setHoveredSectionId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!canEditContent) {
@@ -282,32 +270,44 @@ export default function PaperContent({
 
   const handleBlockEditStart = useCallback(
     (blockId: string) => {
-      switchToEdit(blockId, () => {
-        // 如果用户确认切换，先保存当前的section编辑状态
-        if (renamingSectionId) {
-          setRenamingSectionId(null);
-        }
+      const switched = switchToEdit(blockId, {
+        beforeSwitch: () => {
+          if (renamingSectionId && renamingSectionId !== blockId) {
+            setRenamingSectionId(null);
+          }
+        },
+        onRequestSave: ({ currentId, targetId }) => {
+          // TODO: auto-save pending block
+        },
       });
+      if (!switched) return;
+      setActiveBlockId(blockId);
     },
-    [switchToEdit, renamingSectionId]
+    [switchToEdit, renamingSectionId, setActiveBlockId],
   );
 
   const handleSectionEditStart = useCallback(
     (sectionId: string) => {
-      switchToEdit(sectionId, () => {
-        // 如果用户确认切换，先保存当前的section编辑状态
-        if (renamingSectionId) {
-          setRenamingSectionId(null);
-        }
+      const switched = switchToEdit(sectionId, {
+        beforeSwitch: () => {
+          if (renamingSectionId && renamingSectionId !== sectionId) {
+            setRenamingSectionId(null);
+          }
+        },
+        onRequestSave: ({ currentId, targetId }) => {
+          // TODO: auto-save pending section
+        },
       });
+      if (!switched) return;
+      setRenamingSectionId(sectionId);
     },
-    [switchToEdit, renamingSectionId]
+    [switchToEdit, renamingSectionId],
   );
 
   const renderedTree = useMemo(() => {
     const renderSection = (section: Section, path: number[]): React.ReactNode => {
       const sectionNumber = generateSectionNumber(path);
-      const hasZh = !!section.title?.zh?.trim();
+      const hasZhTitle = !!section.title?.zh?.trim();
       const normalizedZh = (section.title?.zh ?? '').trim();
       const sectionMargin = Math.max(0, (path.length - 1) * 24);
       const isRenaming = renamingSectionId === section.id;
@@ -320,15 +320,8 @@ export default function PaperContent({
           style={{ marginLeft: sectionMargin }}
         >
           <SectionContextMenu
-            onRename={
-              canEditContent ? () => {
-                handleSectionEditStart(section.id);
-                setRenamingSectionId(section.id);
-              } : undefined
-            }
-            onAddSubsection={
-              canEditContent ? () => onSectionAddSubsection?.(section.id) : undefined
-            }
+            onRename={canEditContent ? () => handleSectionEditStart(section.id) : undefined}
+            onAddSubsection={canEditContent ? () => onSectionAddSubsection?.(section.id) : undefined}
             onDelete={
               canEditContent
                 ? () => {
@@ -340,14 +333,18 @@ export default function PaperContent({
                 : undefined
             }
           >
-            <div className="flex items-baseline gap-3 flex-wrap cursor-context-menu">
-              <span className="text-blue-600 dark:text-blue-400 font-semibold">
-                {sectionNumber}.
-              </span>
+            <div
+              className={`flex items-baseline gap-3 flex-wrap cursor-context-menu rounded-md transition-colors ${
+                hoveredSectionId === section.id ? 'bg-gray-100 dark:bg-gray-800' : ''
+              }`}
+              onMouseEnter={() => setHoveredSectionId(section.id)}
+              onMouseLeave={() => setHoveredSectionId(null)}
+            >
+              <span className="text-blue-600 dark:text-blue-400 font-semibold">{sectionNumber}.</span>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-baseline gap-3">
                 <span>{highlightText(section.title?.en ?? '', searchQuery)}</span>
                 <span className="text-gray-400 mx-1">/</span>
-                {hasZh ? (
+                {hasZhTitle ? (
                   <span className="rounded px-1 bg-gray-50 text-gray-700">
                     {highlightText(normalizedZh, searchQuery)}
                   </span>
@@ -395,27 +392,21 @@ export default function PaperContent({
                         canEditContent
                           ? () => {
                               handleBlockEditStart(block.id);
-                              setActiveBlockId(block.id);
                             }
                           : undefined
                       }
-                      onInsertAbove={
-                        canEditContent ? () => onBlockInsert?.(block.id, 'above') : undefined
-                      }
-                      onInsertBelow={
-                        canEditContent ? () => onBlockInsert?.(block.id, 'below') : undefined
-                      }
-                      onMoveUp={
-                        canEditContent ? () => onBlockMove?.(block.id, 'up') : undefined
-                      }
-                      onMoveDown={
-                        canEditContent ? () => onBlockMove?.(block.id, 'down') : undefined
-                      }
-                      onDuplicate={
-                        canEditContent ? () => onBlockDuplicate?.(block.id) : undefined
-                      }
+                      onInsertAbove={canEditContent ? () => onBlockInsert?.(block.id, 'above') : undefined}
+                      onInsertBelow={canEditContent ? () => onBlockInsert?.(block.id, 'below') : undefined}
+                      onMoveUp={canEditContent ? () => onBlockMove?.(block.id, 'up') : undefined}
+                      onMoveDown={canEditContent ? () => onBlockMove?.(block.id, 'down') : undefined}
+                      onDuplicate={canEditContent ? () => onBlockDuplicate?.(block.id) : undefined}
                       onAddSubsectionAfter={
                         canEditContent ? () => onBlockAppendSubsection?.(block.id) : undefined
+                      }
+                      onAddComponentAfter={
+                        canEditContent ? (type) => {
+                          onBlockAddComponent?.(block.id, type);
+                        } : undefined
                       }
                       onDelete={
                         canEditContent
@@ -431,17 +422,13 @@ export default function PaperContent({
                       <div
                         id={block.id}
                         onClick={() => {
-                          // 移除左键点击进入编辑状态的功能
-                          // 现在只能通过右键菜单或点击右上角的"编辑"按钮进入编辑状态
                           if (!onBlockClick) return;
                           const selection = window.getSelection();
                           if (selection && selection.toString()) return;
                           onBlockClick(block.id);
                         }}
                         className={`rounded-md transition-colors ${
-                          activeBlockId === block.id
-                            ? 'ring-2 ring-yellow-400 bg-yellow-50 dark:bg-yellow-900/20'
-                            : ''
+                          activeBlockId === block.id ? 'ring-2 ring-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : ''
                         }`}
                       >
                         <BlockRenderer
@@ -465,9 +452,7 @@ export default function PaperContent({
 
           {section.subsections?.length ? (
             <div className="space-y-8">
-              {section.subsections.map((child, childIndex) =>
-                renderSection(child, [...path, childIndex + 1]),
-              )}
+              {section.subsections.map((child, childIndex) => renderSection(child, [...path, childIndex + 1]))}
             </div>
           ) : null}
         </section>
@@ -493,6 +478,10 @@ export default function PaperContent({
     onBlockMove,
     onBlockAppendSubsection,
     handleSectionRenameConfirm,
+    handleBlockEditStart,
+    isEditing,
+    clearEditing,
+    contentRef,
   ]);
 
   return <div className="space-y-8">{renderedTree}</div>;
@@ -511,13 +500,17 @@ function SectionTitleInlineEditor({
 }) {
   const [en, setEn] = useState(initialTitle.en ?? '');
   const [zh, setZh] = useState(initialTitle.zh ?? '');
+  const { setHasUnsavedChanges } = useEditingState();
+
+  useEffect(() => {
+    const hasChanges = en !== (initialTitle.en ?? '') || zh !== (initialTitle.zh ?? '');
+    setHasUnsavedChanges(hasChanges);
+  }, [en, zh, initialTitle, setHasUnsavedChanges]);
 
   return (
     <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50/70 p-4 shadow-sm space-y-3">
       <div className="space-y-1">
-        <label className="block text-xs font-semibold text-blue-600">
-          English Title
-        </label>
+        <label className="block text-xs font-semibold text-blue-600">English Title</label>
         <input
           className="w-full rounded border border-blue-200 px-3 py-2 text-sm"
           value={en}
@@ -525,23 +518,19 @@ function SectionTitleInlineEditor({
           placeholder="English title"
         />
       </div>
-      {lang === 'both' && (
-        <div className="space-y-1">
-          <label className="block text-xs font-semibold text-blue-600">
-            中文标题
-          </label>
-          <input
-            className="w-full rounded border border-blue-200 px-3 py-2 text-sm"
-            value={zh}
-            onChange={(event) => setZh(event.target.value)}
-            placeholder="中文标题"
-          />
-        </div>
-      )}
+      <div className="space-y-1">
+        <label className="block text-xs font-semibold text-blue-600">中文标题</label>
+        <input
+          className="w-full rounded border border-blue-200 px-3 py-2 text-sm"
+          value={zh}
+          onChange={(event) => setZh(event.target.value)}
+          placeholder="中文标题"
+        />
+      </div>
       <div className="flex justify-end gap-2">
         <button
           type="button"
-          className="rounded-full bg-white px-4 py-1.5 text-sm text-blue-600 hover:bg-blue-100"
+          className="rounded-full bg白 px-4 py-1.5 text-sm text-blue-600 hover:bg-blue-100"
           onClick={onCancel}
         >
           取消
@@ -551,7 +540,7 @@ function SectionTitleInlineEditor({
           className="rounded-full bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
           onClick={() => onConfirm({ en, zh })}
         >
-          保存标题
+          完成编辑
         </button>
       </div>
     </div>
@@ -632,26 +621,22 @@ function InlineBlockEditor({
               }
               minRows={draft.type === 'heading' ? 2 : 4}
             />
-            {allowZh && (
-              <TextAreaField
-                label="中文内容"
-                value={inlineToPlain(b.content?.zh)}
-                onChange={(value) =>
-                  setDraft((prev) => {
-                    const p = prev as ContentBlock;
-                    const nextContent = { ...(p.content ?? {}), zh: plainToInline(value) };
-                    const next: ContentBlock = { ...p, content: nextContent };
-                    return next as BlockContent;
-                  })
-                }
-                minRows={draft.type === 'heading' ? 2 : 4}
-              />
-            )}
+            <TextAreaField
+              label="中文内容"
+              value={inlineToPlain(b.content?.zh)}
+              onChange={(value) =>
+                setDraft((prev) => {
+                  const p = prev as ContentBlock;
+                  const nextContent = { ...(p.content ?? {}), zh: plainToInline(value) };
+                  const next: ContentBlock = { ...p, content: nextContent };
+                  return next as BlockContent;
+                })
+              }
+              minRows={draft.type === 'heading' ? 2 : 4}
+            />
             {draft.type === 'quote' && (
               <div className="space-y-1">
-                <label className="block text-xs font-semibold text-blue-600">
-                  引用来源
-                </label>
+                <label className="block text-xs font-semibold text-blue-600">引用来源</label>
                 <input
                   value={(draft as any).author ?? ''}
                   onChange={(event) =>
@@ -688,9 +673,7 @@ function InlineBlockEditor({
         return (
           <div className="space-y-3">
             <div className="space-y-1">
-              <label className="block text-xs font-semibold text-blue-600">
-                语言
-              </label>
+              <label className="block text-xs font-semibold text-blue-600">语言</label>
               <input
                 value={(draft as any).language ?? ''}
                 onChange={(event) =>
@@ -739,7 +722,7 @@ function InlineBlockEditor({
         </button>
         <button
           type="button"
-          className="rounded-full bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
+          className="rounded-full bg-blue-600 px-4 py-1.5 text-sm text白 hover:bg-blue-700"
           onClick={commit}
         >
           保存
@@ -766,15 +749,11 @@ function TextAreaField({
 }) {
   return (
     <div className="space-y-1">
-      <label className="block text-xs font-semibold text-blue-600">
-        {label}
-      </label>
+      <label className="block text-xs font-semibold text-blue-600">{label}</label>
       <textarea
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        className={`w-full rounded border border-blue-200 px-3 py-2 text-sm ${
-          monospace ? 'font-mono' : ''
-        }`}
+        className={`w-full rounded border border-blue-200 px-3 py-2 text-sm ${monospace ? 'font-mono' : ''}`}
         rows={minRows}
         placeholder={placeholder}
       />
@@ -806,8 +785,4 @@ function plainToInline(text: string): InlineContent[] {
   const trimmed = text ?? '';
   if (!trimmed) return [];
   return [{ type: 'text', content: trimmed }];
-}
-
-function cloneBlock(block: BlockContent): BlockContent {
-  return JSON.parse(JSON.stringify(block));
 }
