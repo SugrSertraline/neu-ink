@@ -1,3 +1,4 @@
+// apps/web/src/components/paper/PaperContextMenus.tsx
 'use client';
 
 import React, {
@@ -32,9 +33,17 @@ interface SubmenuProps {
   submenu: MenuEntry[];
   parentLabel: string;
   onClose: () => void;
+  onPointerEnter: () => void;
+  onPointerLeave: () => void;
 }
 
-const Submenu: React.FC<SubmenuProps> = ({ submenu, parentLabel, onClose }) => {
+const Submenu: React.FC<SubmenuProps> = ({
+  submenu,
+  parentLabel,
+  onClose,
+  onPointerEnter,
+  onPointerLeave,
+}) => {
   const submenuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: 0, left: 0 });
 
@@ -60,14 +69,10 @@ const Submenu: React.FC<SubmenuProps> = ({ submenu, parentLabel, onClose }) => {
       ref={submenuRef}
       className="absolute min-w-48 rounded-md border border-gray-200 bg-white/95 p-1 shadow-xl backdrop-blur dark:border-gray-700 dark:bg-slate-900/95"
       style={{ top: position.top, left: position.left }}
-      onMouseEnter={() => {
-        // keep submenu open
-      }}
-      onMouseLeave={() => {
-        setTimeout(() => {
-          onClose();
-        }, 100);
-      }}
+      onMouseEnter={onPointerEnter}
+      onMouseLeave={onPointerLeave}
+      role="menu"
+      aria-label={`${parentLabel} submenu`}
     >
       {submenu.map((submenuItem, subIndex) =>
         submenuItem.kind === 'separator' ? (
@@ -109,20 +114,40 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ x: 0, y: 0 });
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
+  const submenuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const validEntries = useMemo(() => {
-    const filtered = entries.filter(entry =>
+    return entries.filter(entry =>
       entry.kind === 'separator'
         ? true
         : (Boolean(entry.onSelect) || Boolean(entry.submenu)) && !entry.disabled,
     );
-    return filtered;
   }, [entries]);
 
+  const clearSubmenuCloseTimer = useCallback(() => {
+    if (submenuCloseTimer.current !== null) {
+      window.clearTimeout(submenuCloseTimer.current);
+      submenuCloseTimer.current = null;
+    }
+  }, []);
+
+  const scheduleSubmenuClose = useCallback(() => {
+    clearSubmenuCloseTimer();
+    submenuCloseTimer.current = setTimeout(() => {
+      setOpenSubmenu(null);
+      submenuCloseTimer.current = null;
+    }, 160);
+  }, [clearSubmenuCloseTimer]);
+
   const closeMenu = useCallback(() => {
+    clearSubmenuCloseTimer();
     setOpen(false);
     setOpenSubmenu(null);
-  }, []);
+  }, [clearSubmenuCloseTimer]);
+
+  useEffect(() => {
+    return () => clearSubmenuCloseTimer();
+  }, [clearSubmenuCloseTimer]);
 
   useEffect(() => {
     if (!open) return;
@@ -153,9 +178,8 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
 
   const handleContextMenu = useCallback(
     (event: React.MouseEvent<HTMLElement>) => {
-      if (!validEntries.length) {
-        return;
-      }
+      if (!validEntries.length) return;
+
       event.preventDefault();
       event.stopPropagation();
 
@@ -225,9 +249,8 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
             className="fixed z-60000 min-w-48 rounded-md border border-gray-200 bg-white/95 p-1 shadow-xl backdrop-blur dark:border-gray-700 dark:bg-slate-900/95"
             style={{ top: coords.y, left: coords.x }}
             onMouseDown={e => e.stopPropagation()}
-            onMouseLeave={() => {
-              setOpenSubmenu(null);
-            }}
+            onMouseEnter={clearSubmenuCloseTimer}
+            onMouseLeave={scheduleSubmenuClose}
           >
             {validEntries.map((entry, index) =>
               entry.kind === 'separator' ? (
@@ -243,11 +266,15 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
                     className="flex w-full items-center justify-between rounded px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:text-gray-200 dark:hover:bg-slate-800"
                     onMouseEnter={() => {
                       if (entry.submenu) {
+                        clearSubmenuCloseTimer();
                         setOpenSubmenu(entry.label);
+                      } else {
+                        setOpenSubmenu(null);
                       }
                     }}
                     onClick={() => {
                       if (entry.submenu) {
+                        clearSubmenuCloseTimer();
                         setOpenSubmenu(
                           openSubmenu === entry.label ? null : entry.label,
                         );
@@ -278,7 +305,12 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
                     <Submenu
                       submenu={entry.submenu}
                       parentLabel={entry.label}
-                      onClose={() => setOpenSubmenu(null)}
+                      onClose={() => {
+                        clearSubmenuCloseTimer();
+                        closeMenu();
+                      }}
+                      onPointerEnter={clearSubmenuCloseTimer}
+                      onPointerLeave={scheduleSubmenuClose}
                     />
                   )}
                 </div>
@@ -300,26 +332,109 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
 interface SectionContextMenuProps {
   children: React.ReactNode;
   onRename?: MenuAction;
+  onAddSectionBefore?: MenuAction;
+  onAddSectionAfter?: MenuAction;
   onAddSubsection?: MenuAction;
+  onMoveUp?: MenuAction;
+  onMoveDown?: MenuAction;
   onDelete?: MenuAction;
 }
 
 export function SectionContextMenu({
   children,
   onRename,
+  onAddSectionBefore,
+  onAddSectionAfter,
   onAddSubsection,
+  onMoveUp,
+  onMoveDown,
   onDelete,
 }: SectionContextMenuProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
   if (!canEditContent) return <>{children}</>;
 
   const entries: MenuEntry[] = [];
-  if (onRename) entries.push({ kind: 'item', label: '重命名章节', onSelect: onRename });
-  if (onAddSubsection)
-    entries.push({ kind: 'item', label: '添加子章节', onSelect: onAddSubsection });
+
+  if (onRename) {
+    entries.push({ kind: 'item', label: '重命名章节', onSelect: onRename });
+  }
+
+  if (onAddSectionBefore || onAddSectionAfter) {
+    if (entries.length) entries.push({ kind: 'separator' });
+    if (onAddSectionBefore) {
+      entries.push({
+        kind: 'item',
+        label: '在上方添加章节',
+        onSelect: onAddSectionBefore,
+      });
+    }
+    if (onAddSectionAfter) {
+      entries.push({
+        kind: 'item',
+        label: '在下方添加章节',
+        onSelect: onAddSectionAfter,
+      });
+    }
+  }
+
+  if (onAddSubsection) {
+    if (entries.length) entries.push({ kind: 'separator' });
+    entries.push({
+      kind: 'item',
+      label: '添加子章节',
+      onSelect: onAddSubsection,
+    });
+  }
+
+  if (onMoveUp || onMoveDown) {
+    if (entries.length) entries.push({ kind: 'separator' });
+    if (onMoveUp) {
+      entries.push({
+        kind: 'item',
+        label: '上移章节',
+        onSelect: onMoveUp,
+      });
+    }
+    if (onMoveDown) {
+      entries.push({
+        kind: 'item',
+        label: '下移章节',
+        onSelect: onMoveDown,
+      });
+    }
+  }
+
   if (onDelete) {
     if (entries.length) entries.push({ kind: 'separator' });
     entries.push({ kind: 'item', label: '删除章节', onSelect: onDelete });
+  }
+
+  if (!entries.length) return <>{children}</>;
+
+  return <ContextMenuWrapper entries={entries}>{children}</ContextMenuWrapper>;
+}
+
+interface RootSectionContextMenuProps {
+  children: React.ReactNode;
+  onAddSection?: MenuAction;
+}
+
+export function RootSectionContextMenu({
+  children,
+  onAddSection,
+}: RootSectionContextMenuProps) {
+  const { canEditContent } = usePaperEditPermissionsContext();
+
+  const entries = useMemo(() => {
+    const list: MenuEntry[] = [];
+    if (onAddSection) {
+      list.push({ kind: 'item', label: '添加新章节', onSelect: onAddSection });
+    }
+    return list;
+  }, [onAddSection]);
+
+  if (!canEditContent || !entries.length) {
+    return <>{children}</>;
   }
 
   return <ContextMenuWrapper entries={entries}>{children}</ContextMenuWrapper>;
@@ -444,4 +559,104 @@ export function MetadataContextMenu({
   }
 
   return <ContextMenuWrapper entries={entries}>{children}</ContextMenuWrapper>;
+}
+
+interface ReferenceContextMenuProps {
+  children: React.ReactNode;
+  onEdit?: MenuAction;
+  onDuplicate?: MenuAction;
+  onInsertBelow?: MenuAction;
+  onMoveUp?: MenuAction;
+  onMoveDown?: MenuAction;
+  onDelete?: MenuAction;
+  onCopyCitation?: MenuAction;
+  onCopyDoi?: MenuAction;
+  onCopyUrl?: MenuAction;
+  onOpenLink?: MenuAction;
+}
+
+export function ReferenceContextMenu({
+  children,
+  onEdit,
+  onDuplicate,
+  onInsertBelow,
+  onMoveUp,
+  onMoveDown,
+  onDelete,
+  onCopyCitation,
+  onCopyDoi,
+  onCopyUrl,
+  onOpenLink,
+}: ReferenceContextMenuProps) {
+  const { canEditContent } = usePaperEditPermissionsContext();
+  if (!canEditContent) return <>{children}</>;
+
+  const entries: MenuEntry[] = [];
+
+  if (onEdit) {
+    entries.push({ kind: 'item', label: '编辑参考文献', onSelect: onEdit });
+  }
+  if (onDuplicate || onInsertBelow) {
+    if (entries.length) entries.push({ kind: 'separator' });
+    if (onDuplicate) {
+      entries.push({ kind: 'item', label: '复制此条参考文献', onSelect: onDuplicate });
+    }
+    if (onInsertBelow) {
+      entries.push({ kind: 'item', label: '在下方插入参考文献', onSelect: onInsertBelow });
+    }
+  }
+  if (onMoveUp || onMoveDown) {
+    if (entries.length) entries.push({ kind: 'separator' });
+    if (onMoveUp) {
+      entries.push({ kind: 'item', label: '上移此条参考文献', onSelect: onMoveUp });
+    }
+    if (onMoveDown) {
+      entries.push({ kind: 'item', label: '下移此条参考文献', onSelect: onMoveDown });
+    }
+  }
+  if (onCopyCitation || onCopyDoi || onCopyUrl) {
+    if (entries.length) entries.push({ kind: 'separator' });
+    if (onCopyCitation) {
+      entries.push({ kind: 'item', label: '复制引用文本', onSelect: onCopyCitation });
+    }
+    if (onCopyDoi) {
+      entries.push({ kind: 'item', label: '复制 DOI', onSelect: onCopyDoi });
+    }
+    if (onCopyUrl) {
+      entries.push({ kind: 'item', label: '复制链接地址', onSelect: onCopyUrl });
+    }
+  }
+  if (onOpenLink) {
+    if (entries.length) entries.push({ kind: 'separator' });
+    entries.push({ kind: 'item', label: '在新标签页打开链接', onSelect: onOpenLink });
+  }
+  if (onDelete) {
+    if (entries.length) entries.push({ kind: 'separator' });
+    entries.push({ kind: 'item', label: '删除参考文献', onSelect: onDelete });
+  }
+
+  if (!entries.length) return <>{children}</>;
+
+  return <ContextMenuWrapper entries={entries}>{children}</ContextMenuWrapper>;
+}
+
+interface RootReferenceContextMenuProps {
+  children: React.ReactNode;
+  onAddReference?: MenuAction;
+}
+
+export function RootReferenceContextMenu({
+  children,
+  onAddReference,
+}: RootReferenceContextMenuProps) {
+  const { canEditContent } = usePaperEditPermissionsContext();
+  if (!canEditContent || !onAddReference) return <>{children}</>;
+
+  return (
+    <ContextMenuWrapper
+      entries={[{ kind: 'item', label: '添加参考文献', onSelect: onAddReference }]}
+    >
+      {children}
+    </ContextMenuWrapper>
+  );
 }

@@ -11,6 +11,7 @@ import { MetadataContextMenu } from '@/components/paper/PaperContextMenus';
 import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
 import { useEditingState } from '@/stores/useEditingState';
 import MetadataEditor from './editor/MetadataEditor';
+import clsx from 'clsx';
 
 interface PaperMetadataProps {
   metadata: PaperMetadata;
@@ -41,9 +42,18 @@ const renderAuthors = (authors: PaperMetadata['authors']) =>
     );
   });
 
-function MetadataReadOnly({ metadata }: { metadata: PaperMetadata }) {
+function MetadataReadOnly({
+  metadata,
+  ...rest
+}: { metadata: PaperMetadata } & React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-md dark:border-slate-700 dark:bg-slate-900">
+    <div
+      {...rest}
+      className={clsx(
+        'rounded-lg border border-gray-200 bg-white p-6 shadow-md dark:border-slate-700 dark:bg-slate-900',
+        rest.className,
+      )}
+    >
       <h1 className="mb-2 text-3xl font-bold text-gray-900 dark:text-white">
         {metadata.title}
       </h1>
@@ -102,35 +112,35 @@ function MetadataReadOnly({ metadata }: { metadata: PaperMetadata }) {
       </div>
 
       {metadata.sciQuartile ||
-      metadata.casQuartile ||
-      metadata.ccfRank ||
-      typeof metadata.impactFactor === 'number' ? (
+        metadata.casQuartile ||
+        metadata.ccfRank ||
+        typeof metadata.impactFactor === 'number' ? (
         <div className="mb-4 flex items-start gap-2">
           <Award className="mt-0.5 h-5 w-5 shrink-0 text-gray-500 dark:text-slate-400" />
           <div className="flex flex-wrap gap-2">
             {metadata.sciQuartile && metadata.sciQuartile !== '无'
               ? quartileBadge(
-                  `SCI ${metadata.sciQuartile}`,
-                  'rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
-                )
+                `SCI ${metadata.sciQuartile}`,
+                'rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+              )
               : null}
             {metadata.casQuartile && metadata.casQuartile !== '无'
               ? quartileBadge(
-                  `CAS ${metadata.casQuartile}`,
-                  'rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400',
-                )
+                `CAS ${metadata.casQuartile}`,
+                'rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400',
+              )
               : null}
             {metadata.ccfRank && metadata.ccfRank !== '无'
               ? quartileBadge(
-                  `CCF ${metadata.ccfRank}`,
-                  'rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
-                )
+                `CCF ${metadata.ccfRank}`,
+                'rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+              )
               : null}
             {typeof metadata.impactFactor === 'number'
               ? quartileBadge(
-                  `IF: ${metadata.impactFactor}`,
-                  'rounded bg-orange-100 px-2 py-1 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
-                )
+                `IF: ${metadata.impactFactor}`,
+                'rounded bg-orange-100 px-2 py-1 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+              )
               : null}
           </div>
         </div>

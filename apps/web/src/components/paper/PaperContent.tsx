@@ -1,3 +1,4 @@
+// src/components/paper/PaperContent.tsx
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -12,8 +13,12 @@ import type {
 } from '@/types/paper';
 import BlockRenderer from './BlockRenderer';
 import BlockEditor from './editor/BlockEditor';
+import {
+  SectionContextMenu,
+  BlockContextMenu,
+  RootSectionContextMenu,
+} from './PaperContextMenus';
 import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
-import { SectionContextMenu, BlockContextMenu } from './PaperContextMenus';
 import { useEditingState } from '@/stores/useEditingState';
 
 type Lang = 'en' | 'both';
@@ -32,6 +37,16 @@ interface PaperContentProps {
   setCurrentSearchIndex: (index: number) => void;
   onSectionTitleUpdate?: (sectionId: string, title: Section['title']) => void;
   onSectionAddSubsection?: (sectionId: string) => void;
+  onSectionInsert?: (
+    targetSectionId: string | null,
+    position: 'above' | 'below',
+    parentSectionId: string | null,
+  ) => void;
+  onSectionMove?: (
+    sectionId: string,
+    direction: 'up' | 'down',
+    parentSectionId: string | null,
+  ) => void;
   onSectionDelete?: (sectionId: string) => void;
   onBlockUpdate?: (blockId: string, block: BlockContent) => void;
   onBlockDuplicate?: (blockId: string) => void;
@@ -65,6 +80,8 @@ export default function PaperContent({
   setCurrentSearchIndex,
   onSectionTitleUpdate,
   onSectionAddSubsection,
+  onSectionInsert,
+  onSectionMove,
   onSectionDelete,
   onBlockUpdate,
   onBlockDuplicate,
@@ -307,12 +324,20 @@ export default function PaperContent({
   );
 
   const renderedTree = useMemo(() => {
-    const renderSection = (section: Section, path: number[]): React.ReactNode => {
+    const renderSection = (
+      section: Section,
+      path: number[],
+      siblings: Section[],
+      index: number,
+      parentSectionId: string | null,
+    ): React.ReactNode => {
       const sectionNumber = generateSectionNumber(path);
       const hasZhTitle = !!section.title?.zh?.trim();
       const normalizedZh = (section.title?.zh ?? '').trim();
       const sectionMargin = Math.max(0, (path.length - 1) * 24);
       const isRenaming = renamingSectionId === section.id;
+      const isFirstSibling = index === 0;
+      const isLastSibling = index === siblings.length - 1;
 
       return (
         <section
@@ -323,7 +348,27 @@ export default function PaperContent({
         >
           <SectionContextMenu
             onRename={canEditContent ? () => handleSectionEditStart(section.id) : undefined}
+            onAddSectionBefore={
+              canEditContent && onSectionInsert
+                ? () => onSectionInsert(section.id, 'above', parentSectionId)
+                : undefined
+            }
+            onAddSectionAfter={
+              canEditContent && onSectionInsert
+                ? () => onSectionInsert(section.id, 'below', parentSectionId)
+                : undefined
+            }
             onAddSubsection={canEditContent ? () => onSectionAddSubsection?.(section.id) : undefined}
+            onMoveUp={
+              canEditContent && onSectionMove && !isFirstSibling
+                ? () => onSectionMove(section.id, 'up', parentSectionId)
+                : undefined
+            }
+            onMoveDown={
+              canEditContent && onSectionMove && !isLastSibling
+                ? () => onSectionMove(section.id, 'down', parentSectionId)
+                : undefined
+            }
             onDelete={
               canEditContent
                 ? () => {
@@ -386,7 +431,7 @@ export default function PaperContent({
                       onDelete={() => onBlockDelete?.(block.id)}
                       onDuplicate={() => onBlockDuplicate?.(block.id)}
                       canMoveUp={blockIndex > 0}
-                      canMoveDown={blockIndex < section.content.length - 1}
+                      canMoveDown={blockIndex < (section.content?.length ?? 0) - 1}
                       references={references}
                       allSections={sections}
                     />
@@ -456,14 +501,24 @@ export default function PaperContent({
 
           {section.subsections?.length ? (
             <div className="space-y-8">
-              {section.subsections.map((child, childIndex) => renderSection(child, [...path, childIndex + 1]))}
+              {section.subsections.map((child, childIndex) =>
+                renderSection(
+                  child,
+                  [...path, childIndex + 1],
+                  section.subsections ?? [],
+                  childIndex,
+                  section.id,
+                ),
+              )}
             </div>
           ) : null}
         </section>
       );
     };
 
-    return sections.map((section, index) => renderSection(section, [index + 1]));
+    return sections.map((section, index) =>
+      renderSection(section, [index + 1], sections, index, null),
+    );
   }, [
     sections,
     lang,
@@ -473,8 +528,9 @@ export default function PaperContent({
     selectedBlockId,
     canEditContent,
     renamingSectionId,
-    setActiveBlockId,
-    onBlockClick,
+    hoveredSectionId,
+    onSectionInsert,
+    onSectionMove,
     onSectionAddSubsection,
     onSectionDelete,
     onBlockDuplicate,
@@ -483,14 +539,36 @@ export default function PaperContent({
     onBlockMove,
     onBlockAppendSubsection,
     onBlockAddComponent,
+    onBlockUpdate,
+    handleSectionEditStart,
     handleSectionRenameConfirm,
     handleBlockEditStart,
     isEditing,
     clearEditing,
+    setHoveredSectionId,
+    onBlockClick,
     contentRef,
   ]);
 
-  return <div className="space-y-8">{renderedTree}</div>;
+  const emptyState = (
+    <div className="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <p className="text-lg font-semibold text-gray-700 dark:text-gray-200">论文暂无内容</p>
+      <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">右键此区域以添加第一章。</p>
+    </div>
+  );
+
+  const rootMenu =
+    canEditContent && onSectionInsert
+      ? (children: React.ReactNode) => (
+          <RootSectionContextMenu onAddSection={() => onSectionInsert(null, 'below', null)}>
+            {children}
+          </RootSectionContextMenu>
+        )
+      : (children: React.ReactNode) => <>{children}</>;
+
+  return rootMenu(
+    <div className="space-y-8">{sections.length ? renderedTree : emptyState}</div>,
+  );
 }
 
 function SectionTitleInlineEditor({

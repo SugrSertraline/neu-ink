@@ -284,7 +284,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
             isAuthenticated={isAuthenticated}
           />
 
-          <main className="flex-1 min-h-0 overflow-hidden bg-white/78 backdrop-blur-xl">
+          <main className="flex-1 min-h-0 bg-white/78 backdrop-blur-xl">
             {children}
           </main>
         </div>
