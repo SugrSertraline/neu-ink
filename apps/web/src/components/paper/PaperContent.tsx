@@ -24,6 +24,7 @@ interface PaperContentProps {
   lang: Lang;
   searchQuery: string;
   activeBlockId: string | null;
+  selectedBlockId?: string | null;
   setActiveBlockId: (id: string | null) => void;
   onBlockClick?: (blockId: string) => void;
   contentRef: React.RefObject<HTMLDivElement | null>;
@@ -56,6 +57,7 @@ export default function PaperContent({
   lang,
   searchQuery,
   activeBlockId,
+  selectedBlockId,
   setActiveBlockId,
   onBlockClick,
   contentRef,
@@ -276,7 +278,7 @@ export default function PaperContent({
             setRenamingSectionId(null);
           }
         },
-        onRequestSave: ({ currentId, targetId }) => {
+        onRequestSave: () => {
           // TODO: auto-save pending block
         },
       });
@@ -294,7 +296,7 @@ export default function PaperContent({
             setRenamingSectionId(null);
           }
         },
-        onRequestSave: ({ currentId, targetId }) => {
+        onRequestSave: () => {
           // TODO: auto-save pending section
         },
       });
@@ -370,6 +372,8 @@ export default function PaperContent({
           <div className="space-y-4">
             {section.content?.map((block, blockIndex) => {
               const isEditingBlock = isEditing(block.id);
+              const isSelected = selectedBlockId === block.id;
+              const isActive = isSelected || activeBlockId === block.id;
 
               return (
                 <React.Fragment key={block.id}>
@@ -404,9 +408,7 @@ export default function PaperContent({
                         canEditContent ? () => onBlockAppendSubsection?.(block.id) : undefined
                       }
                       onAddComponentAfter={
-                        canEditContent ? (type) => {
-                          onBlockAddComponent?.(block.id, type);
-                        } : undefined
+                        canEditContent ? (type) => onBlockAddComponent?.(block.id, type) : undefined
                       }
                       onDelete={
                         canEditContent
@@ -428,16 +430,18 @@ export default function PaperContent({
                           onBlockClick(block.id);
                         }}
                         className={`rounded-md transition-colors ${
-                          activeBlockId === block.id ? 'ring-2 ring-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : ''
+                          isActive ? 'ring-2 ring-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : ''
                         }`}
                       >
                         <BlockRenderer
                           block={block}
                           lang={lang === 'both' ? 'zh' : 'en'}
                           searchQuery={searchQuery}
-                          isActive={activeBlockId === block.id}
+                          isActive={isActive}
                           onMouseEnter={() => setActiveBlockId(block.id)}
-                          onMouseLeave={() => setActiveBlockId(null)}
+                          onMouseLeave={() => {
+                            if (!isSelected) setActiveBlockId(null);
+                          }}
                           contentRef={contentRef}
                           references={references}
                           onBlockUpdate={(updatedBlock) => onBlockUpdate?.(block.id, updatedBlock)}
@@ -466,6 +470,7 @@ export default function PaperContent({
     searchQuery,
     references,
     activeBlockId,
+    selectedBlockId,
     canEditContent,
     renamingSectionId,
     setActiveBlockId,
@@ -477,6 +482,7 @@ export default function PaperContent({
     onBlockInsert,
     onBlockMove,
     onBlockAppendSubsection,
+    onBlockAddComponent,
     handleSectionRenameConfirm,
     handleBlockEditStart,
     isEditing,
@@ -530,7 +536,7 @@ function SectionTitleInlineEditor({
       <div className="flex justify-end gap-2">
         <button
           type="button"
-          className="rounded-full bg白 px-4 py-1.5 text-sm text-blue-600 hover:bg-blue-100"
+          className="rounded-full bg-white px-4 py-1.5 text-sm text-blue-600 hover:bg-blue-100"
           onClick={onCancel}
         >
           取消
@@ -722,7 +728,7 @@ function InlineBlockEditor({
         </button>
         <button
           type="button"
-          className="rounded-full bg-blue-600 px-4 py-1.5 text-sm text白 hover:bg-blue-700"
+          className="rounded-full bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
           onClick={commit}
         >
           保存

@@ -65,7 +65,7 @@ const Submenu: React.FC<SubmenuProps> = ({ submenu, parentLabel, onClose }) => {
   return (
     <div
       ref={submenuRef}
-      className="absolute min-w-[12rem] rounded-md border border-gray-200 bg-white/95 p-1 shadow-xl backdrop-blur dark:border-gray-700 dark:bg-slate-900/95"
+      className="absolute min-w-48 rounded-md border border-gray-200 bg-white/95 p-1 shadow-xl backdrop-blur dark:border-gray-700 dark:bg-slate-900/95"
       style={{ top: position.top, left: position.left }}
       onMouseEnter={() => {
         // 保持子菜单打开
@@ -238,7 +238,7 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
       ? createPortal(
           <div
             role="menu"
-            className="fixed z-[60000] min-w-[12rem] rounded-md border border-gray-200 bg-white/95 p-1 shadow-xl backdrop-blur dark:border-gray-700 dark:bg-slate-900/95"
+            className="fixed z-60000 min-w-48 rounded-md border border-gray-200 bg-white/95 p-1 shadow-xl backdrop-blur dark:border-gray-700 dark:bg-slate-900/95"
             style={{ top: coords.y, left: coords.x }}
             onMouseDown={(e) => e.stopPropagation()}
             onMouseLeave={() => {

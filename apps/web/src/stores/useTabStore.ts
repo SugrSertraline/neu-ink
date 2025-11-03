@@ -97,31 +97,31 @@ export function TabProvider({ children }: { children: React.ReactNode }) {
     setActiveTabId(tab.id);
   }, []);
 
-  const removeTab = useCallback(
-    (tabId: string) => {
-      if (tabId === DEFAULT_TAB.id) return;
+const removeTab = useCallback(
+  (tabId: string) => {
+    if (tabId === DEFAULT_TAB.id) return;
 
-      setTabs(currentTabs => {
-        if (currentTabs.length <= 1) return currentTabs;
+    setTabs(currentTabs => {
+      const currentIndex = currentTabs.findIndex(tab => tab.id === tabId);
+      if (currentIndex === -1) return currentTabs;
 
-        const currentIndex = currentTabs.findIndex(tab => tab.id === tabId);
-        if (currentIndex === -1) return currentTabs;
+      const nextTabs = currentTabs.filter(tab => tab.id !== tabId);
+      const sanitizedTabs = nextTabs.length > 0 ? nextTabs : [DEFAULT_TAB];
 
-        const nextTabs = currentTabs.filter(tab => tab.id !== tabId);
+      if (activeTabId === tabId) {
+        const fallbackIndex = Math.min(currentIndex, sanitizedTabs.length - 1);
+        setActiveTabId(sanitizedTabs[fallbackIndex].id);
+      }
 
-        if (activeTabId === tabId) {
-          const fallback =
-            currentIndex > 0
-              ? currentTabs[currentIndex - 1].id
-              : nextTabs[0]?.id ?? DEFAULT_TAB.id;
-          setActiveTabId(fallback);
-        }
+      if (loadingTabId === tabId) {
+        setLoadingTabId(null);
+      }
 
-        return nextTabs;
-      });
-    },
-    [activeTabId],
-  );
+      return sanitizedTabs;
+    });
+  },
+  [activeTabId, loadingTabId],
+);
 
   const handleSetActiveTab = useCallback((tabId: string) => {
     setActiveTabId(tabId);

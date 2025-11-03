@@ -6,6 +6,7 @@ import type { PaperMetadata } from '@/types/paper';
 
 interface PaperMetadataProps {
   metadata: PaperMetadata;
+  onMetadataUpdate?: (next: PaperMetadata) => void;
 }
 
 export default function PaperMetadata({ metadata }: PaperMetadataProps) {

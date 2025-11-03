@@ -1,6 +1,14 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 
+@font-face {
+  font-family: 'Playball-Regular';
+  src: url('/Playball-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+  font-display: swap;
+}
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
@@ -120,3 +128,52 @@
     @apply bg-background text-foreground;
   }
 }
+
+:root {
+  --cursor-x: 50vw;
+  --cursor-y: 50vh;
+}
+
+[data-glow="true"] {
+  position: relative;
+}
+
+[data-glow="true"]::before {
+  content: '';
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease;
+  background: radial-gradient(
+    180px circle at var(--cursor-x) var(--cursor-y),
+    rgba(59, 130, 246, 0.18),
+    rgba(59, 130, 246, 0.06) 45%,
+    rgba(59, 130, 246, 0) 70%
+  );
+}
+
+[data-glow="true"]:hover::before,
+[data-glow="true"]:focus-visible::before {
+  opacity: 1;
+}
+@keyframes glow-press {
+  0% {
+    transform: scale(1);
+    box-shadow: 0 16px 38px rgba(40, 65, 138, 0.28);
+  }
+  50% {
+    transform: scale(0.95);
+    box-shadow: 0 22px 48px rgba(40, 65, 138, 0.42);
+  }
+  100% {
+    transform: scale(1);
+    box-shadow: 0 16px 38px rgba(40, 65, 138, 0.28);
+  }
+}
+
+.animate-glow-press {
+  animation: glow-press 280ms ease forwards;
+}
+

@@ -164,6 +164,16 @@ export function usePublicLibraryController() {
     }
     return undefined;
   }, [filterStatus]);
+  function isPaperEntity(candidate: unknown): candidate is Paper {
+    if (!candidate || typeof candidate !== 'object') return false;
+    const paper = candidate as Paper;
+    return (
+      typeof paper.id === 'string' &&
+      typeof paper.createdBy === 'string' &&
+      typeof paper.metadata === 'object' &&
+      Array.isArray(paper.sections)
+    );
+  }
 
   const applyClientSideFilters = useCallback(
     (items: PaperListItem[]): PaperListItem[] => {
@@ -279,20 +289,30 @@ export function usePublicLibraryController() {
         return;
       }
 
+      const viewerSource: ViewerSource = isAdmin ? 'public-admin' : 'public-guest';
+      const tabId = `paper:${paper.id}`;
+      const path = `/paper/${paper.id}?source=${viewerSource}`;
+
       try {
-        let detail = paperCache.get(paper.id);
+        const cached = paperCache.get(paper.id);
+        let detail: Paper | null = cached && isPaperEntity(cached) ? cached : null;
+
         if (!detail) {
-          const res = await publicPaperService.getPublicPaperDetail(paper.id);
-          if (!isSuccess(res)) {
+          const res = isAdmin
+            ? await adminPaperService.getAdminPaperDetail(paper.id)
+            : await publicPaperService.getPublicPaperDetail(paper.id);
+
+          if (!isSuccess(res) || !res.data) {
             throw new Error(res.bizMessage || res.topMessage || '获取论文详情失败');
           }
+
+          if (!isPaperEntity(res.data)) {
+            throw new Error('返回的论文数据结构不符合预期');
+          }
+
           detail = res.data;
           paperCache.set(paper.id, detail);
         }
-
-        const tabId = `paper:${paper.id}`;
-        const path = `/paper/${paper.id}`;
-        const viewerSource: ViewerSource = isAdmin ? 'public-admin' : 'public-guest';
 
         addTab({
           id: tabId,
@@ -310,11 +330,12 @@ export function usePublicLibraryController() {
         router.push(path);
       } catch (error) {
         const message = error instanceof Error ? error.message : '网络错误';
-        alert(`获取论文详情失败：${message}`);
+        toast.error(`获取论文详情失败：${message}`);
       }
     },
     [
       addTab,
+      adminPaperService,
       isAdmin,
       isAuthenticated,
       paperCache,
@@ -324,6 +345,7 @@ export function usePublicLibraryController() {
       setActiveTab,
     ],
   );
+
 
   const handleDeletePaper = useCallback(
     async (paperId: string) => {

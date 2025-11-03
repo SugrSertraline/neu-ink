@@ -1,3 +1,4 @@
+// apps/web/src/components/layout/MainLayout.tsx
 'use client';
 
 import React, { useCallback, useEffect } from 'react';
@@ -11,12 +12,11 @@ import { NavItem } from '@/types/navigation';
 import TabBar from './TabBar';
 import Sidebar from './Sidebar';
 
-interface MainLayoutProps {
-  children: React.ReactNode;
-}
-
 /** 将 pathname 与 search params 拼成完整 href，便于比较 */
-function useCurrentHref(pathname: string | null, searchParams: ReturnType<typeof useSearchParams>) {
+function useCurrentHref(
+  pathname: string | null,
+  searchParams: ReturnType<typeof useSearchParams>,
+) {
   return React.useMemo(() => {
     const base = pathname ?? '';
     const query = searchParams?.toString();
@@ -24,7 +24,7 @@ function useCurrentHref(pathname: string | null, searchParams: ReturnType<typeof
   }, [pathname, searchParams]);
 }
 
-export default function MainLayout({ children }: MainLayoutProps) {
+export default function MainLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -42,6 +42,26 @@ export default function MainLayout({ children }: MainLayoutProps) {
     setLoading,
   } = useTabStore();
 
+  useEffect(() => {
+    const handlePointerMove = (event: PointerEvent) => {
+  document.documentElement.style.setProperty('--cursor-x', `${event.clientX}px`);
+  document.documentElement.style.setProperty('--cursor-y', `${event.clientY}px`);
+
+  const path = event.composedPath();
+  for (const target of path) {
+    if (!(target instanceof HTMLElement)) continue;
+    if (target.dataset.glow !== 'true') continue;
+
+    const rect = target.getBoundingClientRect();
+    target.style.setProperty('--cursor-x', `${event.clientX - rect.left}px`);
+    target.style.setProperty('--cursor-y', `${event.clientY - rect.top}px`);
+  }
+};
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: true });
+    return () => window.removeEventListener('pointermove', handlePointerMove);
+  }, []);
+
   const navigationConfig: NavItem[] = [
     {
       id: 'public-library',
@@ -50,8 +70,8 @@ export default function MainLayout({ children }: MainLayoutProps) {
       icon: BookOpen,
       path: '/library?section=public',
       requiresAuth: false,
-      activeColor: 'purple',
-      badge: (user, isAdmin) => (isAdmin ? '管理' : undefined),
+      activeColor: 'blue',
+      badge: (currentUser, adminFlag) => (adminFlag ? '管理' : undefined),
       closable: false,
       showInSidebar: true,
       isPermanentTab: true,
@@ -64,7 +84,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
       path: '/library?section=personal',
       requiresAuth: true,
       activeColor: 'indigo',
-      closable: false,
+      closable: true,
       showInSidebar: true,
       isPermanentTab: false,
     },
@@ -76,7 +96,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
       path: '/checklist',
       requiresAuth: true,
       activeColor: 'cyan',
-      closable: false,
+      closable: true,
       showInSidebar: true,
       isPermanentTab: false,
       disabled: true,
@@ -89,7 +109,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
       path: '/settings',
       requiresAuth: true,
       activeColor: 'slate',
-      closable: false,
+      closable: true,
       showInSidebar: true,
       isPermanentTab: false,
     },
@@ -118,12 +138,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
         if (existingTab) {
           setActiveTab(item.id);
         } else {
-          addTab({
-            id: item.id,
-            type: item.type,
-            title: item.label,
-            path: targetHref,
-          });
+          addTab({ id: item.id, type: item.type, title: item.label, path: targetHref });
           setActiveTab(item.id);
         }
         setLoading(false, null);
@@ -135,12 +150,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
       if (existingTab) {
         setActiveTab(item.id);
       } else {
-        addTab({
-          id: item.id,
-          type: item.type,
-          title: item.label,
-          path: targetHref,
-        });
+        addTab({ id: item.id, type: item.type, title: item.label, path: targetHref });
         setActiveTab(item.id);
       }
 
@@ -183,7 +193,7 @@ export default function MainLayout({ children }: MainLayoutProps) {
         });
 
         const currentIndex = visibleTabs.findIndex(t => t.id === tabId);
-        let targetTab: typeof visibleTabs[number] | null = null;
+        let targetTab: (typeof visibleTabs)[number] | null = null;
 
         if (currentIndex > 0) {
           targetTab = visibleTabs[currentIndex - 1];
@@ -248,26 +258,36 @@ export default function MainLayout({ children }: MainLayoutProps) {
   }, [pathname, tabs, activeTabId, setLoading, router]);
 
   return (
-    <div className="flex h-screen bg-gray-50 dark:bg-gray-900">
-      <Sidebar
-        navItems={visibleNavItems}
-        activeTabId={activeTabId}
-        loadingTabId={loadingTabId}
-        onNavigate={handleNavigate}
-        user={user}
-        isAdmin={isAdmin}
-        isAuthenticated={isAuthenticated}
-      />
+    <div className="relative min-h-screen overflow-hidden bg-linear-to-br from-[#edf1f8] via-white to-[#e0e7f5] text-slate-900">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_80%_at_15%_25%,rgba(40,65,138,0.16),transparent),radial-gradient(45%_60%_at_85%_30%,rgba(247,194,66,0.12),transparent)]" />
+      <div className="pointer-events-none absolute inset-x-0 bottom-[-20%] h-[36%] blur-3xl bg-[linear-gradient(120deg,rgba(40,65,138,0.12),rgba(247,194,66,0.12),rgba(89,147,205,0.12))]" />
 
-      <div className="flex-1 flex flex-col min-w-0">
-        <TabBar
-          navItems={navigationConfig}
+      <div className="relative z-10 flex h-screen max-h-screen items-stretch gap-4 px-5 py-4">
+        <Sidebar
+          navItems={visibleNavItems}
+          activeTabId={activeTabId}
+          loadingTabId={loadingTabId}
           onNavigate={handleNavigate}
-          onCloseTab={handleCloseTab}
+          user={user}
+          isAdmin={isAdmin}
           isAuthenticated={isAuthenticated}
         />
 
-        <main className="flex-1 min-h-0 overflow-hidden">{children}</main>
+        <div
+          className="flex-1 flex flex-col min-w-0 rounded-2xl border border-white/70 bg-white/70 backdrop-blur-2xl shadow-[0_16px_52px_rgba(15,23,42,0.15)] overflow-hidden"
+          data-glow="true"
+        >
+          <TabBar
+            navItems={navigationConfig}
+            onNavigate={handleNavigate}
+            onCloseTab={handleCloseTab}
+            isAuthenticated={isAuthenticated}
+          />
+
+          <main className="flex-1 min-h-0 overflow-hidden bg-white/78 backdrop-blur-xl">
+            {children}
+          </main>
+        </div>
       </div>
     </div>
   );

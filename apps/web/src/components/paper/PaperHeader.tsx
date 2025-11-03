@@ -11,6 +11,7 @@ import {
   Save,
   Sparkles,
 } from 'lucide-react';
+import { ViewerSource } from '@/types/paper/viewer';
 
 type Lang = 'en' | 'both';
 
@@ -23,6 +24,30 @@ interface PaperHeaderActions {
   extraActionsHint?: string;
 }
 
+type ViewerSourceLabel = {
+  label: string;
+  description: string;
+  tone: 'public' | 'admin' | 'personal';
+};
+
+const VIEWER_SOURCE_MAP: Record<ViewerSource, ViewerSourceLabel> = {
+  'public-guest': {
+    label: '公共库 · 访客',
+    description: '只读视图，访客权限',
+    tone: 'public',
+  },
+  'public-admin': {
+    label: '公共库 · 管理员',
+    description: '可管理公开论文的完整视图',
+    tone: 'admin',
+  },
+  'personal-owner': {
+    label: '个人库 · 我的收藏',
+    description: '可编辑个人标注与阅读进度',
+    tone: 'personal',
+  },
+};
+
 interface PaperHeaderProps {
   lang: Lang;
   setLang: (lang: Lang) => void;
@@ -32,6 +57,7 @@ interface PaperHeaderProps {
   currentSearchIndex?: number;
   onSearchNavigate?: (direction: 'next' | 'prev') => void;
   actions?: PaperHeaderActions;
+  viewerSource?: ViewerSource;
 }
 
 export default function PaperHeader({
@@ -43,6 +69,7 @@ export default function PaperHeader({
   currentSearchIndex = 0,
   onSearchNavigate,
   actions,
+  viewerSource,
 }: PaperHeaderProps) {
   const renderActionButton = (
     shouldRender: boolean | undefined,
@@ -57,7 +84,7 @@ export default function PaperHeader({
         type="button"
         onClick={handler}
         disabled={disabled || !handler}
-        className="flex items-center gap-1 rounded-full bg-white/60 dark:bg-slate-800/50 backdrop-blur-md px-3 py-1.5 text-sm text-gray-700 transition-all hover:bg-white/80 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-200 dark:hover:bg-slate-700/70 border border-white/30 dark:border-slate-600/30"
+        className="flex items-center gap-1 rounded-ful bg-white/60 dark:bg-slate-800/50 backdrop-blur-md px-3 py-1.5 text-sm text-gray-700 transition-all hover:bg-white/80 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-200 dark:hover:bg-slate-700/70 border border-white/30 dark:border-slate-600/30"
       >
         <Icon className="h-4 w-4" />
         {label}
@@ -65,12 +92,34 @@ export default function PaperHeader({
     );
   };
 
+  const sourceInfo = viewerSource ? VIEWER_SOURCE_MAP[viewerSource] : null;
+
   return (
     <div className="w-full px-6 py-3">
       <div className="mx-auto w-full bg-white/10 dark:bg-slate-900/50 backdrop-blur-sm rounded-xl shadow-xl dark:border-slate-700/30">
         <div className="px-6 py-3 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-1 min-w-0">
-            <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400 shrink-0" />
+            <div className="flex items-center gap-2 shrink-0">
+              <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
+              {sourceInfo && (
+                <span
+                  className={`hidden sm:inline-flex flex-col rounded-lg px-3 py-1 text-xs font-medium leading-tight border ${
+                    sourceInfo.tone === 'admin'
+                      ? 'bg-indigo-100/80 text-indigo-700 border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-200 dark:border-indigo-500/30'
+                      : sourceInfo.tone === 'personal'
+                      ? 'bg-emerald-100/70 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-200 dark:border-emerald-500/30'
+                      : 'bg-sky-100/70 text-sky-700 border-sky-200 dark:bg-sky-500/20 dark:text-sky-200 dark:border-sky-500/30'
+                  }`}
+                  title={sourceInfo.description}
+                >
+                  <strong className="uppercase tracking-wide text-[0.6rem] opacity-80">
+                    当前视图
+                  </strong>
+                  <span>{sourceInfo.label}</span>
+                </span>
+              )}
+            </div>
+
             <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-slate-500" />
               <input

@@ -1,16 +1,60 @@
+// apps/web/src/components/library/CreatePaperDialog.tsx
 'use client';
 
 import React from 'react';
 import { X, Plus, FileText, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
-import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 interface CreatePaperDialogProps {
   open: boolean;
   onClose: () => void;
   onSuccess?: () => void;
 }
+
+const initialFormData = {
+  title: '',
+  titleZh: '',
+  authors: '',
+  publication: '',
+  year: '',
+  doi: '',
+  articleType: 'journal' as const,
+  sciQuartile: '无' as const,
+  casQuartile: '无' as const,
+  ccfRank: '无' as const,
+  impactFactor: '',
+  tags: '',
+  abstract: '',
+  keywords: '',
+};
+
+type FormDataState = typeof initialFormData;
+
+const initialMarkdownMeta = {
+  title: '',
+  authors: '',
+  year: '',
+};
+
+type MarkdownMetaState = typeof initialMarkdownMeta;
+
+const glowButtonFilled =
+  'rounded-xl bg-gradient-to-r from-[#28418A]/92 via-[#28418A]/88 to-[#28418A]/92 ' +
+  'shadow-[0_16px_38px_rgba(40,65,138,0.28)] hover:shadow-[0_20px_46px_rgba(40,65,138,0.36)] ' +
+  'border border-white/70 focus-visible:ring-2 focus-visible:ring-[#4769b8]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:translate-y-[1px]';
+
+const glowButtonGhost =
+  'rounded-xl border border-white/70 bg-white/78 text-[#28418A] shadow-[0_12px_30px_rgba(40,65,138,0.18)] ' +
+  'backdrop-blur-xl hover:bg-white/90 hover:text-[#263b78] focus-visible:ring-2 focus-visible:ring-[#4769b8]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white';
+
+const tabBase =
+  'flex items-center gap-2 px-5 py-2.5 text-sm font-medium transition-all rounded-xl border border-transparent';
+const tabActive =
+  'text-white border-white/70 bg-gradient-to-r from-[#28418A]/92 via-[#28418A]/88 to-[#28418A]/92 shadow-[0_16px_36px_rgba(40,65,138,0.30)]';
+const tabInactive =
+  'text-[#5c6aa2] border-white/60 bg-white/70 hover:bg-white/85 hover:text-[#2d407f] shadow-[0_10px_24px_rgba(40,65,138,0.14)]';
 
 export default function CreatePaperDialog({
   open,
@@ -19,46 +63,32 @@ export default function CreatePaperDialog({
 }: CreatePaperDialogProps) {
   const [activeTab, setActiveTab] = React.useState<'manual' | 'markdown'>('manual');
   const [loading, setLoading] = React.useState(false);
+  const [pressing, setPressing] = React.useState(false);
 
-  // 手动创建表单状态
-  const [formData, setFormData] = React.useState({
-    title: '',
-    titleZh: '',
-    authors: '',
-    publication: '',
-    year: '',
-    doi: '',
-    articleType: 'journal' as const,
-    sciQuartile: '无' as const,
-    casQuartile: '无' as const,
-    ccfRank: '无' as const,
-    impactFactor: '',
-    tags: '',
-    abstract: '',
-    keywords: '',
-  });
-
-  // Markdown文件上传状态
+  const [formData, setFormData] = React.useState<FormDataState>({ ...initialFormData });
   const [markdownFile, setMarkdownFile] = React.useState<File | null>(null);
-  const [markdownMeta, setMarkdownMeta] = React.useState({
-    title: '',
-    authors: '',
-    year: '',
+  const [markdownMeta, setMarkdownMeta] = React.useState<MarkdownMetaState>({
+    ...initialMarkdownMeta,
   });
+
+  const triggerButtonPulse = React.useCallback(() => {
+    if (pressing) return;
+    setPressing(true);
+    const timer = setTimeout(() => setPressing(false), 280);
+    return () => clearTimeout(timer);
+  }, [pressing]);
 
   const handleSubmit = async () => {
+    triggerButtonPulse();
     setLoading(true);
     try {
       if (activeTab === 'manual') {
-        // 处理手动创建
-        // 这里调用API创建论文
+        // TODO: 手动创建论文的 API 调用
       } else {
-        // 处理Markdown上传
-        // 这里调用API上传Markdown
+        // TODO: Markdown 上传的 API 调用
       }
-      
       onSuccess?.();
-      onClose();
+      handleClose();
     } catch (error) {
       console.error('创建失败:', error);
     } finally {
@@ -67,24 +97,9 @@ export default function CreatePaperDialog({
   };
 
   const resetForm = () => {
-    setFormData({
-      title: '',
-      titleZh: '',
-      authors: '',
-      publication: '',
-      year: '',
-      doi: '',
-      articleType: 'journal',
-      sciQuartile: '无',
-      casQuartile: '无',
-      ccfRank: '无',
-      impactFactor: '',
-      tags: '',
-      abstract: '',
-      keywords: '',
-    });
+    setFormData({ ...initialFormData });
     setMarkdownFile(null);
-    setMarkdownMeta({ title: '', authors: '', year: '' });
+    setMarkdownMeta({ ...initialMarkdownMeta });
   };
 
   const handleClose = () => {
@@ -94,326 +109,320 @@ export default function CreatePaperDialog({
 
   if (!open) return null;
 
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white dark:bg-gray-800 rounded-lg shadow-xl w-full max-w-4xl max-h-[90vh] overflow-hidden">
-        {/* 头部 */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
-          <h2 className="text-xl font-semibold text-gray-900 dark:text-gray-100">
-            新建论文
-          </h2>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleClose}
-            className="h-8 w-8 p-0"
-          >
-            <X className="w-4 h-4" />
-          </Button>
-        </div>
+ return (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-50/10 px-4 py-6 backdrop-blur">
+    <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-white/45 bg-white/55 shadow-[0_28px_72px_rgba(15,23,42,0.28)] backdrop-blur-xl">
+      <header className="flex items-center justify-between border-b border-white/40 bg-white/50 px-6 py-5">
+        <h2 className="text-lg font-semibold text-slate-900">新建论文</h2>
+        <Button variant="ghost" size="icon" onClick={handleClose} className={cn(glowButtonGhost, 'h-9 w-9 p-0')}>
+          <X className="h-4 w-4" />
+        </Button>
+      </header>
 
-        {/* Tab切换 */}
-        <div className="flex border-b border-gray-200 dark:border-gray-700">
-          <button
-            onClick={() => setActiveTab('manual')}
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'manual'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-            }`}
-          >
-            <Plus className="w-4 h-4 inline-block mr-2" />
-            手动创建
-          </button>
-          <button
-            onClick={() => setActiveTab('markdown')}
-            className={`px-6 py-3 text-sm font-medium border-b-2 transition-colors ${
-              activeTab === 'markdown'
-                ? 'border-blue-600 text-blue-600'
-                : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-300'
-            }`}
-          >
-            <FileText className="w-4 h-4 inline-block mr-2" />
-            Markdown上传
-          </button>
-        </div>
+      <nav className="flex gap-3 border-b border-white/40 bg-white/45 px-6 py-3">
+        <button
+          type="button"
+          onClick={() => setActiveTab('manual')}
+          className={cn(tabBase, activeTab === 'manual' ? tabActive : tabInactive)}
+        >
+          <Plus className="h-4 w-4" />
+          手动创建
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab('markdown')}
+          className={cn(tabBase, activeTab === 'markdown' ? tabActive : tabInactive)}
+        >
+          <FileText className="h-4 w-4" />
+          Markdown 上传
+        </button>
+      </nav>
 
-        {/* 内容区域 */}
-        <div className="p-6 overflow-y-auto max-h-[60vh]">
-          {activeTab === 'manual' && (
-            <div className="space-y-6">
-              {/* 基本信息 */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">基本信息</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      标题 *
-                    </label>
-                    <Input
-                      value={formData.title}
-                      onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-                      placeholder="论文英文标题"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      中文标题
-                    </label>
-                    <Input
-                      value={formData.titleZh}
-                      onChange={(e) => setFormData({ ...formData, titleZh: e.target.value })}
-                      placeholder="论文中文标题"
-                    />
-                  </div>
-                </div>
+      <section className="max-h-[60vh] overflow-y-auto bg-white/45 px-6 py-6 backdrop-blur">
+        {activeTab === 'manual' ? (
+          <ManualForm formData={formData} setFormData={setFormData} />
+        ) : (
+          <MarkdownForm
+            markdownFile={markdownFile}
+            setMarkdownFile={setMarkdownFile}
+            markdownMeta={markdownMeta}
+            setMarkdownMeta={setMarkdownMeta}
+          />
+        )}
+      </section>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      作者 *
-                    </label>
-                    <Input
-                      value={formData.authors}
-                      onChange={(e) => setFormData({ ...formData, authors: e.target.value })}
-                      placeholder="作者姓名，用逗号分隔"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      发表年份
-                    </label>
-                    <Input
-                      type="number"
-                      value={formData.year}
-                      onChange={(e) => setFormData({ ...formData, year: e.target.value })}
-                      placeholder="2024"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    发表期刊/会议
-                  </label>
-                  <Input
-                    value={formData.publication}
-                    onChange={(e) => setFormData({ ...formData, publication: e.target.value })}
-                    placeholder="Journal of Machine Learning Research"
-                  />
-                </div>
-              </div>
-
-              {/* 分类信息 */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">分类信息</h3>
-                
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      文章类型
-                    </label>
-                    <select
-                      value={formData.articleType}
-                      onChange={(e) => setFormData({ ...formData, articleType: e.target.value as any })}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
-                    >
-                      <option value="journal">期刊</option>
-                      <option value="conference">会议</option>
-                      <option value="preprint">预印本</option>
-                      <option value="book">书籍</option>
-                      <option value="thesis">论文</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      SCI分区
-                    </label>
-                    <select
-                      value={formData.sciQuartile}
-                      onChange={(e) => setFormData({ ...formData, sciQuartile: e.target.value as any })}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
-                    >
-                      <option value="无">无</option>
-                      <option value="Q1">Q1</option>
-                      <option value="Q2">Q2</option>
-                      <option value="Q3">Q3</option>
-                      <option value="Q4">Q4</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      中科院分区
-                    </label>
-                    <select
-                      value={formData.casQuartile}
-                      onChange={(e) => setFormData({ ...formData, casQuartile: e.target.value as any })}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
-                    >
-                      <option value="无">无</option>
-                      <option value="1区">1区</option>
-                      <option value="2区">2区</option>
-                      <option value="3区">3区</option>
-                      <option value="4区">4区</option>
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      CCF分级
-                    </label>
-                    <select
-                      value={formData.ccfRank}
-                      onChange={(e) => setFormData({ ...formData, ccfRank: e.target.value as any })}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800"
-                    >
-                      <option value="无">无</option>
-                      <option value="A">A类</option>
-                      <option value="B">B类</option>
-                      <option value="C">C类</option>
-                    </select>
-                  </div>
-                </div>
-              </div>
-
-              {/* 其他信息 */}
-              <div className="space-y-4">
-                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100">其他信息</h3>
-                
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      DOI
-                    </label>
-                    <Input
-                      value={formData.doi}
-                      onChange={(e) => setFormData({ ...formData, doi: e.target.value })}
-                      placeholder="10.1000/journal.example"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                      影响因子
-                    </label>
-                    <Input
-                      type="number"
-                      step="0.001"
-                      value={formData.impactFactor}
-                      onChange={(e) => setFormData({ ...formData, impactFactor: e.target.value })}
-                      placeholder="4.532"
-                    />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                    标签
-                  </label>
-                  <Input
-                    value={formData.tags}
-                    onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
-                    placeholder="机器学习, 深度学习, NLP"
-                  />
-                  <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
-                    用逗号分隔多个标签
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {activeTab === 'markdown' && (
-            <div className="space-y-6">
-              <div className="text-center py-8 border-2 border-dashed border-gray-300 dark:border-gray-600 rounded-lg">
-                <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
-                <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-2">
-                  上传Markdown文件
-                </h3>
-                <p className="text-sm text-gray-600 dark:text-gray-400 mb-4">
-                  支持.md文件，系统将自动解析论文内容
-                </p>
-                <input
-                  type="file"
-                  accept=".md,.markdown"
-                  onChange={(e) => setMarkdownFile(e.target.files?.[0] || null)}
-                  className="hidden"
-                  id="markdown-upload"
-                />
-                <label
-                  htmlFor="markdown-upload"
-                  className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 cursor-pointer"
-                >
-                  选择文件
-                </label>
-              </div>
-
-              {markdownFile && (
-                <div className="space-y-4">
-                  <div className="flex items-center gap-2 p-3 bg-green-50 dark:bg-green-900/20 rounded-lg">
-                    <FileText className="w-4 h-4 text-green-600" />
-                    <span className="text-sm text-green-800 dark:text-green-400">
-                      已选择: {markdownFile.name}
-                    </span>
-                  </div>
-
-                  <div>
-                    <h3 className="text-lg font-medium text-gray-900 dark:text-gray-100 mb-4">
-                      补充信息（可选）
-                    </h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          标题
-                        </label>
-                        <Input
-                          value={markdownMeta.title}
-                          onChange={(e) => setMarkdownMeta({ ...markdownMeta, title: e.target.value })}
-                          placeholder="如果Markdown中没有标题"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          作者
-                        </label>
-                        <Input
-                          value={markdownMeta.authors}
-                          onChange={(e) => setMarkdownMeta({ ...markdownMeta, authors: e.target.value })}
-                          placeholder="作者姓名"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
-                          年份
-                        </label>
-                        <Input
-                          type="number"
-                          value={markdownMeta.year}
-                          onChange={(e) => setMarkdownMeta({ ...markdownMeta, year: e.target.value })}
-                          placeholder="2024"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-
-        {/* 底部按钮 */}
-        <div className="flex items-center justify-end gap-3 p-6 border-t border-gray-200 dark:border-gray-700">
-          <Button variant="outline" onClick={handleClose}>
-            取消
-          </Button>
-          <Button 
-            onClick={handleSubmit} 
-            disabled={loading || (activeTab === 'manual' && !formData.title) || (activeTab === 'markdown' && !markdownFile)}
-            className="min-w-[100px]"
-          >
-            {loading ? '创建中...' : '创建论文'}
-          </Button>
-        </div>
-      </div>
+      <footer className="flex items-center justify-end gap-3 border-t border-white/40 bg-white/45 px-6 py-5">
+        <Button variant="outline" onClick={handleClose} className={glowButtonGhost}>
+          取消
+        </Button>
+        <Button
+          onClick={handleSubmit}
+          disabled={
+            loading ||
+            (activeTab === 'manual' && !formData.title.trim()) ||
+            (activeTab === 'markdown' && !markdownFile)
+          }
+          className={cn(glowButtonFilled, 'min-w-[110px]', pressing && 'animate-glow-press')}
+          onAnimationEnd={event => event.currentTarget.classList.remove('animate-glow-press')}
+        >
+          {loading ? '创建中…' : '创建论文'}
+        </Button>
+      </footer>
     </div>
+  </div>
+);
+
+}
+
+function ManualForm({
+  formData,
+  setFormData,
+}: {
+  formData: FormDataState;
+  setFormData: React.Dispatch<React.SetStateAction<FormDataState>>;
+}) {
+  return (
+    <div className="space-y-6">
+      <section className="space-y-4">
+        <h3 className="text-lg font-medium text-slate-900">基本信息</h3>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field
+            label="标题 *"
+            placeholder="论文英文标题"
+            value={formData.title}
+            onChange={({ target }) => setFormData(prev => ({ ...prev, title: target.value }))}
+          />
+          <Field
+            label="中文标题"
+            placeholder="论文中文标题"
+            value={formData.titleZh}
+            onChange={({ target }) => setFormData(prev => ({ ...prev, titleZh: target.value }))}
+          />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field
+            label="作者 *"
+            placeholder="作者姓名，用逗号分隔"
+            value={formData.authors}
+            onChange={({ target }) => setFormData(prev => ({ ...prev, authors: target.value }))}
+          />
+          <Field
+            label="发表年份"
+            placeholder="2024"
+            type="number"
+            value={formData.year}
+            onChange={({ target }) => setFormData(prev => ({ ...prev, year: target.value }))}
+          />
+        </div>
+
+        <Field
+          label="发表期刊/会议"
+          placeholder="Journal of Machine Learning Research"
+          value={formData.publication}
+          onChange={({ target }) => setFormData(prev => ({ ...prev, publication: target.value }))}
+        />
+      </section>
+
+      <section className="space-y-4">
+        <h3 className="text-lg font-medium text-slate-900">分类信息</h3>
+
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          <SelectField
+            label="文章类型"
+            value={formData.articleType}
+            options={[
+              { value: 'journal', label: '期刊' },
+              { value: 'conference', label: '会议' },
+              { value: 'preprint', label: '预印本' },
+              { value: 'book', label: '书籍' },
+              { value: 'thesis', label: '论文' },
+            ]}
+            onChange={({ target }) =>
+              setFormData(prev => ({ ...prev, articleType: target.value as typeof prev.articleType }))
+            }
+          />
+          <SelectField
+            label="SCI分区"
+            value={formData.sciQuartile}
+            options={['无', 'Q1', 'Q2', 'Q3', 'Q4'].map(item => ({ value: item, label: item }))}
+            onChange={({ target }) =>
+              setFormData(prev => ({ ...prev, sciQuartile: target.value as typeof prev.sciQuartile }))
+            }
+          />
+          <SelectField
+            label="中科院分区"
+            value={formData.casQuartile}
+            options={['无', '1区', '2区', '3区', '4区'].map(item => ({ value: item, label: item }))}
+            onChange={({ target }) =>
+              setFormData(prev => ({ ...prev, casQuartile: target.value as typeof prev.casQuartile }))
+            }
+          />
+          <SelectField
+            label="CCF分级"
+            value={formData.ccfRank}
+            options={['无', 'A', 'B', 'C'].map(item => ({ value: item, label: item }))}
+            onChange={({ target }) =>
+              setFormData(prev => ({ ...prev, ccfRank: target.value as typeof prev.ccfRank }))
+            }
+          />
+        </div>
+      </section>
+
+      <section className="space-y-4">
+        <h3 className="text-lg font-medium text-slate-900">其他信息</h3>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <Field
+            label="DOI"
+            placeholder="10.1000/journal.example"
+            value={formData.doi}
+            onChange={({ target }) => setFormData(prev => ({ ...prev, doi: target.value }))}
+          />
+          <Field
+            label="影响因子"
+            placeholder="4.532"
+            type="number"
+            step="0.001"
+            value={formData.impactFactor}
+            onChange={({ target }) => setFormData(prev => ({ ...prev, impactFactor: target.value }))}
+          />
+        </div>
+
+        <Field
+          label="标签"
+          placeholder="机器学习, 深度学习, NLP"
+          value={formData.tags}
+          onChange={({ target }) => setFormData(prev => ({ ...prev, tags: target.value }))}
+          helper="用逗号分隔多个标签"
+        />
+      </section>
+    </div>
+  );
+}
+
+function MarkdownForm({
+  markdownFile,
+  setMarkdownFile,
+  markdownMeta,
+  setMarkdownMeta,
+}: {
+  markdownFile: File | null;
+  setMarkdownFile: React.Dispatch<React.SetStateAction<File | null>>;
+  markdownMeta: MarkdownMetaState;
+  setMarkdownMeta: React.Dispatch<React.SetStateAction<MarkdownMetaState>>;
+}) {
+  return (
+    <div className="space-y-6">
+      <div
+        className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/65 bg-white/75 px-6 py-10 text-center shadow-[0_18px_44px_rgba(28,45,96,0.16)] backdrop-blur-2xl"
+        data-glow="true"
+      >
+        <Upload className="mb-4 h-12 w-12 text-[#5d6ca5]" />
+        <h3 className="text-lg font-medium text-slate-900">上传 Markdown 文件</h3>
+        <p className="mt-2 text-sm text-slate-600">支持 .md / .markdown，系统将自动解析论文内容</p>
+
+        <input
+          id="markdown-upload"
+          type="file"
+          accept=".md,.markdown"
+          className="hidden"
+          onChange={event => setMarkdownFile(event.target.files?.[0] ?? null)}
+        />
+
+        <label htmlFor="markdown-upload">
+          <span className={cn(glowButtonFilled, 'mt-5 inline-flex cursor-pointer px-4 py-2 text-sm')}>
+            选择文件
+          </span>
+        </label>
+      </div>
+
+      {markdownFile && (
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 rounded-2xl border border-white/70 bg-white/78 px-4 py-3 text-sm text-[#28603c] shadow-[0_16px_32px_rgba(13,148,136,0.22)] backdrop-blur-xl">
+            <FileText className="h-4 w-4" />
+            已选择：{markdownFile.name}
+          </div>
+
+          <div>
+            <h3 className="text-lg font-medium text-slate-900">补充信息（可选）</h3>
+            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
+              <Field
+                label="标题"
+                placeholder="若 Markdown 无标题可填补"
+                value={markdownMeta.title}
+                onChange={({ target }) => setMarkdownMeta(prev => ({ ...prev, title: target.value }))}
+              />
+              <Field
+                label="作者"
+                placeholder="作者姓名"
+                value={markdownMeta.authors}
+                onChange={({ target }) => setMarkdownMeta(prev => ({ ...prev, authors: target.value }))}
+              />
+              <Field
+                label="年份"
+                placeholder="2024"
+                type="number"
+                value={markdownMeta.year}
+                onChange={({ target }) => setMarkdownMeta(prev => ({ ...prev, year: target.value }))}
+              />
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function Field({
+  label,
+  helper,
+  ...props
+}: React.ComponentProps<typeof Input> & { label: string; helper?: string }) {
+  return (
+    <label className="block space-y-2" data-glow="true">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <Input
+        {...props}
+        className={cn(
+          'h-11 rounded-xl border border-white/70 bg-white/78 text-sm text-slate-700',
+          'shadow-[0_12px_30px_rgba(40,65,138,0.16)]',
+          'focus-visible:ring-2 focus-visible:ring-[#4769b8]/35 focus-visible:ring-offset-1 focus-visible:ring-offset-white',
+          props.className,
+        )}
+      />
+      {helper ? <span className="block text-xs text-slate-500">{helper}</span> : null}
+    </label>
+  );
+}
+
+function SelectField({
+  label,
+  options,
+  ...props
+}: React.SelectHTMLAttributes<HTMLSelectElement> & {
+  label: string;
+  options: { value: string; label: string }[];
+}) {
+  return (
+    <label className="block space-y-2" data-glow="true">
+      <span className="text-sm font-medium text-slate-700">{label}</span>
+      <select
+        {...props}
+        className={cn(
+          'h-11 w-full rounded-xl border border-white/70 bg-white/78 px-3 text-sm text-slate-700',
+          'shadow-[0_12px_30px_rgba(40,65,138,0.16)] transition-all',
+          'focus:ring-2 focus:ring-[#4769b8]/35 focus:ring-offset-1 focus:ring-offset-white',
+          props.className,
+        )}
+      >
+        {options.map(({ value, label: optionLabel }) => (
+          <option key={value} value={value}>
+            {optionLabel}
+          </option>
+        ))}
+      </select>
+    </label>
   );
 }

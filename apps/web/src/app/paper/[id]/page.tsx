@@ -6,9 +6,11 @@ import {
   useRef,
   useEffect,
   useCallback,
+  type CSSProperties,
 } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
+
 import { useTabStore } from '@/stores/useTabStore';
 import { useEditingState } from '@/stores/useEditingState';
 import { ViewerSource } from '@/types/paper/viewer';
@@ -23,24 +25,33 @@ import type {
   Section,
   BlockContent,
   ParagraphBlock,
+  InlineContent,
+  Note,
+  NoteListData,
+  CreateNoteRequest,
+  UpdateNoteRequest,
 } from '@/types/paper';
 import { useAuth } from '@/contexts/AuthContext';
 import { usePaperEditPermissions } from '@/lib/hooks/usePaperEditPermissions';
 import { PaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
-import { adminPaperService } from '@/lib/services/paper';
+import { adminPaperService, noteService } from '@/lib/services/paper';
+import PersonalNotePanel from '@/components/paper/PersonalNotePanel';
+import type { UnifiedResult } from '@/types/api';
 
 type Lang = 'en' | 'both';
 
 const HEADER_HEIGHT = 112;
+const NOTES_PANEL_WIDTH = 320;
+const NOTES_PANEL_GAP = 32;
+const NOTES_PANEL_SHIFT = (NOTES_PANEL_WIDTH + NOTES_PANEL_GAP) / 2;
+const NOTES_PANEL_TOP = HEADER_HEIGHT + 24;
 
 const generateId = (prefix: string) =>
   `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 
 const cloneBlock = (block: BlockContent): BlockContent => {
-  // 检查 block 是否有效
   if (!block || !block.type) {
     console.error('无效的块对象:', block);
-    // 返回一个默认的段落块
     return {
       id: generateId('paragraph'),
       type: 'paragraph',
@@ -50,20 +61,16 @@ const cloneBlock = (block: BlockContent): BlockContent => {
       },
     };
   }
-  
-  // 使用结构化克隆或安全的深拷贝方法，避免 undefined 值导致的 JSON 解析错误
+
   try {
-    // 首先尝试使用结构化克隆（如果可用）
     if (typeof structuredClone !== 'undefined') {
       return structuredClone(block);
     }
-    // 回退到安全的 JSON 方法，过滤掉 undefined 值
-    return JSON.parse(JSON.stringify(block, (key, value) =>
-      value === undefined ? null : value
-    ));
+    return JSON.parse(
+      JSON.stringify(block, (key, value) => (value === undefined ? null : value)),
+    );
   } catch (error) {
     console.error('克隆块时出错:', error);
-    // 如果所有方法都失败，返回一个浅拷贝并重新生成 ID
     const cloned = { ...block };
     cloned.id = generateId(block.type);
     return cloned;
@@ -77,10 +84,9 @@ const createEmptySection = (): Section => ({
   subsections: [],
 });
 
-// 创建不同类型的 block 的工厂函数
 const createBlock = (type: BlockContent['type'], lang: Lang): BlockContent => {
   const id = generateId(type);
-  
+
   switch (type) {
     case 'paragraph':
       return {
@@ -92,7 +98,6 @@ const createBlock = (type: BlockContent['type'], lang: Lang): BlockContent => {
           ...(lang === 'both' && { zh: [{ type: 'text', content: '新的段落' }] }),
         },
       };
-    
     case 'heading':
       return {
         id,
@@ -103,14 +108,12 @@ const createBlock = (type: BlockContent['type'], lang: Lang): BlockContent => {
           ...(lang === 'both' && { zh: [{ type: 'text', content: '新标题' }] }),
         },
       };
-    
     case 'math':
       return {
         id,
         type: 'math',
         latex: 'E = mc^2',
       };
-    
     case 'figure':
       return {
         id,
@@ -121,7 +124,6 @@ const createBlock = (type: BlockContent['type'], lang: Lang): BlockContent => {
           ...(lang === 'both' && { zh: [{ type: 'text', content: '图片标题' }] }),
         },
       };
-    
     case 'table':
       return {
         id,
@@ -136,7 +138,6 @@ const createBlock = (type: BlockContent['type'], lang: Lang): BlockContent => {
           ...(lang === 'both' && { zh: [{ type: 'text', content: '表格标题' }] }),
         },
       };
-    
     case 'code':
       return {
         id,
@@ -148,7 +149,6 @@ const createBlock = (type: BlockContent['type'], lang: Lang): BlockContent => {
           ...(lang === 'both' && { zh: [{ type: 'text', content: '代码示例' }] }),
         },
       };
-    
     case 'ordered-list':
       return {
         id,
@@ -169,7 +169,6 @@ const createBlock = (type: BlockContent['type'], lang: Lang): BlockContent => {
           },
         ],
       };
-    
     case 'unordered-list':
       return {
         id,
@@ -189,7 +188,6 @@ const createBlock = (type: BlockContent['type'], lang: Lang): BlockContent => {
           },
         ],
       };
-    
     case 'quote':
       return {
         id,
@@ -200,17 +198,126 @@ const createBlock = (type: BlockContent['type'], lang: Lang): BlockContent => {
           ...(lang === 'both' && { zh: [{ type: 'text', content: '引用文本' }] }),
         },
       };
-    
     case 'divider':
       return {
         id,
         type: 'divider',
       };
-    
     default:
-      // 默认返回段落
       return createBlock('paragraph', lang);
   }
+};
+
+type PersonalNoteItem = {
+  id: string;
+  blockId: string;
+  content: InlineContent[];
+  createdAt: number;
+  updatedAt: number;
+};
+
+const toTimestamp = (value: unknown): number => {
+  if (!value) return Date.now();
+  if (typeof value === 'number') return value;
+  const ts = new Date(value as string).getTime();
+  return Number.isNaN(ts) ? Date.now() : ts;
+};
+
+const parseInlineContent = (raw: unknown): InlineContent[] => {
+  if (Array.isArray(raw)) {
+    return raw as InlineContent[];
+  }
+  if (typeof raw === 'string') {
+    try {
+      const parsed = JSON.parse(raw);
+      return Array.isArray(parsed) ? (parsed as InlineContent[]) : [];
+    } catch {
+      return [];
+    }
+  }
+  if (typeof raw === 'object' && raw !== null) {
+    return Array.isArray((raw as { nodes?: unknown }).nodes)
+      ? ((raw as { nodes: InlineContent[] }).nodes ?? [])
+      : [];
+  }
+  return [];
+};
+
+const extractPlainText = (nodes: InlineContent[]): string => {
+  const visit = (nodeList: InlineContent[]): string =>
+    nodeList
+      .map(node => {
+        if (!node) return '';
+        const data = node as any;
+        switch (data.type) {
+          case 'text':
+            return data.content ?? '';
+          case 'math':
+            return data.content ?? data.latex ?? '';
+          case 'link':
+          case 'strong':
+          case 'emphasis':
+          case 'underline':
+          case 'subscript':
+          case 'superscript':
+          case 'reference':
+            return visit(Array.isArray(data.children) ? data.children : []);
+          default:
+            if (Array.isArray(data.children)) return visit(data.children);
+            return '';
+        }
+      })
+      .join('');
+  return visit(nodes).trim();
+};
+
+const adaptNoteFromApi = (note: Note, fallbackBlockId?: string): PersonalNoteItem => {
+  const blockId =
+    (note as any).blockId ??
+    (note as any).block_id ??
+    fallbackBlockId ??
+    '';
+  return {
+    id: note.id,
+    blockId,
+    content: parseInlineContent((note as any).content ?? (note as any).contentJson),
+    createdAt: toTimestamp((note as any).createdAt ?? (note as any).created_at),
+    updatedAt: toTimestamp((note as any).updatedAt ?? (note as any).updated_at),
+  };
+};
+
+const sortNotesDesc = (notes: PersonalNoteItem[]) =>
+  [...notes].sort((a, b) => b.updatedAt - a.updatedAt);
+
+const groupNotesByBlock = (notes: PersonalNoteItem[]): Record<string, PersonalNoteItem[]> => {
+  const map: Record<string, PersonalNoteItem[]> = {};
+  notes.forEach(note => {
+    if (!note.blockId) return;
+    if (!map[note.blockId]) {
+      map[note.blockId] = [];
+    }
+    map[note.blockId].push(note);
+  });
+  Object.keys(map).forEach(key => {
+    map[key] = sortNotesDesc(map[key]);
+  });
+  return map;
+};
+
+const ensureUnified = <T,>(result: UnifiedResult<T>): T => {
+  if (result.bizCode === 0 && result.data) {
+    return result.data;
+  }
+  throw new Error(result.bizMessage ?? '未知错误');
+};
+
+const pickNoteArray = (payload: NoteListData | null | undefined): Note[] => {
+  if (!payload) return [];
+  const anyPayload = payload as any;
+  if (Array.isArray(anyPayload.notes)) return anyPayload.notes as Note[];
+  if (Array.isArray(anyPayload.items)) return anyPayload.items as Note[];
+  if (Array.isArray(anyPayload.list)) return anyPayload.list as Note[];
+  return [];
 };
 
 export default function PaperPage() {
@@ -223,9 +330,10 @@ export default function PaperPage() {
 
   const tabData = useMemo(() => {
     const tabKey = `paper:${paperId}`;
-    const tab = tabs.find((t) => t.id === tabKey);
+    const tab = tabs.find(t => t.id === tabKey);
     return (tab?.data ?? {}) as {
       paperId?: string;
+      userPaperId?: string;
       source?: ViewerSource;
       initialPaper?: Paper;
     };
@@ -239,27 +347,18 @@ export default function PaperPage() {
       if (s && !seen.has(s)) seen.add(s);
     };
 
-    if (urlSource) push(urlSource);
-
-    if (user && isAdmin) {
-      push('public-admin');
-      push('personal-owner');
-    } else if (user) {
-      push('personal-owner');
-    }
-
+    push(urlSource);
     push(tabData.source);
+
     if (tabData.initialPaper) {
-      push(
-        tabData.initialPaper.isPublic
-          ? isAdmin
-            ? 'public-admin'
-            : 'public-guest'
-          : 'personal-owner'
-      );
+      push(tabData.initialPaper.isPublic ? 'public-guest' : 'personal-owner');
     }
 
-    push('public-guest');
+    if (user) {
+      push(isAdmin ? 'public-admin' : 'personal-owner');
+    }
+
+    push(isAdmin ? 'public-admin' : 'public-guest');
 
     return Array.from(seen) as ViewerSource[];
   }, [tabData.source, tabData.initialPaper, urlSource, user, isAdmin]);
@@ -267,29 +366,33 @@ export default function PaperPage() {
   const { paper, isLoading, error, activeSource } = usePaperLoader(
     paperId,
     sourceCandidates,
-    tabData.initialPaper
+    tabData.initialPaper,
   );
 
   const effectiveSource = activeSource ?? sourceCandidates[0] ?? 'public-guest';
   const permissions = usePaperEditPermissions(effectiveSource);
 
-  const isPublicAdminView =
-    effectiveSource === 'public-admin' && permissions.canEditPublicPaper;
-
-  const isPersonalOwnerView =
-    effectiveSource === 'personal-owner' && permissions.canEditPersonalPaper;
-
   const canEditContent = permissions.canEditContent;
+  const canToggleVisibility = permissions.canToggleVisibility;
+  const isPublicVisible = paper?.isPublic ?? false;
+  const isPersonalOwner = effectiveSource === 'personal-owner';
+
   const { setHasUnsavedChanges } = useEditingState();
 
   const [lang, setLang] = useState<Lang>('en');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeBlockId, setActiveBlockId] = useState<string | null>(null);
+  const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [highlightedRefs, setHighlightedRefs] = useState<string[]>([]);
   const [searchResults, setSearchResults] = useState<string[]>([]);
   const [currentSearchIndex, setCurrentSearchIndex] = useState(0);
 
   const [editableDraft, setEditableDraft] = useState<PaperContentModel | null>(null);
+
+  const [notesByBlock, setNotesByBlock] = useState<Record<string, PersonalNoteItem[]>>({});
+  const [notesLoading, setNotesLoading] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
+  const [notesMutating, setNotesMutating] = useState(false);
 
   const contentRef = useRef<HTMLDivElement>(null);
 
@@ -307,28 +410,107 @@ export default function PaperPage() {
       references: paper.references,
       attachments: paper.attachments,
     });
-    // 重置未保存状态，因为这是从服务器加载的新数据
     setHasUnsavedChanges(false);
   }, [paper, setHasUnsavedChanges]);
 
+  useEffect(() => {
+    if (!isPersonalOwner) {
+      setSelectedBlockId(null);
+    }
+  }, [isPersonalOwner]);
+
   const displayContent = editableDraft ?? paper ?? null;
+  const urlUserPaperId = searchParams?.get('userPaperId');
 
-  const blockToSectionMap = useMemo(() => {
-    const map = new Map<string, string>();
+  const resolvedUserPaperId = useMemo(() => {
+    if (!isPersonalOwner) return null;
+    if (urlUserPaperId) return urlUserPaperId;
+    if (tabData.userPaperId) return tabData.userPaperId;
+    if (paper && (paper as any).userPaperId) return (paper as any).userPaperId as string;
+    return null;
+  }, [isPersonalOwner, urlUserPaperId, tabData.userPaperId, paper]);
 
-    const walk = (sections: PaperContentModel['sections'] = []) => {
-      sections.forEach((section) => {
-        section.content?.forEach((block) => map.set(block.id, section.id));
-        if (section.subsections?.length) walk(section.subsections);
+
+  const blockContextMap = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        sectionId: string;
+        sectionPath: number[];
+        sectionTitle?: string;
+        blockOrder: number;
+        blockType: BlockContent['type'];
+      }
+    >();
+
+    const walk = (sections: PaperContentModel['sections'] = [], path: number[] = []) => {
+      sections.forEach((section, sectionIndex) => {
+        const sectionPath = [...path, sectionIndex + 1];
+
+        section.content?.forEach((block, blockIndex) => {
+          map.set(block.id, {
+            sectionId: section.id,
+            sectionPath,
+            sectionTitle: section.title?.zh || section.title?.en,
+            blockOrder: blockIndex + 1,
+            blockType: block.type,
+          });
+        });
+
+        if (section.subsections?.length) {
+          walk(section.subsections, sectionPath);
+        }
       });
     };
 
-    if (displayContent?.sections?.length) {
-      walk(displayContent.sections);
-    }
-
+    walk(displayContent?.sections);
     return map;
   }, [displayContent?.sections]);
+
+  const loadNotes = useCallback(async () => {
+    if (!isPersonalOwner || !resolvedUserPaperId) {
+      setNotesByBlock({});
+      setNotesError(null);
+      return;
+    }
+    setNotesLoading(true);
+    setNotesError(null);
+    try {
+      const response = await noteService.getNotesByPaper(resolvedUserPaperId);
+      const data = ensureUnified(response);
+      const notesRaw = pickNoteArray(data);
+      const personalNotes = notesRaw.map(note => adaptNoteFromApi(note));
+      setNotesByBlock(groupNotesByBlock(personalNotes));
+    } catch (err) {
+      console.error('加载笔记失败', err);
+      setNotesError(err instanceof Error ? err.message : '加载笔记失败，请稍后重试');
+      setNotesByBlock({});
+    } finally {
+      setNotesLoading(false);
+    }
+  }, [isPersonalOwner, resolvedUserPaperId]);
+
+  useEffect(() => {
+    loadNotes();
+  }, [loadNotes]);
+
+  const buildCreatePayload = useCallback(
+    (blockId: string, content: InlineContent[]): CreateNoteRequest => ({
+      userPaperId: resolvedUserPaperId ?? '',
+      blockId,
+      content,
+      plainText: extractPlainText(content),
+    }) as CreateNoteRequest,
+    [resolvedUserPaperId],
+  );
+
+  const buildUpdatePayload = useCallback(
+    (content: InlineContent[]): UpdateNoteRequest => ({
+      content,
+      plainText: extractPlainText(content),
+    }) as UpdateNoteRequest,
+    [],
+  );
 
   const handleSearchNavigate = useCallback(
     (direction: 'next' | 'prev') => {
@@ -354,14 +536,12 @@ export default function PaperPage() {
       setActiveBlockId(targetBlockId);
       window.setTimeout(() => setActiveBlockId(null), 2000);
     },
-    [searchResults, currentSearchIndex]
+    [searchResults, currentSearchIndex],
   );
 
   const updateSections = useCallback(
-    (
-      updater: (sections: Section[]) => { sections: Section[]; touched: boolean }
-    ) => {
-      setEditableDraft((prev) => {
+    (updater: (sections: Section[]) => { sections: Section[]; touched: boolean }) => {
+      setEditableDraft(prev => {
         if (!prev) return prev;
         const { sections, touched } = updater(prev.sections);
         if (touched) {
@@ -370,16 +550,16 @@ export default function PaperPage() {
         return touched ? { ...prev, sections } : prev;
       });
     },
-    [setHasUnsavedChanges]
+    [setHasUnsavedChanges],
   );
 
   const updateSectionTree = useCallback(
     (sectionId: string, apply: (section: Section) => Section) => {
-      updateSections((sections) => {
+      updateSections(sections => {
         let touched = false;
 
-        const walk = (nodes: Section[]): Section[] => {
-          return nodes.map((section) => {
+        const walk = (nodes: Section[]): Section[] =>
+          nodes.map(section => {
             let nextSection = section;
             if (section.id === sectionId) {
               touched = true;
@@ -393,13 +573,12 @@ export default function PaperPage() {
             }
             return nextSection;
           });
-        };
 
         const next = walk(sections);
         return { sections: touched ? next : sections, touched };
       });
     },
-    [updateSections]
+    [updateSections],
   );
 
   const createPlaceholderParagraph = useCallback((): ParagraphBlock => {
@@ -419,61 +598,44 @@ export default function PaperPage() {
 
   const handleSectionTitleUpdate = useCallback(
     (sectionId: string, nextTitle: Section['title']) => {
-      updateSectionTree(sectionId, (section) => ({
+      updateSectionTree(sectionId, section => ({
         ...section,
         title: { ...section.title, ...nextTitle },
       }));
-      // 标记为有未保存的更改
       setHasUnsavedChanges(true);
     },
-    [updateSectionTree, setHasUnsavedChanges]
+    [updateSectionTree, setHasUnsavedChanges],
   );
 
-  // 处理元数据更新
-  const handleMetadataUpdate = useCallback((metadata: PaperContentModel['metadata']) => {
-    setEditableDraft(prev => {
-      if (!prev) return prev;
-      setHasUnsavedChanges(true);
-      return { ...prev, metadata };
-    });
-  }, [setHasUnsavedChanges]);
-
-  // 处理摘要更新
-  const handleAbstractUpdate = useCallback((abstract: PaperContentModel['abstract']) => {
-    setEditableDraft(prev => {
-      if (!prev) return prev;
-      setHasUnsavedChanges(true);
-      return { ...prev, abstract };
-    });
-  }, [setHasUnsavedChanges]);
-
-  // 处理关键词更新
-  const handleKeywordsUpdate = useCallback((keywords: PaperContentModel['keywords']) => {
-    setEditableDraft(prev => {
-      if (!prev) return prev;
-      setHasUnsavedChanges(true);
-      return { ...prev, keywords };
-    });
-  }, [setHasUnsavedChanges]);
+  const handleMetadataUpdate = useCallback(
+    (metadata: PaperContentModel['metadata']) => {
+      setEditableDraft(prev => {
+        if (!prev) return prev;
+        setHasUnsavedChanges(true);
+        return { ...prev, metadata };
+      });
+    },
+    [setHasUnsavedChanges],
+  );
 
   const handleSectionAddSubsection = useCallback(
     (sectionId: string) => {
-      updateSectionTree(sectionId, (section) => ({
+      updateSectionTree(sectionId, section => ({
         ...section,
         subsections: [...(section.subsections ?? []), createEmptySection()],
       }));
     },
-    [updateSectionTree]
+    [updateSectionTree],
   );
 
   const handleSectionDelete = useCallback(
     (sectionId: string) => {
-      updateSections((sections) => {
+      updateSections(sections => {
         let touched = false;
 
         const prune = (nodes: Section[]): Section[] => {
           const nextNodes: Section[] = [];
-          nodes.forEach((section) => {
+          nodes.forEach(section => {
             if (section.id === sectionId) {
               touched = true;
               return;
@@ -494,29 +656,27 @@ export default function PaperPage() {
         return { sections: touched ? next : sections, touched };
       });
     },
-    [updateSections]
+    [updateSections],
   );
 
   const updateBlockTree = useCallback(
     (
       blockId: string,
-      apply: (section: Section, block: BlockContent) => {
-        section?: Section;
-        block?: BlockContent;
-        remove?: boolean;
-        insertAfter?: BlockContent;
-      }
+      apply: (
+        section: Section,
+        block: BlockContent,
+      ) => { section?: Section; block?: BlockContent; remove?: boolean; insertAfter?: BlockContent },
     ) => {
-      updateSections((sections) => {
+      updateSections(sections => {
         let touched = false;
 
-        const walkSections = (nodes: Section[]): Section[] => {
-          return nodes.map((section) => {
+        const walkSections = (nodes: Section[]): Section[] =>
+          nodes.map(section => {
             let nextSection = section;
             let contentChanged = false;
 
             const nextContent = section.content
-              .map((block) => {
+              .map(block => {
                 if (block.id !== blockId) return block;
                 touched = true;
                 contentChanged = true;
@@ -538,10 +698,10 @@ export default function PaperPage() {
               }
             }
 
-            const foundBlock = section.content.find((b) => b.id === blockId);
+            const foundBlock = section.content.find(b => b.id === blockId);
             const result = foundBlock ? apply(section, foundBlock) : {};
             if (result.insertAfter) {
-              const idx = nextContent.findIndex((b) => b.id === blockId);
+              const idx = nextContent.findIndex(b => b.id === blockId);
               if (idx >= 0) {
                 const withInsert = [...nextContent];
                 withInsert.splice(idx + 1, 0, result.insertAfter);
@@ -551,20 +711,19 @@ export default function PaperPage() {
 
             return nextSection;
           });
-        };
 
         const next = walkSections(sections);
         return { sections: touched ? next : sections, touched };
       });
     },
-    [updateSections]
+    [updateSections],
   );
 
   const handleBlockUpdate = useCallback(
     (blockId: string, nextBlock: BlockContent) => {
       updateBlockTree(blockId, () => ({ block: nextBlock }));
     },
-    [updateBlockTree]
+    [updateBlockTree],
   );
 
   const handleBlockDuplicate = useCallback(
@@ -576,26 +735,26 @@ export default function PaperPage() {
         };
       });
     },
-    [updateBlockTree]
+    [updateBlockTree],
   );
 
   const handleBlockDelete = useCallback(
     (blockId: string) => {
       updateBlockTree(blockId, () => ({ remove: true }));
     },
-    [updateBlockTree]
+    [updateBlockTree],
   );
 
   const handleBlockInsert = useCallback(
     (blockId: string, position: 'above' | 'below') => {
       let newBlockId: string | null = null;
 
-      updateSections((sections) => {
+      updateSections(sections => {
         let touched = false;
 
         const walk = (nodes: Section[]): Section[] =>
-          nodes.map((section) => {
-            const idx = section.content.findIndex((block) => block.id === blockId);
+          nodes.map(section => {
+            const idx = section.content.findIndex(block => block.id === blockId);
             let nextSection = section;
 
             if (idx !== -1) {
@@ -627,19 +786,19 @@ export default function PaperPage() {
         setActiveBlockId(newBlockId);
       }
     },
-    [createPlaceholderParagraph, setActiveBlockId, updateSections]
+    [createPlaceholderParagraph, setActiveBlockId, updateSections],
   );
 
   const handleBlockMove = useCallback(
     (blockId: string, direction: 'up' | 'down') => {
       let didMove = false;
 
-      updateSections((sections) => {
+      updateSections(sections => {
         let touched = false;
 
         const walk = (nodes: Section[]): Section[] =>
-          nodes.map((section) => {
-            const idx = section.content.findIndex((block) => block.id === blockId);
+          nodes.map(section => {
+            const idx = section.content.findIndex(block => block.id === blockId);
             let nextSection = section;
 
             if (idx !== -1) {
@@ -674,19 +833,19 @@ export default function PaperPage() {
         setActiveBlockId(blockId);
       }
     },
-    [setActiveBlockId, updateSections]
+    [setActiveBlockId, updateSections],
   );
 
   const handleBlockAppendSubsection = useCallback(
     (blockId: string) => {
-      updateSections((sections) => {
+      updateSections(sections => {
         let touched = false;
 
         const walk = (nodes: Section[]): Section[] =>
-          nodes.map((section) => {
+          nodes.map(section => {
             let nextSection = section;
 
-            if (section.content.some((block) => block.id === blockId)) {
+            if (section.content.some(block => block.id === blockId)) {
               const nextSubsections = [...(section.subsections ?? []), createEmptySection()];
               nextSection = { ...section, subsections: nextSubsections };
               touched = true;
@@ -705,19 +864,19 @@ export default function PaperPage() {
         return { sections: touched ? nextSections : sections, touched };
       });
     },
-    [updateSections]
+    [updateSections],
   );
 
   const handleBlockAddComponent = useCallback(
     (blockId: string, type: BlockContent['type']) => {
       let newBlockId: string | null = null;
 
-      updateSections((sections) => {
+      updateSections(sections => {
         let touched = false;
 
         const walk = (nodes: Section[]): Section[] =>
-          nodes.map((section) => {
-            const idx = section.content.findIndex((block) => block.id === blockId);
+          nodes.map(section => {
+            const idx = section.content.findIndex(block => block.id === blockId);
             let nextSection = section;
 
             if (idx !== -1) {
@@ -748,37 +907,168 @@ export default function PaperPage() {
         setActiveBlockId(newBlockId);
       }
     },
-    [lang, setActiveBlockId, updateSections]
+    [lang, setActiveBlockId, updateSections],
   );
 
   const handlePreviewBlockClick = useCallback((blockId: string) => {
-    // 只设置活动块ID，不再触发编辑状态
     setActiveBlockId(blockId);
+  }, []);
+
+  const handleBlockNoteToggle = useCallback((blockId: string) => {
+    setSelectedBlockId(prev => (prev === blockId ? null : blockId));
+  }, []);
+
+  const handleBlockSelect = useCallback(
+    (blockId: string) => {
+      handlePreviewBlockClick(blockId);
+      if (isPersonalOwner) {
+        handleBlockNoteToggle(blockId);
+      }
+    },
+    [handlePreviewBlockClick, handleBlockNoteToggle, isPersonalOwner],
+  );
+
+  const handleCloseNotes = useCallback(() => {
+    setSelectedBlockId(null);
   }, []);
 
   const handleSave = useCallback(async () => {
     if (!editableDraft) return;
-    
+
     try {
-      console.log('准备保存草稿：', editableDraft);
-      
       const result = await adminPaperService.updatePaper(paperId, editableDraft);
-      
-      if (result.bizCode === 0) { // BusinessCode.SUCCESS = 0
-        console.log('保存成功：', result.data);
-        // 更新本地状态
-        // TODO: 更新本地paper状态
+
+      if (result.bizCode === 0) {
         setHasUnsavedChanges(false);
       } else {
-        console.error('保存失败：', result.bizMessage);
-        // 显示错误提示
         alert(`保存失败：${result.bizMessage}`);
       }
-    } catch (error) {
-      console.error('保存过程中出错：', error);
+    } catch (err) {
+      console.error('保存过程中出错：', err);
       alert('保存过程中出错，请稍后重试');
     }
   }, [editableDraft, paperId, setHasUnsavedChanges]);
+
+  const handleCreateNote = useCallback(
+    async (blockId: string, content: InlineContent[]) => {
+      if (!resolvedUserPaperId) {
+        alert('未找到个人论文标识，无法创建笔记。');
+        return;
+      }
+      setNotesMutating(true);
+      try {
+        const payload = buildCreatePayload(blockId, content);
+        const response = await noteService.createNote(payload);
+        const created = adaptNoteFromApi(ensureUnified(response), blockId);
+        setNotesByBlock(prev => {
+          const next = { ...prev };
+          const bucket = next[created.blockId] ?? [];
+          next[created.blockId] = sortNotesDesc([...bucket, created]);
+          return next;
+        });
+      } catch (err) {
+        console.error('创建笔记失败', err);
+        alert(err instanceof Error ? err.message : '创建笔记失败，请稍后重试');
+      } finally {
+        setNotesMutating(false);
+      }
+    },
+    [resolvedUserPaperId, buildCreatePayload],
+  );
+
+  const handleUpdateNote = useCallback(
+    async (blockId: string, noteId: string, content: InlineContent[]) => {
+      if (!resolvedUserPaperId) {
+        alert('未找到个人论文标识，无法更新笔记。');
+        return;
+      }
+      setNotesMutating(true);
+      try {
+        const payload = buildUpdatePayload(content);
+        const response = await noteService.updateNote(noteId, payload);
+        const updated = adaptNoteFromApi(ensureUnified(response), blockId);
+
+        setNotesByBlock(prev => {
+          const next = { ...prev };
+          const originalBucket = next[blockId] ?? [];
+          const stillInOriginal = originalBucket.some(note => note.id === noteId);
+          if (stillInOriginal) {
+            const cleaned = originalBucket.filter(note => note.id !== noteId);
+            if (cleaned.length) next[blockId] = sortNotesDesc(cleaned);
+            else delete next[blockId];
+          }
+          const targetBucket = next[updated.blockId] ?? [];
+          next[updated.blockId] = sortNotesDesc([
+            ...targetBucket.filter(note => note.id !== updated.id),
+            updated,
+          ]);
+          return next;
+        });
+      } catch (err) {
+        console.error('更新笔记失败', err);
+        alert(err instanceof Error ? err.message : '更新笔记失败，请稍后重试');
+      } finally {
+        setNotesMutating(false);
+      }
+    },
+    [resolvedUserPaperId, buildUpdatePayload],
+  );
+
+  const handleDeleteNote = useCallback(
+    async (blockId: string, noteId: string) => {
+      if (!resolvedUserPaperId) {
+        alert('未找到个人论文标识，无法删除笔记。');
+        return;
+      }
+      setNotesMutating(true);
+      try {
+        const response = await noteService.deleteNote(noteId);
+        if (response.bizCode !== 0) {
+          throw new Error(response.bizMessage ?? '删除笔记失败，请稍后重试');
+        }
+        setNotesByBlock(prev => {
+          const next = { ...prev };
+          const bucket = next[blockId] ?? [];
+          const remaining = bucket.filter(note => note.id !== noteId);
+          if (remaining.length) {
+            next[blockId] = sortNotesDesc(remaining);
+          } else {
+            delete next[blockId];
+          }
+          return next;
+        });
+      } catch (err) {
+        console.error('删除笔记失败', err);
+        alert(err instanceof Error ? err.message : '删除笔记失败，请稍后重试');
+      } finally {
+        setNotesMutating(false);
+      }
+    },
+    [resolvedUserPaperId],
+  );
+
+  const headerActions = useMemo(() => {
+    const isPublicAdmin = effectiveSource === 'public-admin';
+
+    return {
+      canToggleVisibility: isPublicAdmin && canToggleVisibility,
+      isPublicVisible,
+      onToggleVisibility:
+        isPublicAdmin && canToggleVisibility
+          ? () => {
+            console.log('TODO: 实现公开/私有切换');
+          }
+          : undefined,
+      onSave:
+        (isPublicAdmin || isPersonalOwner) && canEditContent
+          ? handleSave
+          : undefined,
+      saveLabel: isPersonalOwner ? '保存我的修改' : '保存草稿',
+      extraActionsHint: isPublicAdmin
+        ? '公共库管理员视图，操作将对所有用户生效'
+        : undefined,
+    };
+  }, [effectiveSource, canToggleVisibility, isPublicVisible, canEditContent, handleSave, isPersonalOwner]);
 
   if (isLoading) {
     return (
@@ -808,9 +1098,39 @@ export default function PaperPage() {
     );
   }
 
+  const selectedContext = selectedBlockId ? blockContextMap.get(selectedBlockId) ?? null : null;
+  const selectedSectionId = selectedContext?.sectionId ?? null;
+
+  const sectionLabel = selectedContext
+    ? `${selectedContext.sectionPath.join('.')} ${selectedContext.sectionTitle ?? ''}`.trim()
+    : null;
+
+  const blockTypeLabels: Record<BlockContent['type'], string> = {
+    paragraph: '段落',
+    heading: '标题',
+    math: '公式',
+    figure: '图示',
+    table: '表格',
+    code: '代码',
+    'ordered-list': '有序列表',
+    'unordered-list': '无序列表',
+    quote: '引用',
+    divider: '分隔线',
+  };
+
+  const blockLabel = selectedContext
+    ? `${blockTypeLabels[selectedContext.blockType] ?? selectedContext.blockType} · #${selectedContext.blockOrder}`
+    : null;
+
+  const showNotesPanel = isPersonalOwner && !!selectedBlockId;
+  const articleStyle: CSSProperties | undefined = showNotesPanel
+    ? ({ '--notes-offset': `${NOTES_PANEL_SHIFT}px` } as CSSProperties)
+    : undefined;
+
+  const notesForSelectedBlock = selectedBlockId ? notesByBlock[selectedBlockId] ?? [] : [];
+
   return (
     <PaperEditPermissionsContext.Provider value={permissions}>
-      
       <div className="relative h-full min-h-0 bg-gray-50 dark:bg-slate-950">
         <div className="absolute top-0 left-0 right-0 z-50 pointer-events-none">
           <div className="pointer-events-auto">
@@ -822,20 +1142,8 @@ export default function PaperPage() {
               searchResultsCount={searchResults.length}
               currentSearchIndex={currentSearchIndex}
               onSearchNavigate={handleSearchNavigate}
-              actions={{
-                canToggleVisibility: permissions.canToggleVisibility,
-                isPublicVisible: paper.isPublic,
-                onToggleVisibility:
-                  permissions.canToggleVisibility
-                    ? () => {
-                        // TODO: 切换可见性
-                        console.log('切换可见性尚未实现');
-                      }
-                    : undefined,
-                onSave: canEditContent ? handleSave : undefined,
-                saveLabel: '保存草稿',
-                extraActionsHint: isPublicAdminView || isPersonalOwnerView ? '管理员/作者视角' : undefined,
-              }}
+              actions={headerActions}
+              viewerSource={effectiveSource}
             />
           </div>
         </div>
@@ -844,48 +1152,122 @@ export default function PaperPage() {
           <div
             ref={contentRef}
             className="flex-1 min-h-0 overflow-y-auto"
+            style={{ paddingTop: HEADER_HEIGHT }}
           >
             <div
-              className="max-w-5xl mx-auto p-8"
-              style={{ paddingTop: HEADER_HEIGHT }}
+              className="
+                max-w-5xl mx-auto p-8
+                transition-[transform,margin] duration-300 ease-out
+                transform-[translateX(0)]
+                lg:transform-[translateX(calc(var(--notes-offset,0)*-1))]
+              "
+              style={articleStyle}
             >
-              <PaperMetadata metadata={displayContent.metadata} />
-              <PaperContent
-                sections={displayContent.sections}
-                lang={lang}
-                searchQuery={searchQuery}
-                activeBlockId={activeBlockId}
-                setActiveBlockId={setActiveBlockId}
-                contentRef={contentRef}
-                setSearchResults={setSearchResults}
-                setCurrentSearchIndex={setCurrentSearchIndex}
-                onBlockClick={handlePreviewBlockClick}
-                onSectionTitleUpdate={handleSectionTitleUpdate}
-                onSectionAddSubsection={handleSectionAddSubsection}
-                onSectionDelete={handleSectionDelete}
-                onBlockUpdate={handleBlockUpdate}
-                onBlockDuplicate={handleBlockDuplicate}
-                onBlockDelete={handleBlockDelete}
-                onBlockInsert={handleBlockInsert}
-                onBlockMove={handleBlockMove}
-                onBlockAppendSubsection={handleBlockAppendSubsection}
-                onBlockAddComponent={handleBlockAddComponent}
-              />
-              <PaperReferences
-                references={displayContent.references}
-                title={
-                  lang === 'both'
-                    ? '参考文献 / References'
-                    : lang === 'en'
-                      ? 'References'
-                      : '参考文献'
-                }
-                highlightedRefs={highlightedRefs}
-                onHighlightChange={setHighlightedRefs}
-              />
+              <div className="flex flex-col gap-8">
+                <PaperMetadata
+                  metadata={displayContent.metadata}
+                  onMetadataUpdate={canEditContent ? handleMetadataUpdate : undefined}
+                />
+                <PaperContent
+                  sections={displayContent.sections ?? []}
+                  references={displayContent.references}
+                  lang={lang}
+                  searchQuery={searchQuery}
+                  activeBlockId={activeBlockId}
+                  selectedBlockId={selectedBlockId}
+                  setActiveBlockId={setActiveBlockId}
+                  contentRef={contentRef}
+                  setSearchResults={setSearchResults}
+                  setCurrentSearchIndex={setCurrentSearchIndex}
+                  onBlockClick={handleBlockSelect}
+                  onSectionTitleUpdate={handleSectionTitleUpdate}
+                  onSectionAddSubsection={handleSectionAddSubsection}
+                  onSectionDelete={handleSectionDelete}
+                  onBlockUpdate={handleBlockUpdate}
+                  onBlockDuplicate={handleBlockDuplicate}
+                  onBlockDelete={handleBlockDelete}
+                  onBlockInsert={handleBlockInsert}
+                  onBlockMove={handleBlockMove}
+                  onBlockAppendSubsection={handleBlockAppendSubsection}
+                  onBlockAddComponent={handleBlockAddComponent}
+                />
+                <PaperReferences
+                  references={displayContent.references}
+                  title={
+                    lang === 'both'
+                      ? '参考文献 / References'
+                      : lang === 'en'
+                        ? 'References'
+                        : '参考文献'
+                  }
+                  highlightedRefs={highlightedRefs}
+                  onHighlightChange={setHighlightedRefs}
+                />
+                {showNotesPanel && (
+                  <div className="lg:hidden rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+                    <PersonalNotePanel
+                      blockId={selectedBlockId!}
+                      sectionId={selectedSectionId}
+                      sectionLabel={sectionLabel}
+                      blockLabel={blockLabel}
+                      notes={notesForSelectedBlock}
+                      onCreateNote={content => handleCreateNote(selectedBlockId!, content)}
+                      onUpdateNote={(noteId, content) =>
+                        handleUpdateNote(selectedBlockId!, noteId, content)
+                      }
+                      onDeleteNote={noteId => handleDeleteNote(selectedBlockId!, noteId)}
+                      references={displayContent.references ?? []}
+                      highlightedRefs={highlightedRefs}
+                      setHighlightedRefs={setHighlightedRefs}
+                      contentRef={contentRef}
+                      onClose={handleCloseNotes}
+                      isLoading={notesLoading}
+                      isMutating={notesMutating}
+                      error={notesError}
+                      onRetry={loadNotes}
+                    />
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         </div>
+
+        {showNotesPanel && (
+          <aside
+            className="
+              hidden lg:flex
+              fixed z-40 flex-col gap-4
+              rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-lg
+              dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200
+            "
+            style={{
+              width: NOTES_PANEL_WIDTH,
+              top: NOTES_PANEL_TOP,
+              right: NOTES_PANEL_GAP,
+            }}
+          >
+            <PersonalNotePanel
+              blockId={selectedBlockId!}
+              sectionId={selectedSectionId}
+              sectionLabel={sectionLabel}
+              blockLabel={blockLabel}
+              notes={notesForSelectedBlock}
+              onCreateNote={content => handleCreateNote(selectedBlockId!, content)}
+              onUpdateNote={(noteId, content) => handleUpdateNote(selectedBlockId!, noteId, content)}
+              onDeleteNote={noteId => handleDeleteNote(selectedBlockId!, noteId)}
+              references={displayContent.references ?? []}
+              highlightedRefs={highlightedRefs}
+              setHighlightedRefs={setHighlightedRefs}
+              contentRef={contentRef}
+              onClose={handleCloseNotes}
+              isLoading={notesLoading}
+              isMutating={notesMutating}
+              error={notesError}
+              onRetry={loadNotes}
+            />
+          </aside>
+        )}
       </div>
     </PaperEditPermissionsContext.Provider>
   );

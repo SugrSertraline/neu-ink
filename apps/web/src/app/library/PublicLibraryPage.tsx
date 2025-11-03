@@ -1,3 +1,4 @@
+// apps/web/src/components/library/PublicLibraryPage.tsx
 'use client';
 
 import React from 'react';
@@ -8,7 +9,7 @@ import LibraryFilters from '@/components/library/LibraryFilters';
 import PaperCard from '@/components/library/PaperCard';
 import ViewModeSwitcher from '@/components/library/ViewModeSwitcher';
 import CreatePaperDialog from '@/components/library/CreatePaperDialog';
-import {usePublicLibraryController} from '@/lib/hooks/usePublicLibraryController'
+import { usePublicLibraryController } from '@/lib/hooks/usePublicLibraryController';
 import type { Author } from '@/types/paper';
 
 export default function PublicLibraryPage() {
@@ -52,65 +53,89 @@ export default function PublicLibraryPage() {
 
   const [showCreateDialog, setShowCreateDialog] = React.useState(false);
 
+  const handleCreateButtonClick = React.useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      const button = event.currentTarget;
+      button.classList.remove('animate-glow-press');
+      void button.offsetWidth;
+      button.classList.add('animate-glow-press');
+      setShowCreateDialog(true);
+    },
+    [setShowCreateDialog],
+  );
+
   return (
-    <div className="flex h-full flex-col">
+    <div className="relative flex h-full flex-col">
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_90%_at_0%_0%,rgba(40,65,138,0.14),transparent),radial-gradient(45%_70%_at_100%_0%,rgba(247,194,66,0.12),transparent)]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_40%_120%,rgba(89,147,205,0.14),transparent)]" />
+
       {showLoginHint && (
         <>
-          <div className="fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-sm transition-opacity" />
-          <div className="fixed inset-0 z-50 flex items-center justify-center">
-            <div className="mx-4 max-w-md animate-in fade-in zoom-in rounded-lg bg-white p-6 shadow-xl dark:bg-gray-800">
-              <div className="text-center">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-blue-100 dark:bg-blue-900/30">
-                  <Library className="h-6 w-6 text-blue-600 dark:text-blue-400" />
-                </div>
-                <h3 className="mb-2 text-lg font-semibold text-gray-900 dark:text-gray-100">
-                  需要登录
-                </h3>
-                <p className="mb-4 text-gray-600 dark:text-gray-400">
-                  查看论文详情或执行该操作前，请先登录账号
-                </p>
-                <div className="flex justify-center gap-3">
-                  <Button variant="outline" onClick={dismissLoginHint}>
-                    取消
-                  </Button>
-                  <Button onClick={navigateToLogin}>立即登录</Button>
-                </div>
+          <div className="fixed inset-0 z-40  backdrop-blur-lg" />
+          <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+            <div className="w-full max-w-md rounded-2xl border border-white/60 p-8 text-center shadow-xl backdrop-blur-lg">
+              <div className="mx-auto mb-5 flex h-14 w-14 items-center justify-center rounded-full  shadow">
+                <Library className="h-7 w-7 text-[#28418A]" />
+              </div>
+              <h3 className="mb-2 text-xl font-semibold text-slate-900">需要登录</h3>
+              <p className="mb-6 text-sm leading-6 text-slate-600">查看论文详情或执行该操作前，请先登录账号。</p>
+              <div className="flex justify-center gap-3">
+                <Button variant="outline" onClick={dismissLoginHint} className="rounded-xl">
+                  取消
+                </Button>
+                <Button onClick={navigateToLogin} className="rounded-xl bg-[#28418A] text-white hover:bg-[#223672]">
+                  立即登录
+                </Button>
               </div>
             </div>
           </div>
         </>
       )}
 
-      <div className="flex-none border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-900">
-        <div className="space-y-3 p-4">
-          <div className="flex items-center justify-between">
+      <header className="relative flex-none border-b border-white/60 bg-white/70 px-6 py-5 shadow-[0_14px_34px_rgba(28,45,96,0.12)] backdrop-blur-xl">
+        <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div className="space-y-2">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-3 py-1 text-xs font-medium text-[#28418A] shadow backdrop-blur-lg">
+              <Library className="h-4 w-4" />
+              公共论文库
+            </div>
             <div>
-              <h1 className="mb-1 text-xl font-bold text-gray-900 dark:text-gray-100">论文库</h1>
-              <p className="text-sm text-gray-600 dark:text-gray-400">
+              <h1 className="text-2xl font-bold text-slate-900">论文库</h1>
+              <p className="mt-1 text-sm text-slate-600">
                 {isAdmin
-                  ? '管理和浏览所有论文'
+                  ? '管理与浏览所有论文'
                   : isAuthenticated
                   ? '浏览公共论文库'
                   : '浏览公共论文库（无需登录）'}{' '}
-                • 共 {totalCount} 篇论文
+                · 共 {totalCount} 篇论文
               </p>
               {!isAuthenticated && (
-                <p className="mt-1 text-xs text-blue-600 dark:text-blue-400">
-                  💡 登录后可查看论文详情并管理个人论文库
-                </p>
+                <p className="mt-1 text-xs text-[#28418A]">💡 登录后可查看论文详情并管理个人论文库</p>
               )}
-            </div>
-            <div className="flex items-center gap-3">
-              {isAdmin && (
-                <Button size="sm" className="gap-2" onClick={() => setShowCreateDialog(true)}>
-                  <Plus className="h-4 w-4" />
-                  新建论文
-                </Button>
-              )}
-              <ViewModeSwitcher value={viewMode} onChange={setViewMode} />
             </div>
           </div>
 
+          <div className="flex flex-wrap items-center gap-3">
+            {isAdmin && (
+              <Button
+                size="sm"
+                className="flex items-center gap-2 rounded-xl bg-[#28418A] px-4 py-2 text-sm font-medium text-white shadow transition hover:bg-[#223672] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4769b8]"
+                onClick={handleCreateButtonClick}
+                onAnimationEnd={event => event.currentTarget.classList.remove('animate-glow-press')}
+              >
+                <Plus className="h-4 w-4" />
+                新建论文
+              </Button>
+            )}
+            <div className="inline-flex items-center gap-2 rounded-xl border border-white/70 bg-white/70 px-2 py-1 shadow backdrop-blur-xl">
+              <ViewModeSwitcher value={viewMode} onChange={setViewMode} />
+            </div>
+          </div>
+        </div>
+      </header>
+
+      <div className="relative flex-none border-b border-white/60 bg-white/75 px-6 py-4 shadow-[0_12px_32px_rgba(28,45,96,0.1)] backdrop-blur-xl">
+        <div className="rounded-2xl border border-white/70 bg-white/78 px-5 py-4 shadow backdrop-blur-2xl">
           <LibraryFilters
             searchTerm={searchTerm}
             onSearchChange={setSearchTerm}
@@ -137,36 +162,37 @@ export default function PublicLibraryPage() {
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto bg-gray-50 dark:bg-gray-950">
-        <div className="p-4">
+      <main className="relative flex-1 overflow-auto bg-white/72 px-6 py-6 backdrop-blur-xl">
+        <div className="space-y-4">
           {loading && (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-gray-500 dark:text-gray-400">加载中…</div>
+            <div className="flex items-center justify-center rounded-2xl border border-white/70 bg-white/78 py-12 text-sm text-slate-500 shadow backdrop-blur-2xl">
+              加载中…
             </div>
           )}
 
           {error && (
-            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-600 dark:border-red-800 dark:bg-red-900/20">
+            <div className="rounded-2xl border border-red-200/65 bg-red-50/85 p-6 text-sm text-red-600 shadow backdrop-blur-2xl">
               加载失败：{error}
             </div>
           )}
 
           {!loading && !error && papers.length === 0 && (
-            <div className="py-12 text-center">
-              <Library className="mx-auto mb-4 h-12 w-12 text-gray-400" />
-              <h3 className="mb-2 text-lg font-medium text-gray-900 dark:text-gray-100">
-                暂无论文
-              </h3>
-              <p className="mb-4 text-sm text-gray-600 dark:text-gray-400">
+            <div className="flex flex-col items-center justify-center rounded-2xl border border-white/70 bg-white/78 px-8 py-14 text-center shadow backdrop-blur-2xl">
+              <Library className="mb-4 h-12 w-12 text-slate-400" />
+              <h3 className="mb-2 text-lg font-medium text-slate-900">暂无论文</h3>
+              <p className="mb-4 text-sm text-slate-600">
                 {isAdmin ? '开始添加第一篇论文吧' : '暂时没有符合条件的论文'}
               </p>
               {!isAuthenticated && (
-                <p className="mb-4 text-sm text-blue-600 dark:text-blue-400">
-                  登录后可以查看论文详情并管理个人论文库
-                </p>
+                <p className="mb-4 text-sm text-[#28418A]">登录后可以查看论文详情并管理个人论文库</p>
               )}
               {isAdmin && (
-                <Button size="sm" onClick={() => setShowCreateDialog(true)}>
+                <Button
+                  size="sm"
+                  onClick={handleCreateButtonClick}
+                  onAnimationEnd={event => event.currentTarget.classList.remove('animate-glow-press')}
+                  className="flex items-center gap-2 rounded-xl bg-[#28418A] px-4 py-2 text-sm font-medium text-white shadow transition hover:bg-[#223672] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#4769b8]"
+                >
                   <Plus className="mr-2 h-4 w-4" />
                   添加论文
                 </Button>
@@ -177,54 +203,54 @@ export default function PublicLibraryPage() {
           {!loading && !error && papers.length > 0 && (
             <>
               {viewMode === 'card' && (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
                   {papers.map(paper => (
-                    <PaperCard
+                    <div
                       key={paper.id}
-                      paper={paper}
-                      onClick={() => openPaper(paper)}
-                      onDelete={isAdmin ? () => handleDeletePaper(paper.id) : undefined}
-                      onAddToLibrary={
-                        isAuthenticated ? () => handleAddToLibrary(paper.id) : undefined
-                      }
-                      showLoginRequired={!isAuthenticated}
-                    />
+                      className="rounded-2xl border border-white/70 bg-white/78 p-4 shadow backdrop-blur-2xl transition-transform duration-300 hover:-translate-y-1.5 hover:shadow-[0_24px_54px_rgba(28,45,96,0.2)]"
+                    >
+                      <PaperCard
+                        paper={paper}
+                        onClick={() => openPaper(paper)}
+                        onDelete={isAdmin ? () => handleDeletePaper(paper.id) : undefined}
+                        onAddToLibrary={isAuthenticated ? () => handleAddToLibrary(paper.id) : undefined}
+                        showLoginRequired={!isAuthenticated}
+                      />
+                    </div>
                   ))}
                 </div>
               )}
 
               {viewMode === 'compact' && (
-                <div className="space-y-2">
+                <div className="space-y-3">
                   {papers.map(paper => (
                     <div
                       key={paper.id}
                       onClick={() => openPaper(paper)}
-                      className="group flex cursor-pointer items-center justify-between rounded-lg border border-gray-200 bg-white p-3 transition-shadow hover:shadow-md dark:border-gray-700 dark:bg-gray-800"
+                      className="group flex cursor-pointer items-center justify-between rounded-2xl border border-white/70 bg-white/78 px-5 py-3 shadow backdrop-blur-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_46px_rgba(28,45,96,0.18)]"
                     >
                       <div className="min-w-0 flex-1">
-                        <h3 className="truncate text-sm font-medium text-gray-900 dark:text-gray-100">
-                          {paper.title}
-                        </h3>
-                        <p className="truncate text-xs text-gray-600 dark:text-gray-400">
-                          {paper.authors.map((author: Author) => author.name).join(', ')} •{' '}
+                        <h3 className="truncate text-sm font-medium text-slate-900">{paper.title}</h3>
+                        <p className="truncate text-xs text-slate-600">
+                          {paper.authors.map((author: Author) => author.name).join(', ')} ·{' '}
                           {paper.year ?? '未知年份'}
                         </p>
                       </div>
                       <div className="ml-4 flex items-center gap-2">
                         {!isAuthenticated && (
-                          <span className="opacity-0 transition-opacity group-hover:opacity-100">
-                            <span className="rounded bg-blue-100 px-2 py-1 text-xs text-blue-700 dark:bg-blue-900/30 dark:text-blue-400">
+                          <span className="opacity-0 transition-opacity duration-200 group-hover:opacity-100">
+                            <span className="rounded-full border border-white/70 bg-white/75 px-2 py-[5px] text-[11px] text-[#28418A] shadow backdrop-blur-xl">
                               登录后查看详情
                             </span>
                           </span>
                         )}
                         {paper.sciQuartile && paper.sciQuartile !== '无' && (
-                          <span className="rounded bg-red-50 px-2 py-1 text-xs text-red-700">
+                          <span className="rounded-full bg-red-50/85 px-2 py-1 text-xs text-red-600 shadow backdrop-blur-xl">
                             {paper.sciQuartile}
                           </span>
                         )}
                         {paper.impactFactor && (
-                          <span className="text-xs text-gray-500">IF: {paper.impactFactor}</span>
+                          <span className="text-xs text-slate-500">IF: {paper.impactFactor}</span>
                         )}
                       </div>
                     </div>
@@ -233,25 +259,21 @@ export default function PublicLibraryPage() {
               )}
 
               {viewMode === 'table' && (
-                <div className="overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
-                  <div className="border-b border-gray-200 px-6 py-4 dark:border-gray-700">
-                    <h3 className="font-medium text-gray-900 dark:text-gray-100">
-                      表格视图开发中
-                    </h3>
+                <div className="overflow-hidden rounded-2xl border border-white/70 bg-white/78 shadow backdrop-blur-2xl">
+                  <div className="border-b border-white/60 px-6 py-4">
+                    <h3 className="font-medium text-slate-900">表格视图开发中</h3>
                   </div>
-                  <div className="p-6 text-center text-gray-500 dark:text-gray-400">
-                    表格视图功能即将推出
-                  </div>
+                  <div className="p-6 text-center text-slate-500">表格视图功能即将推出</div>
                 </div>
               )}
             </>
           )}
         </div>
-      </div>
+      </main>
 
       {showCreateDialog && (
         <>
-          <div className="fixed inset-0 z-40 bg-slate-950/30 backdrop-blur-md transition-opacity" />
+          <div className="fixed inset-0 z-40 bg-white/10 backdrop-blur-md" />
           <CreatePaperDialog
             open={showCreateDialog}
             onClose={() => setShowCreateDialog(false)}

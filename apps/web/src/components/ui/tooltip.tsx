@@ -34,25 +34,37 @@ function TooltipTrigger({
   return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
 }
 
+type TooltipContentProps = React.ComponentProps<typeof TooltipPrimitive.Content> & {
+  arrowClassName?: string
+}
+
 function TooltipContent({
   className,
-  sideOffset = 0,
+  arrowClassName,
+  sideOffset = 8,
   children,
   ...props
-}: React.ComponentProps<typeof TooltipPrimitive.Content>) {
+}: TooltipContentProps) {
   return (
     <TooltipPrimitive.Portal>
       <TooltipPrimitive.Content
         data-slot="tooltip-content"
         sideOffset={sideOffset}
         className={cn(
-          "bg-foreground text-background animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2 z-50 w-fit origin-(--radix-tooltip-content-transform-origin) rounded-md px-3 py-1.5 text-xs text-balance",
+          "z-50 max-w-xs rounded-xl border border-white/65 bg-white/95 px-3 py-2 text-sm font-medium text-[#28418A] shadow-[0_10px_24px_rgba(40,65,138,0.18)] backdrop-blur-xl",
+          "animate-in fade-in-0 zoom-in-95 data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2 data-[side=right]:slide-in-from-left-2 data-[side=top]:slide-in-from-bottom-2",
+          "text-balance", 
           className
         )}
         {...props}
       >
         {children}
-        <TooltipPrimitive.Arrow className="bg-foreground fill-foreground z-50 size-2.5 translate-y-[calc(-50%-2px)] rotate-45 rounded-[2px]" />
+        <TooltipPrimitive.Arrow
+          className={cn(
+            "fill-white/95 drop-shadow-[0_6px_12px_rgba(40,65,138,0.12)]",
+            arrowClassName
+          )}
+        />
       </TooltipPrimitive.Content>
     </TooltipPrimitive.Portal>
   )

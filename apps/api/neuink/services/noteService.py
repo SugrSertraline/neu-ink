@@ -4,6 +4,8 @@ Note 业务逻辑服务
 """
 from typing import Dict, Any, Optional, List
 
+from bson import ObjectId
+
 from ..models.note import NoteModel
 from ..models.userPaper import UserPaperModel
 from ..config.constants import BusinessCode
@@ -25,10 +27,11 @@ class NoteService:
         user_paper_id: str,
         block_id: str,
         content: List[Dict[str, Any]],
+        plain_text: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         创建笔记
-        content 格式为 InlineContent[] 
+        content 格式为 InlineContent[]
         """
         try:
             # 1. 检查论文是否存在且属于该用户
@@ -38,7 +41,7 @@ class NoteService:
                     BusinessCode.PAPER_NOT_FOUND,
                     "论文不存在"
                 )
-            
+
             if user_paper["userId"] != user_id:
                 return self._wrap_failure(
                     BusinessCode.PERMISSION_DENIED,
@@ -59,9 +62,11 @@ class NoteService:
                 "blockId": block_id,
                 "content": content,
             }
+            if plain_text is not None:
+                note_data["plainText"] = plain_text
 
             note = self.note_model.create(note_data)
-            return self._wrap_success("笔记创建成功", note)
+            return self._wrap_success("笔记创建成功", self._serialize_note(note))
 
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"创建笔记失败: {exc}")
@@ -87,7 +92,7 @@ class NoteService:
                     BusinessCode.PAPER_NOT_FOUND,
                     "论文不存在"
                 )
-            
+
             if user_paper["userId"] != user_id:
                 return self._wrap_failure(
                     BusinessCode.PERMISSION_DENIED,
@@ -104,7 +109,7 @@ class NoteService:
             return self._wrap_success(
                 "获取笔记列表成功",
                 {
-                    "notes": notes,
+                    "notes": self._serialize_notes(notes),
                     "pagination": self._build_pagination(total, page, page_size),
                 },
             )
@@ -129,7 +134,7 @@ class NoteService:
                     BusinessCode.PAPER_NOT_FOUND,
                     "论文不存在"
                 )
-            
+
             if user_paper["userId"] != user_id:
                 return self._wrap_failure(
                     BusinessCode.PERMISSION_DENIED,
@@ -141,7 +146,10 @@ class NoteService:
                 block_id=block_id,
             )
 
-            return self._wrap_success("获取 block 笔记成功", {"notes": notes})
+            return self._wrap_success(
+                "获取 block 笔记成功",
+                {"notes": self._serialize_notes(notes)},
+            )
 
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"获取笔记失败: {exc}")
@@ -166,7 +174,7 @@ class NoteService:
             return self._wrap_success(
                 "获取用户笔记成功",
                 {
-                    "notes": notes,
+                    "notes": self._serialize_notes(notes),
                     "pagination": self._build_pagination(total, page, page_size),
                 },
             )
@@ -205,7 +213,7 @@ class NoteService:
             return self._wrap_success(
                 "搜索笔记成功",
                 {
-                    "notes": notes,
+                    "notes": self._serialize_notes(notes),
                     "pagination": self._build_pagination(total, page, page_size),
                 },
             )
@@ -227,13 +235,13 @@ class NoteService:
         """
         try:
             note = self.note_model.find_by_id(note_id)
-            
+
             if not note:
                 return self._wrap_failure(
                     BusinessCode.NOTE_NOT_FOUND,
                     "笔记不存在"
                 )
-            
+
             # 权限检查
             if note["userId"] != user_id:
                 return self._wrap_failure(
@@ -241,8 +249,8 @@ class NoteService:
                     "无权修改此笔记"
                 )
 
-            # 只允许修改 content
-            allowed_fields = {"content"}
+            # 允许修改 content 与 plainText
+            allowed_fields = {"content", "plainText"}
             filtered_data = {
                 k: v for k, v in update_data.items() if k in allowed_fields
             }
@@ -256,7 +264,10 @@ class NoteService:
             # 更新
             if self.note_model.update(note_id, filtered_data):
                 updated = self.note_model.find_by_id(note_id)
-                return self._wrap_success("笔记更新成功", updated)
+                return self._wrap_success(
+                    "笔记更新成功",
+                    self._serialize_note(updated),
+                )
 
             return self._wrap_error("笔记更新失败")
 
@@ -276,13 +287,13 @@ class NoteService:
         """
         try:
             note = self.note_model.find_by_id(note_id)
-            
+
             if not note:
                 return self._wrap_failure(
                     BusinessCode.NOTE_NOT_FOUND,
                     "笔记不存在"
                 )
-            
+
             # 权限检查
             if note["userId"] != user_id:
                 return self._wrap_failure(
@@ -318,7 +329,7 @@ class NoteService:
                     BusinessCode.PAPER_NOT_FOUND,
                     "论文不存在"
                 )
-            
+
             if user_paper["userId"] != user_id:
                 return self._wrap_failure(
                     BusinessCode.PERMISSION_DENIED,
@@ -326,7 +337,7 @@ class NoteService:
                 )
 
             deleted_count = self.note_model.delete_by_user_paper(user_paper_id)
-            
+
             return self._wrap_success(
                 f"已删除 {deleted_count} 条笔记",
                 {"deletedCount": deleted_count}
@@ -344,24 +355,25 @@ class NoteService:
         检查 block 是否存在于论文中
         递归检查所有 sections 和 subsections
         """
+
         def check_section(section: Dict[str, Any]) -> bool:
             # 检查当前 section 的所有 blocks
             for block in section.get("content", []):
                 if block.get("id") == block_id:
                     return True
-            
+
             # 递归检查 subsections
             for subsection in section.get("subsections", []):
                 if check_section(subsection):
                     return True
-            
+
             return False
 
         # 检查所有顶级 sections
         for section in paper_data.get("sections", []):
             if check_section(section):
                 return True
-        
+
         return False
 
     @staticmethod
@@ -377,6 +389,51 @@ class NoteService:
             "total": total,
             "totalPages": total_pages,
         }
+
+    @staticmethod
+    def _normalize_value(value: Any) -> Any:
+        """将 ObjectId、datetime 等类型转换为可 JSON 序列化的值"""
+        if isinstance(value, ObjectId):
+            return str(value)
+
+        if isinstance(value, list):
+            return [NoteService._normalize_value(item) for item in value]
+
+        if isinstance(value, dict):
+            return {
+                key: NoteService._normalize_value(val)
+                for key, val in value.items()
+            }
+
+        if hasattr(value, "isoformat"):
+            try:
+                return value.isoformat()
+            except TypeError:
+                pass
+
+        return value
+
+    def _serialize_note(self, note: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        if not note:
+            return None
+
+        serialized = {
+            key: self._normalize_value(val)
+            for key, val in note.items()
+            if key != "_id"
+        }
+
+        if "_id" in note:
+            serialized["id"] = self._normalize_value(note["_id"])
+
+        # 兜底：如果原始文档已有 id 字段，也确保是字符串
+        if "id" in serialized:
+            serialized["id"] = str(serialized["id"])
+
+        return serialized
+
+    def _serialize_notes(self, notes: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        return [self._serialize_note(note) for note in notes]
 
     @staticmethod
     def _wrap_success(message: str, data: Any) -> Dict[str, Any]:

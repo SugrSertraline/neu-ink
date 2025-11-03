@@ -595,7 +595,7 @@ export default function InlineEditor({
             className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[80vh] flex flex-col"
             onClick={(event) => event.stopPropagation()}
           >
-            <div className="p-5 border-b flex items-center justify-between bg-gradient-to-r from-blue-50 to-purple-50">
+            <div className="p-5 border-b flex items-center justify-between bg-linear-to-r from-blue-50 to-purple-50">
               <div>
                 <h3 className="text-xl font-bold text-gray-800">
                   选择

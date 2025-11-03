@@ -3,9 +3,16 @@
 
 import React from 'react';
 import { Search, Filter, X, RotateCcw } from 'lucide-react';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Input } from '@/components/ui/input';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { cn } from '@/lib/utils';
 
 interface LibraryFiltersProps {
@@ -57,6 +64,25 @@ const ARTICLE_TYPE_OPTIONS = [
   { value: 'report', label: '技术报告' },
 ];
 
+const glowTrigger =
+  'rounded-xl border border-white/70 bg-white/78 px-3.5 h-10 text-sm text-slate-700 ' +
+  'shadow-[0_12px_34px_rgba(40,65,138,0.16)] backdrop-blur-xl transition-all ' +
+  'hover:bg-white/90 hover:shadow-[0_16px_40px_rgba(40,65,138,0.24)] focus:ring-2 focus:ring-[#4769b8]/35 ' +
+  'data-[state=open]:border-white data-[state=open]:shadow-[0_18px_46px_rgba(40,65,138,0.3)]';
+
+const glowContent =
+  'rounded-xl border border-white/70 bg-white/92 text-sm shadow-[0_18px_46px_rgba(28,45,96,0.2)] ' +
+  'backdrop-blur-3xl overflow-hidden';
+
+const glowButtonFilled =
+  'rounded-xl bg-gradient-to-r from-[#28418A]/92 via-[#28418A]/88 to-[#28418A]/92 ' +
+  'shadow-[0_16px_38px_rgba(40,65,138,0.28)] hover:shadow-[0_20px_46px_rgba(40,65,138,0.35)] ' +
+  'border border-white/70';
+
+const glowButtonGhost =
+  'rounded-xl border border-white/70 bg-white/78 text-[#28418A] shadow-[0_12px_30px_rgba(40,65,138,0.18)] ' +
+  'backdrop-blur-xl hover:bg-white/90 hover:text-[#263b78]';
+
 export default function LibraryFilters({
   searchTerm,
   onSearchChange,
@@ -99,78 +125,79 @@ export default function LibraryFilters({
 
   return (
     <div className="w-full space-y-4">
-      <div className="flex w-full flex-col gap-4 sm:flex-row">
-        <div className="relative min-w-0 flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-gray-400" />
+      <div className="flex w-full flex-col gap-4 md:flex-row">
+        <div className="relative min-w-0 flex-1" data-glow="true">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6675a3]" />
           <Input
             placeholder="搜索标题、作者、期刊..."
             value={searchTerm}
             onChange={event => onSearchChange(event.target.value)}
-            className="h-10 w-full min-w-0 bg-white pl-10 text-sm transition-all focus:border-transparent focus:ring-2 focus:ring-blue-500 dark:bg-gray-800 dark:border-gray-600"
+            className="h-11 w-full rounded-xl border border-white/70 bg-white/80 pl-10 text-sm text-slate-700 shadow-[0_12px_34px_rgba(40,65,138,0.16)] transition-all focus-visible:ring-2 focus-visible:ring-[#4769b8]/35 focus-visible:ring-offset-1 focus-visible:ring-offset-white"
+            data-glow="true"
           />
         </div>
 
-        <div className="flex min-w-0 flex-wrap gap-2">
+        <div className="flex min-w-0 flex-wrap gap-2" data-glow="true">
           {canFilterStatus && (
-            <select
-              value={filterStatus}
-              onChange={event => onStatusChange(event.target.value)}
-              className="h-10 min-w-[120px] rounded-md border border-gray-300 bg-white px-3 py-2 text-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-700"
-            >
-              {STATUS_OPTIONS.map(option => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
+            <Select value={filterStatus} onValueChange={onStatusChange}>
+              <SelectTrigger className={glowTrigger}>
+                <SelectValue placeholder="选择状态" />
+              </SelectTrigger>
+              <SelectContent className={glowContent} position="popper">
+                {STATUS_OPTIONS.map(option => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
 
-          <select
-            value={filterPriority}
-            onChange={event => onPriorityChange(event.target.value)}
-            className="h-10 min-w-[140px] rounded-md border border-gray-300 bg-white px-3 py-2 text-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-700"
-          >
-            {PRIORITY_OPTIONS.map(option => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          <Select value={filterPriority} onValueChange={onPriorityChange}>
+            <SelectTrigger className={glowTrigger}>
+              <SelectValue placeholder="选择优先级" />
+            </SelectTrigger>
+            <SelectContent className={glowContent} position="popper">
+              {PRIORITY_OPTIONS.map(option => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-          <select
-            value={filterType}
-            onChange={event => onTypeChange(event.target.value)}
-            className="h-10 min-w-[120px] rounded-md border border-gray-300 bg-white px-3 py-2 text-sm transition-colors hover:bg-gray-50 dark:border-gray-600 dark:bg-gray-800 dark:hover:bg-gray-700"
-          >
-            {ARTICLE_TYPE_OPTIONS.map(option => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+          <Select value={filterType} onValueChange={onTypeChange}>
+            <SelectTrigger className={glowTrigger}>
+              <SelectValue placeholder="选择类型" />
+            </SelectTrigger>
+            <SelectContent className={glowContent} position="popper">
+              {ARTICLE_TYPE_OPTIONS.map(option => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
           <Button
-            variant={hasActiveAdvancedFilters ? 'default' : 'outline'}
-            size="sm"
+            data-glow="true"
             onClick={onToggleAdvancedFilter}
             className={cn(
-              'h-10 gap-2 px-4 text-sm transition-all duration-200',
-              hasActiveAdvancedFilters && 'bg-blue-600 hover:bg-blue-700',
+              'h-10 gap-2 px-4 text-sm transition-all',
+              hasActiveAdvancedFilters ? glowButtonFilled : glowButtonGhost,
             )}
           >
             <Filter className="h-4 w-4" />
             高级
-            {hasActiveAdvancedFilters && (
-              <span className="ml-1 h-2 w-2 shrink-0 rounded-full bg-white" />
-            )}
+            {hasActiveAdvancedFilters && <span className="ml-1 h-2 w-2 rounded-full bg-white" />}
           </Button>
 
           {hasActiveFilters && (
             <Button
+              data-glow="true"
               variant="outline"
-              size="sm"
               onClick={onResetFilters}
-              className="h-10 gap-2 px-4 text-sm text-gray-600 transition-colors hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200"
+              className={`${glowButtonGhost} h-10 gap-2 px-4 text-sm text-slate-600 hover:text-slate-900`}
             >
               <RotateCcw className="h-4 w-4" />
               重置
@@ -180,83 +207,63 @@ export default function LibraryFilters({
       </div>
 
       {showAdvancedFilter && (
-        <div className="animate-in slide-in-from-top-1 rounded-lg border bg-white p-4 shadow-sm duration-200 dark:border-gray-700 dark:bg-gray-800">
+        <div
+          className="rounded-2xl border border-white/70 bg-white/82 p-5 shadow-[0_18px_42px_rgba(28,45,96,0.14)] backdrop-blur-2xl"
+          data-glow="true"
+        >
           <div className="mb-4 flex items-center justify-between">
-            <h3 className="text-sm font-medium text-gray-900 dark:text-gray-100">高级筛选</h3>
+            <h3 className="text-sm font-medium text-slate-800">高级筛选</h3>
             <Button
               variant="ghost"
               size="sm"
               onClick={onToggleAdvancedFilter}
-              className="h-8 w-8 p-0 transition-colors hover:bg-gray-200 dark:hover:bg-gray-700"
+              className="h-8 w-8 rounded-xl border border-white/70 bg-white/80 shadow-[0_12px_28px_rgba(40,65,138,0.12)] hover:bg-white/90"
+              data-glow="true"
             >
-              <X className="h-4 w-4" />
+              <X className="h-4 w-4 text-[#28418A]" />
             </Button>
           </div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">SCI分区</label>
-              <select
-                value={filterSciQuartile}
-                onChange={event => onSciQuartileChange(event.target.value)}
-                className="h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-              >
-                <option value="all">全部</option>
-                <option value="Q1">Q1</option>
-                <option value="Q2">Q2</option>
-                <option value="Q3">Q3</option>
-                <option value="Q4">Q4</option>
-              </select>
-            </div>
+          <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+            <AdvancedSelect
+              label="SCI分区"
+              value={filterSciQuartile}
+              onValueChange={onSciQuartileChange}
+            >
+              <SelectItem value="all">全部</SelectItem>
+              <SelectItem value="Q1">Q1</SelectItem>
+              <SelectItem value="Q2">Q2</SelectItem>
+              <SelectItem value="Q3">Q3</SelectItem>
+              <SelectItem value="Q4">Q4</SelectItem>
+            </AdvancedSelect>
 
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                中科院分区
-              </label>
-              <select
-                value={filterCasQuartile}
-                onChange={event => onCasQuartileChange(event.target.value)}
-                className="h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-              >
-                <option value="all">全部</option>
-                <option value="1区">1区</option>
-                <option value="2区">2区</option>
-                <option value="3区">3区</option>
-                <option value="4区">4区</option>
-              </select>
-            </div>
+            <AdvancedSelect
+              label="中科院分区"
+              value={filterCasQuartile}
+              onValueChange={onCasQuartileChange}
+            >
+              <SelectItem value="all">全部</SelectItem>
+              <SelectItem value="1区">1区</SelectItem>
+              <SelectItem value="2区">2区</SelectItem>
+              <SelectItem value="3区">3区</SelectItem>
+              <SelectItem value="4区">4区</SelectItem>
+            </AdvancedSelect>
 
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">
-                CCF分级
-              </label>
-              <select
-                value={filterCcfRank}
-                onChange={event => onCcfRankChange(event.target.value)}
-                className="h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-              >
-                <option value="all">全部</option>
-                <option value="A">A类</option>
-                <option value="B">B类</option>
-                <option value="C">C类</option>
-              </select>
-            </div>
+            <AdvancedSelect label="CCF分级" value={filterCcfRank} onValueChange={onCcfRankChange}>
+              <SelectItem value="all">全部</SelectItem>
+              <SelectItem value="A">A类</SelectItem>
+              <SelectItem value="B">B类</SelectItem>
+              <SelectItem value="C">C类</SelectItem>
+            </AdvancedSelect>
 
-            <div className="space-y-2">
-              <label className="text-xs font-medium text-gray-600 dark:text-gray-400">年份</label>
-              <select
-                value={filterYear}
-                onChange={event => onYearChange(event.target.value)}
-                className="h-9 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm dark:border-gray-600 dark:bg-gray-800"
-              >
-                <option value="all">全部年份</option>
-                {effectiveYears.map(year => (
-                  <option key={year} value={String(year)}>
-                    {year}
-                  </option>
-                ))}
-              </select>
-            </div>
+            <AdvancedSelect label="年份" value={filterYear} onValueChange={onYearChange}>
+              <SelectItem value="all">全部年份</SelectItem>
+              {effectiveYears.map(year => (
+                <SelectItem key={year} value={String(year)}>
+                  {year}
+                </SelectItem>
+              ))}
+            </AdvancedSelect>
           </div>
         </div>
       )}
@@ -264,83 +271,90 @@ export default function LibraryFilters({
       {hasActiveFilters && (
         <div className="flex flex-wrap gap-2">
           {searchTerm && (
-            <Badge variant="outline" className="gap-1">
-              搜索: {searchTerm}
-              <X
-                className="h-3 w-3 cursor-pointer hover:text-red-500"
-                onClick={() => onSearchChange('')}
-              />
-            </Badge>
+            <GlowBadge onClear={() => onSearchChange('')}>搜索: {searchTerm}</GlowBadge>
           )}
           {canFilterStatus && filterStatus !== 'all' && (
-            <Badge variant="outline" className="gap-1">
+            <GlowBadge onClear={() => onStatusChange('all')}>
               状态:{' '}
               {STATUS_OPTIONS.find(item => item.value === filterStatus)?.label ?? filterStatus}
-              <X
-                className="h-3 w-3 cursor-pointer hover:text-red-500"
-                onClick={() => onStatusChange('all')}
-              />
-            </Badge>
+            </GlowBadge>
           )}
           {filterPriority !== 'all' && (
-            <Badge variant="outline" className="gap-1">
+            <GlowBadge onClear={() => onPriorityChange('all')}>
               优先级:{' '}
-              {PRIORITY_OPTIONS.find(item => item.value === filterPriority)?.label ??
-                filterPriority}
-              <X
-                className="h-3 w-3 cursor-pointer hover:text-red-500"
-                onClick={() => onPriorityChange('all')}
-              />
-            </Badge>
+              {PRIORITY_OPTIONS.find(item => item.value === filterPriority)?.label ?? filterPriority}
+            </GlowBadge>
           )}
           {filterType !== 'all' && (
-            <Badge variant="outline" className="gap-1">
+            <GlowBadge onClear={() => onTypeChange('all')}>
               类型:{' '}
               {ARTICLE_TYPE_OPTIONS.find(item => item.value === filterType)?.label ?? filterType}
-              <X
-                className="h-3 w-3 cursor-pointer hover:text-red-500"
-                onClick={() => onTypeChange('all')}
-              />
-            </Badge>
+            </GlowBadge>
           )}
           {filterSciQuartile !== 'all' && (
-            <Badge variant="outline" className="gap-1">
-              SCI: {filterSciQuartile}
-              <X
-                className="h-3 w-3 cursor-pointer hover:text-red-500"
-                onClick={() => onSciQuartileChange('all')}
-              />
-            </Badge>
+            <GlowBadge onClear={() => onSciQuartileChange('all')}>SCI: {filterSciQuartile}</GlowBadge>
           )}
           {filterCasQuartile !== 'all' && (
-            <Badge variant="outline" className="gap-1">
+            <GlowBadge onClear={() => onCasQuartileChange('all')}>
               中科院: {filterCasQuartile}
-              <X
-                className="h-3 w-3 cursor-pointer hover:text-red-500"
-                onClick={() => onCasQuartileChange('all')}
-              />
-            </Badge>
+            </GlowBadge>
           )}
           {filterCcfRank !== 'all' && (
-            <Badge variant="outline" className="gap-1">
-              CCF: {filterCcfRank}
-              <X
-                className="h-3 w-3 cursor-pointer hover:text-red-500"
-                onClick={() => onCcfRankChange('all')}
-              />
-            </Badge>
+            <GlowBadge onClear={() => onCcfRankChange('all')}>CCF: {filterCcfRank}</GlowBadge>
           )}
           {filterYear !== 'all' && (
-            <Badge variant="outline" className="gap-1">
-              年份: {filterYear}
-              <X
-                className="h-3 w-3 cursor-pointer hover:text-red-500"
-                onClick={() => onYearChange('all')}
-              />
-            </Badge>
+            <GlowBadge onClear={() => onYearChange('all')}>年份: {filterYear}</GlowBadge>
           )}
         </div>
       )}
     </div>
+  );
+}
+
+function AdvancedSelect({
+  label,
+  value,
+  onValueChange,
+  children,
+}: {
+  label: string;
+  value: string;
+  onValueChange: (value: string) => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="space-y-2" data-glow="true">
+      <label className="text-xs font-medium text-slate-600">{label}</label>
+      <Select value={value} onValueChange={onValueChange}>
+        <SelectTrigger className={`${glowTrigger} h-11`}>
+          <SelectValue placeholder={`选择${label}`} />
+        </SelectTrigger>
+        <SelectContent className={glowContent} position="popper">
+          {children}
+        </SelectContent>
+      </Select>
+    </div>
+  );
+}
+
+function GlowBadge({
+  children,
+  onClear,
+}: {
+  children: React.ReactNode;
+  onClear: () => void;
+}) {
+  return (
+    <Badge
+      variant="outline"
+      className="group inline-flex items-center gap-1 rounded-full border-white/70 bg-white/80 text-xs text-[#28418A] shadow-[0_10px_26px_rgba(40,65,138,0.18)] backdrop-blur-xl"
+      data-glow="true"
+    >
+      {children}
+      <X
+        className="h-3.5 w-3.5 cursor-pointer text-[#7785b0] transition-colors group-hover:text-red-500"
+        onClick={onClear}
+      />
+    </Badge>
   );
 }
