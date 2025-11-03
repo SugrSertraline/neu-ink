@@ -1,141 +1,243 @@
 'use client';
 
-import React from 'react';
+import {
+  useCallback,
+  useMemo,
+  useState,
+} from 'react';
 import { Calendar, Users, FileText, Award, Tag, BookOpen } from 'lucide-react';
 import type { PaperMetadata } from '@/types/paper';
+import { MetadataContextMenu } from '@/components/paper/PaperContextMenus';
+import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
+import { useEditingState } from '@/stores/useEditingState';
+import MetadataEditor from './editor/MetadataEditor';
 
 interface PaperMetadataProps {
   metadata: PaperMetadata;
-  onMetadataUpdate?: (next: PaperMetadata) => void;
+  onMetadataUpdate?: (next: PaperMetadata) => void | Promise<void>;
 }
 
-export default function PaperMetadata({ metadata }: PaperMetadataProps) {
+const quartileBadge = (
+  label: string,
+  classes: string,
+) => (
+  <span className={classes}>
+    {label}
+  </span>
+);
 
+const renderAuthors = (authors: PaperMetadata['authors']) =>
+  authors.map((author, idx) => {
+    const parts = [author.name, author.affiliation, author.email].filter(Boolean);
+    const text = parts.join(' · ');
+    return (
+      <span
+        key={`${author.name}-${idx}`}
+        className="text-sm text-gray-700 dark:text-slate-300"
+      >
+        {text}
+        {idx < authors.length - 1 && <span className="text-gray-400 dark:text-slate-500">, </span>}
+      </span>
+    );
+  });
+
+function MetadataReadOnly({ metadata }: { metadata: PaperMetadata }) {
   return (
-    <div className="bg-white dark:bg-slate-900 rounded-lg shadow-md p-6 mb-6 border border-gray-200 dark:border-slate-700">
-      {/* 标题 */}
-      <h1 className="text-3xl font-bold text-gray-900 dark:text-white mb-2">
+    <div className="rounded-lg border border-gray-200 bg-white p-6 shadow-md dark:border-slate-700 dark:bg-slate-900">
+      <h1 className="mb-2 text-3xl font-bold text-gray-900 dark:text-white">
         {metadata.title}
       </h1>
+
       {metadata.titleZh && (
-        <h2 className="text-xl text-gray-700 dark:text-slate-300 mb-2">
+        <h2 className="mb-2 text-xl text-gray-700 dark:text-slate-300">
           {metadata.titleZh}
         </h2>
       )}
+
       {metadata.shortTitle && (
-        <h3 className="text-lg text-gray-600 dark:text-slate-400 mb-4">
+        <h3 className="mb-4 text-lg text-gray-600 dark:text-slate-400">
           {metadata.shortTitle}
         </h3>
       )}
 
-      {/* 作者信息 */}
-      {metadata.authors && metadata.authors.length > 0 && (
-        <div className="flex items-start gap-2 mb-3">
-          <Users className="w-5 h-5 text-gray-500 dark:text-slate-400 mt-0.5 shrink-0" />
-          <div className="flex flex-wrap gap-2">
-            {metadata.authors.map((author, idx) => (
-              <span
-                key={idx}
-                className="text-gray-700 dark:text-slate-300 text-sm"
-              >
-                {author.name}
-                {idx < metadata.authors.length - 1 && ','}
-              </span>
-            ))}
-          </div>
+      {metadata.authors?.length ? (
+        <div className="mb-3 flex items-start gap-2">
+          <Users className="mt-0.5 h-5 w-5 shrink-0 text-gray-500 dark:text-slate-400" />
+          <div className="flex flex-wrap gap-2">{renderAuthors(metadata.authors)}</div>
+        </div>
+      ) : (
+        <div className="mb-3 flex items-start gap-2">
+          <Users className="mt-0.5 h-5 w-5 shrink-0 text-gray-500 dark:text-slate-400" />
+          <span className="text-sm text-gray-500 dark:text-slate-400">暂无作者信息</span>
         </div>
       )}
 
-      {/* 发表信息 */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
-        {metadata.publication && (
+      <div className="mb-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+        {metadata.publication ? (
           <div className="flex items-center gap-2">
-            <FileText className="w-5 h-5 text-gray-500 dark:text-slate-400 shrink-0" />
+            <FileText className="h-5 w-5 shrink-0 text-gray-500 dark:text-slate-400" />
             <span className="text-sm text-gray-700 dark:text-slate-300">
               {metadata.publication}
             </span>
           </div>
-        )}
+        ) : null}
 
-        {(metadata.year || metadata.date) && (
+        {metadata.date || metadata.year ? (
           <div className="flex items-center gap-2">
-            <Calendar className="w-5 h-5 text-gray-500 dark:text-slate-400 shrink-0" />
+            <Calendar className="h-5 w-5 shrink-0 text-gray-500 dark:text-slate-400" />
             <span className="text-sm text-gray-700 dark:text-slate-300">
               {metadata.date || metadata.year}
             </span>
           </div>
-        )}
+        ) : null}
 
-        {metadata.articleType && (
+        {metadata.articleType ? (
           <div className="flex items-center gap-2">
-            <BookOpen className="w-5 h-5 text-gray-500 dark:text-slate-400 shrink-0" />
+            <BookOpen className="h-5 w-5 shrink-0 text-gray-500 dark:text-slate-400" />
             <span className="text-sm text-gray-700 dark:text-slate-300 capitalize">
               {metadata.articleType}
             </span>
           </div>
-        )}
+        ) : null}
       </div>
 
-      {/* 分区和影响因子 */}
-      {(metadata.sciQuartile || metadata.casQuartile || metadata.ccfRank || metadata.impactFactor) && (
-        <div className="flex items-start gap-2 mb-4">
-          <Award className="w-5 h-5 text-gray-500 dark:text-slate-400 mt-0.5 shrink-0" />
+      {metadata.sciQuartile ||
+      metadata.casQuartile ||
+      metadata.ccfRank ||
+      typeof metadata.impactFactor === 'number' ? (
+        <div className="mb-4 flex items-start gap-2">
+          <Award className="mt-0.5 h-5 w-5 shrink-0 text-gray-500 dark:text-slate-400" />
           <div className="flex flex-wrap gap-2">
-            {metadata.sciQuartile && metadata.sciQuartile !== '无' && (
-              <span className="px-2 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 rounded text-xs font-medium">
-                SCI {metadata.sciQuartile}
-              </span>
-            )}
-            {metadata.casQuartile && metadata.casQuartile !== '无' && (
-              <span className="px-2 py-1 bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 rounded text-xs font-medium">
-                CAS {metadata.casQuartile}
-              </span>
-            )}
-            {metadata.ccfRank && metadata.ccfRank !== '无' && (
-              <span className="px-2 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded text-xs font-medium">
-                CCF {metadata.ccfRank}
-              </span>
-            )}
-            {metadata.impactFactor && (
-              <span className="px-2 py-1 bg-orange-100 dark:bg-orange-900/30 text-orange-700 dark:text-orange-400 rounded text-xs font-medium">
-                IF: {metadata.impactFactor}
-              </span>
-            )}
+            {metadata.sciQuartile && metadata.sciQuartile !== '无'
+              ? quartileBadge(
+                  `SCI ${metadata.sciQuartile}`,
+                  'rounded bg-blue-100 px-2 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+                )
+              : null}
+            {metadata.casQuartile && metadata.casQuartile !== '无'
+              ? quartileBadge(
+                  `CAS ${metadata.casQuartile}`,
+                  'rounded bg-green-100 px-2 py-1 text-xs font-medium text-green-700 dark:bg-green-900/30 dark:text-green-400',
+                )
+              : null}
+            {metadata.ccfRank && metadata.ccfRank !== '无'
+              ? quartileBadge(
+                  `CCF ${metadata.ccfRank}`,
+                  'rounded bg-purple-100 px-2 py-1 text-xs font-medium text-purple-700 dark:bg-purple-900/30 dark:text-purple-400',
+                )
+              : null}
+            {typeof metadata.impactFactor === 'number'
+              ? quartileBadge(
+                  `IF: ${metadata.impactFactor}`,
+                  'rounded bg-orange-100 px-2 py-1 text-xs font-medium text-orange-700 dark:bg-orange-900/30 dark:text-orange-400',
+                )
+              : null}
           </div>
         </div>
-      )}
+      ) : null}
 
-      {/* DOI */}
-      {metadata.doi && (
-        <div className="flex items-center gap-2 mb-4">
+      {metadata.doi ? (
+        <div className="mb-4 flex items-center gap-2">
           <span className="text-sm text-gray-600 dark:text-slate-400">DOI:</span>
           <a
             href={`https://doi.org/${metadata.doi}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="text-sm text-blue-600 dark:text-blue-400 hover:underline"
+            className="text-sm text-blue-600 hover:underline dark:text-blue-400"
           >
             {metadata.doi}
           </a>
         </div>
-      )}
+      ) : null}
 
-      {/* 标签 */}
-      {metadata.tags && metadata.tags.length > 0 && (
-        <div className="flex items-start gap-2 mb-4">
-          <Tag className="w-5 h-5 text-gray-500 dark:text-slate-400 mt-0.5 shrink-0" />
+      {metadata.tags?.length ? (
+        <div className="mb-4 flex items-start gap-2">
+          <Tag className="mt-0.5 h-5 w-5 shrink-0 text-gray-500 dark:text-slate-400" />
           <div className="flex flex-wrap gap-2">
-            {metadata.tags.map((tag, idx) => (
+            {metadata.tags.map(tag => (
               <span
-                key={idx}
-                className="px-2 py-1 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 rounded text-xs"
+                key={tag}
+                className="rounded px-2 py-1 text-xs text-gray-700 dark:bg-slate-800 dark:text-slate-300"
               >
                 {tag}
               </span>
             ))}
           </div>
         </div>
+      ) : (
+        <div className="flex items-start gap-2">
+          <Tag className="mt-0.5 h-5 w-5 shrink-0 text-gray-500 dark:text-slate-400" />
+          <span className="text-sm text-gray-500 dark:text-slate-400">暂无标签</span>
+        </div>
       )}
     </div>
+  );
+}
+
+export default function PaperMetadata({
+  metadata,
+  onMetadataUpdate,
+}: PaperMetadataProps) {
+  const { canEditContent } = usePaperEditPermissionsContext();
+  const { isEditing, clearEditing, setHasUnsavedChanges, switchToEdit } = useEditingState();
+  const [submitting, setSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
+
+  const allowEdit = useMemo(
+    () => canEditContent && Boolean(onMetadataUpdate),
+    [canEditContent, onMetadataUpdate],
+  );
+
+  const handleMetadataEditConfirm = useCallback(
+    async (next: PaperMetadata) => {
+      if (!onMetadataUpdate) return;
+      setSubmitting(true);
+      setSubmitError(null);
+      try {
+        await Promise.resolve(onMetadataUpdate(next));
+        setHasUnsavedChanges(false);
+        clearEditing();
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : '保存失败，请稍后重试';
+        setSubmitError(msg);
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [onMetadataUpdate, setHasUnsavedChanges, clearEditing],
+  );
+
+  const handleMetadataEditStart = useCallback(() => {
+    const switched = switchToEdit('metadata', {
+      beforeSwitch: () => {
+        setSubmitError(null);
+      },
+      onRequestSave: () => {
+        // TODO: auto-save pending metadata
+      },
+    });
+    if (!switched) return;
+  }, [switchToEdit]);
+
+  const isEditingMetadata = isEditing('metadata');
+
+  const cardContent = isEditingMetadata ? (
+    <MetadataEditor
+      initialValue={metadata}
+      onCancel={clearEditing}
+      onSubmit={handleMetadataEditConfirm}
+      isSubmitting={submitting}
+      externalError={submitError}
+    />
+  ) : (
+    <MetadataReadOnly metadata={metadata} />
+  );
+
+  return (
+    <MetadataContextMenu
+      onEdit={allowEdit ? handleMetadataEditStart : undefined}
+    >
+      {cardContent}
+    </MetadataContextMenu>
   );
 }

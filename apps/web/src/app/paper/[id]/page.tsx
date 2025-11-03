@@ -17,6 +17,7 @@ import { ViewerSource } from '@/types/paper/viewer';
 import { usePaperLoader } from '@/lib/hooks/usePaperLoader';
 import PaperHeader from '@/components/paper/PaperHeader';
 import PaperMetadata from '@/components/paper/PaperMetadata';
+import { PaperMetadata as PaperMetadataType } from '@/types/paper';
 import PaperContent from '@/components/paper/PaperContent';
 import PaperReferences from '@/components/paper/PaperReferences';
 import type {
@@ -607,16 +608,19 @@ export default function PaperPage() {
     [updateSectionTree, setHasUnsavedChanges],
   );
 
-  const handleMetadataUpdate = useCallback(
-    (metadata: PaperContentModel['metadata']) => {
-      setEditableDraft(prev => {
-        if (!prev) return prev;
-        setHasUnsavedChanges(true);
-        return { ...prev, metadata };
-      });
-    },
-    [setHasUnsavedChanges],
-  );
+const handleMetadataUpdate = useCallback(
+  async (next: PaperMetadataType) => {
+    setEditableDraft(prev => {
+      if (!prev) return prev;
+      setHasUnsavedChanges(true);
+      return { ...prev, metadata: next };
+    });
+    return Promise.resolve();
+  },
+  [setHasUnsavedChanges],
+);
+
+
 
   const handleSectionAddSubsection = useCallback(
     (sectionId: string) => {
@@ -1166,7 +1170,7 @@ export default function PaperPage() {
               <div className="flex flex-col gap-8">
                 <PaperMetadata
                   metadata={displayContent.metadata}
-                  onMetadataUpdate={canEditContent ? handleMetadataUpdate : undefined}
+                  onMetadataUpdate={handleMetadataUpdate}
                 />
                 <PaperContent
                   sections={displayContent.sections ?? []}
