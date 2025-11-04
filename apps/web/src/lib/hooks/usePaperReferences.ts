@@ -79,17 +79,18 @@ export function usePaperReferences(
   const handleReferenceEditorSubmit = useCallback(() => {
     if (!referenceDraft) return;
     const normalized: Reference = {
-      ...referenceDraft,
-      authors: (referenceDraft.authors ?? [])
-        .map(author => author.trim())
-        .filter(Boolean),
-      title: referenceDraft.title?.trim() ?? '',
-      publication: referenceDraft.publication?.trim() ?? '',
-      year:
-        referenceDraft.year && referenceDraft.year > 0
-          ? referenceDraft.year
-          : new Date().getFullYear(),
-    };
+  ...referenceDraft,
+  authors: (referenceDraft.authors ?? [])
+    .map(author => author.trim())
+    .filter(Boolean),
+  title: referenceDraft.title?.trim() ?? '',
+  publication: referenceDraft.publication?.trim() ?? '',
+  year:
+    referenceDraft.year && referenceDraft.year > 0
+      ? referenceDraft.year
+      : undefined,
+};
+
     updateReferences(refs => {
       const idx = refs.findIndex(r => r.id === normalized.id);
       if (idx === -1) {

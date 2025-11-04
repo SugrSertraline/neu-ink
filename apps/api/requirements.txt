@@ -3,3 +3,4 @@ pymongo==4.10.1
 python-dotenv==1.0.1
 PyJWT==2.8.0
 Flask-CORS==4.0.0
+zai-sdk==0.0.4

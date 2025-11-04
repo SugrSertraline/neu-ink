@@ -6,6 +6,7 @@ import { X, Plus, FileText, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { userPaperService } from '@/lib/services/paper';
 
 interface CreatePaperDialogProps {
   open: boolean;
@@ -85,7 +86,23 @@ export default function CreatePaperDialog({
       if (activeTab === 'manual') {
         // TODO: 手动创建论文的 API 调用
       } else {
-        // TODO: Markdown 上传的 API 调用
+        // Markdown 上传的 API 调用
+        if (!markdownFile) {
+          throw new Error('请选择要上传的文件');
+        }
+
+        const formData = new FormData();
+        formData.append('file', markdownFile);
+
+        // 添加补充信息到 formData
+        if (markdownMeta.title) formData.append('title', markdownMeta.title);
+        if (markdownMeta.authors) formData.append('authors', markdownMeta.authors);
+        if (markdownMeta.year) formData.append('year', markdownMeta.year);
+
+        const result = await userPaperService.uploadPrivatePaper(formData);
+        if (result.bizCode !== 0) {
+          throw new Error(result.bizMessage || '上传失败');
+        }
       }
       onSuccess?.();
       handleClose();
@@ -332,7 +349,7 @@ function MarkdownForm({
         />
 
         <label htmlFor="markdown-upload">
-          <span className={cn(glowButtonFilled, 'mt-5 inline-flex cursor-pointer px-4 py-2 text-sm')}>
+          <span className={cn(glowButtonFilled, 'mt-5 inline-flex cursor-pointer px-4 py-2 text-sm text-white')}>
             选择文件
           </span>
         </label>

@@ -210,12 +210,13 @@ export default function PublicLibraryPage() {
                       className="rounded-2xl border border-white/70 bg-white/78 p-4 shadow backdrop-blur-2xl transition-transform duration-300 hover:-translate-y-1.5 hover:shadow-[0_24px_54px_rgba(28,45,96,0.2)]"
                     >
                       <PaperCard
-                        paper={paper}
-                        onClick={() => openPaper(paper)}
-                        onDelete={isAdmin ? () => handleDeletePaper(paper.id) : undefined}
-                        onAddToLibrary={isAuthenticated ? () => handleAddToLibrary(paper.id) : undefined}
-                        showLoginRequired={!isAuthenticated}
-                      />
+  paper={paper}
+  onClick={() => openPaper(paper)}
+  onDelete={isAdmin ? () => handleDeletePaper(paper.id) : undefined}
+  onAddToLibrary={isAuthenticated ? () => handleAddToLibrary(paper.id) : undefined}
+  showLoginRequired={!isAuthenticated}
+  isAdmin={isAdmin}
+/>
                     </div>
                   ))}
                 </div>

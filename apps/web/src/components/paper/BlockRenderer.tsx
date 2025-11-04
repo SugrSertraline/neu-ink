@@ -835,7 +835,7 @@ export default function BlockRenderer({
     <>
       <div
         ref={blockRef}
-        id={block.id}
+        data-block-id={block.id}
         className={`${baseClass} group relative mb-3 p-2 ${isEditing ? 'border-2 border-blue-300 bg-white shadow-lg ring-2 ring-blue-200' : ''}`}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}

@@ -1,21 +1,14 @@
 'use client';
 
-import {
-  useCallback,
-  useMemo,
-  useState,
-} from 'react';
 import { Calendar, Users, FileText, Award, Tag, BookOpen } from 'lucide-react';
 import type { PaperMetadata } from '@/types/paper';
 import { MetadataContextMenu } from '@/components/paper/PaperContextMenus';
 import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
-import { useEditingState } from '@/stores/useEditingState';
-import MetadataEditor from './editor/MetadataEditor';
 import clsx from 'clsx';
 
 interface PaperMetadataProps {
   metadata: PaperMetadata;
-  onMetadataUpdate?: (next: PaperMetadata) => void | Promise<void>;
+  onEditRequest?: () => void;
 }
 
 const quartileBadge = (
@@ -186,68 +179,17 @@ function MetadataReadOnly({
 
 export default function PaperMetadata({
   metadata,
-  onMetadataUpdate,
+  onEditRequest,
 }: PaperMetadataProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
-  const { isEditing, clearEditing, setHasUnsavedChanges, switchToEdit } = useEditingState();
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState<string | null>(null);
 
-  const allowEdit = useMemo(
-    () => canEditContent && Boolean(onMetadataUpdate),
-    [canEditContent, onMetadataUpdate],
-  );
-
-  const handleMetadataEditConfirm = useCallback(
-    async (next: PaperMetadata) => {
-      if (!onMetadataUpdate) return;
-      setSubmitting(true);
-      setSubmitError(null);
-      try {
-        await Promise.resolve(onMetadataUpdate(next));
-        setHasUnsavedChanges(false);
-        clearEditing();
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : '保存失败，请稍后重试';
-        setSubmitError(msg);
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [onMetadataUpdate, setHasUnsavedChanges, clearEditing],
-  );
-
-  const handleMetadataEditStart = useCallback(() => {
-    const switched = switchToEdit('metadata', {
-      beforeSwitch: () => {
-        setSubmitError(null);
-      },
-      onRequestSave: () => {
-        // TODO: auto-save pending metadata
-      },
-    });
-    if (!switched) return;
-  }, [switchToEdit]);
-
-  const isEditingMetadata = isEditing('metadata');
-
-  const cardContent = isEditingMetadata ? (
-    <MetadataEditor
-      initialValue={metadata}
-      onCancel={clearEditing}
-      onSubmit={handleMetadataEditConfirm}
-      isSubmitting={submitting}
-      externalError={submitError}
-    />
-  ) : (
-    <MetadataReadOnly metadata={metadata} />
-  );
+  const allowEdit = canEditContent && Boolean(onEditRequest);
 
   return (
     <MetadataContextMenu
-      onEdit={allowEdit ? handleMetadataEditStart : undefined}
+      onEdit={allowEdit ? onEditRequest : undefined}
     >
-      {cardContent}
+      <MetadataReadOnly metadata={metadata} />
     </MetadataContextMenu>
   );
 }

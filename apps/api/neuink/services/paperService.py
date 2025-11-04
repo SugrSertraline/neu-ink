@@ -186,6 +186,24 @@ class PaperService:
 
         return self._wrap_error("论文删除失败")
 
+    def create_paper_from_markdown(self, file, creator_id: str) -> Dict[str, Any]:
+        """
+        从Markdown文件创建公共论文
+        """
+        try:
+            from .markdownParserService import get_markdown_parser_service
+            parser = get_markdown_parser_service()
+            paper_data = parser.parse_markdown_upload(file, {})
+
+            # 设置为公开论文
+            paper_data["isPublic"] = True
+            paper_data["createdBy"] = creator_id
+
+            paper = self.paper_model.create(paper_data)
+            return self._wrap_success("论文创建成功", paper)
+        except Exception as exc:
+            return self._wrap_error(f"创建论文失败: {exc}")
+
     # ------------------------------------------------------------------
     # 统计 & 个人论文库占位
     # ------------------------------------------------------------------

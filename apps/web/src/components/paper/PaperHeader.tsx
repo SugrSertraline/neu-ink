@@ -9,7 +9,6 @@ import {
   Eye,
   EyeOff,
   Save,
-  Sparkles,
 } from 'lucide-react';
 import { ViewerSource } from '@/types/paper/viewer';
 
@@ -48,6 +47,12 @@ const VIEWER_SOURCE_MAP: Record<ViewerSource, ViewerSourceLabel> = {
   },
 };
 
+const SOURCE_BADGES: Record<ViewerSourceLabel['tone'], string> = {
+  admin: 'from-[#4f46e5]/85 via-[#4338ca]/80 to-[#312e81]/85 text-indigo-50',
+  personal: 'from-[#10b981]/85 via-[#059669]/78 to-[#065f46]/85 text-emerald-50',
+  public: 'from-[#38bdf8]/85 via-[#0ea5e9]/75 to-[#0369a1]/85 text-sky-50',
+};
+
 interface PaperHeaderProps {
   lang: Lang;
   setLang: (lang: Lang) => void;
@@ -84,7 +89,7 @@ export default function PaperHeader({
         type="button"
         onClick={handler}
         disabled={disabled || !handler}
-        className="flex items-center gap-1 rounded-ful bg-white/60 dark:bg-slate-800/50 backdrop-blur-md px-3 py-1.5 text-sm text-gray-700 transition-all hover:bg-white/80 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-60 dark:text-slate-200 dark:hover:bg-slate-700/70 border border-white/30 dark:border-slate-600/30"
+        className="inline-flex items-center gap-1 rounded-full border border-white/40 bg-white/40 px-4 py-1.5 text-sm text-slate-800 shadow-[0_10px_28px_rgba(15,23,42,0.16)] backdrop-blur-xl transition hover:bg-white/65 hover:shadow-[0_16px_40px_rgba(15,23,42,0.18)] disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700/40 dark:bg-slate-800/40 dark:text-slate-100 dark:hover:bg-slate-700/55"
       >
         <Icon className="h-4 w-4" />
         {label}
@@ -95,114 +100,108 @@ export default function PaperHeader({
   const sourceInfo = viewerSource ? VIEWER_SOURCE_MAP[viewerSource] : null;
 
   return (
-    <div className="w-full px-6 py-3">
-      <div className="mx-auto w-full bg-white/10 dark:bg-slate-900/50 backdrop-blur-sm rounded-xl shadow-xl dark:border-slate-700/30">
-        <div className="px-6 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4 flex-1 min-w-0">
-            <div className="flex items-center gap-2 shrink-0">
-              <BookOpen className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-              {sourceInfo && (
-                <span
-                  className={`hidden sm:inline-flex flex-col rounded-lg px-3 py-1 text-xs font-medium leading-tight border ${
-                    sourceInfo.tone === 'admin'
-                      ? 'bg-indigo-100/80 text-indigo-700 border-indigo-200 dark:bg-indigo-500/20 dark:text-indigo-200 dark:border-indigo-500/30'
-                      : sourceInfo.tone === 'personal'
-                      ? 'bg-emerald-100/70 text-emerald-700 border-emerald-200 dark:bg-emerald-500/20 dark:text-emerald-200 dark:border-emerald-500/30'
-                      : 'bg-sky-100/70 text-sky-700 border-sky-200 dark:bg-sky-500/20 dark:text-sky-200 dark:border-sky-500/30'
-                  }`}
-                  title={sourceInfo.description}
+    <div className="relative w-full px-6 py-4">
+      <div className="mx-auto flex max-w-6xl items-center gap-4 rounded-2xl border border-white/45 bg-gradient-to-tr from-white/30 via-white/15 to-white/35 px-6 py-4 shadow-[0_30px_60px_rgba(15,23,42,0.18)] backdrop-blur-[18px] dark:border-white/10 dark:from-slate-900/60 dark:via-slate-900/45 dark:to-slate-900/55">
+        <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/45 bg-white/40 shadow-[0_16px_32px_rgba(37,99,235,0.25)] backdrop-blur-xl dark:border-slate-700/45 dark:bg-slate-800/50">
+          <BookOpen className="h-5 w-5 text-blue-600 dark:text-blue-300" />
+        </span>
+
+        {sourceInfo && (
+          <span
+            className={`inline-flex min-w-[11rem] flex-col rounded-2xl border border-white/35 bg-gradient-to-r px-4 py-2 text-sm font-semibold shadow-[0_18px_42px_rgba(15,23,42,0.22)] ${SOURCE_BADGES[sourceInfo.tone]} backdrop-blur-lg dark:border-white/20`}
+            title={sourceInfo.description}
+          >
+            <span className="text-[0.68rem] font-medium uppercase tracking-[0.2em] text-white/70">
+              当前视图
+            </span>
+            <span className="truncate">{sourceInfo.label}</span>
+          </span>
+        )}
+
+        {actions?.extraActionsHint && (
+          <span className="text-sm text-slate-700 dark:text-slate-200">
+            {actions.extraActionsHint}
+          </span>
+        )}
+
+        <div className="relative ml-auto flex min-w-[280px] flex-1">
+          <Search className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-500/70 dark:text-slate-400/70" />
+          <input
+            type="text"
+            placeholder="搜索论文内容..."
+            value={searchQuery}
+            onChange={event => setSearchQuery(event.target.value)}
+            className="w-full rounded-full border border-white/40 bg-white/45 py-3 pl-12 pr-36 text-sm text-slate-900 shadow-[0_18px_40px_rgba(15,23,42,0.16)] outline-none transition placeholder:text-slate-400 focus:bg-white/70 focus:shadow-[0_26px_60px_rgba(15,23,42,0.2)] dark:border-slate-700/40 dark:bg-slate-800/40 dark:text-slate-100 dark:placeholder:text-slate-500 dark:focus:bg-slate-800/65"
+          />
+          {searchQuery && searchResultsCount > 0 && (
+            <div className="absolute right-3 top-1/2 flex -translate-y-1/2 items-center gap-2 rounded-full border border-white/40 bg-white/45 px-2 py-1 text-xs text-slate-600 shadow-[0_10px_22px_rgba(15,23,42,0.15)] backdrop-blur-lg dark:border-slate-700/40 dark:bg-slate-800/45 dark:text-slate-200">
+              <span>
+                {currentSearchIndex + 1} / {searchResultsCount}
+              </span>
+              <div className="flex gap-1">
+                <button
+                  type="button"
+                  onClick={() => onSearchNavigate?.('prev')}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/60 text-slate-600 shadow-sm transition hover:bg-white/80 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/70"
+                  title="上一个"
                 >
-                  <strong className="uppercase tracking-wide text-[0.6rem] opacity-80">
-                    当前视图
-                  </strong>
-                  <span>{sourceInfo.label}</span>
-                </span>
-              )}
-            </div>
-
-            <div className="relative flex-1 max-w-md">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400 dark:text-slate-500" />
-              <input
-                type="text"
-                placeholder="搜索论文内容..."
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-10 pr-32 py-2 bg-white/40 dark:bg-slate-800/40 backdrop-blur-md border border-gray-200/40 dark:border-slate-600/40 rounded-full focus:ring-2 focus:ring-blue-500 focus:border-transparent focus:bg-white/70 dark:focus:bg-slate-800/70 outline-none text-sm dark:text-white transition-all shadow-sm placeholder:text-gray-400 dark:placeholder:text-slate-500"
-              />
-              {searchQuery && searchResultsCount > 0 && (
-                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-2">
-                  <span className="text-xs text-gray-600 dark:text-slate-400 bg-white/60 dark:bg-slate-700/60 backdrop-blur-md px-2 py-1 rounded-full border border-white/20 dark:border-slate-600/20">
-                    {currentSearchIndex + 1} / {searchResultsCount}
-                  </span>
-                  <div className="flex gap-1">
-                    <button
-                      type="button"
-                      onClick={() => onSearchNavigate?.('prev')}
-                      className="p-1 hover:bg-white/70 dark:hover:bg-slate-700/70 rounded-full transition-all backdrop-blur-md"
-                      title="上一个"
-                    >
-                      <ChevronUp className="w-4 h-4 text-gray-600 dark:text-slate-400" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => onSearchNavigate?.('next')}
-                      className="p-1 hover:bg-white/70 dark:hover:bg-slate-700/70 rounded-full transition-all backdrop-blur-md"
-                      title="下一个"
-                    >
-                      <ChevronDown className="w-4 h-4 text-gray-600 dark:text-slate-400" />
-                    </button>
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-3 shrink-0">
-            {actions && (
-              <div className="flex items-center gap-2">
-                {renderActionButton(
-                  actions.canToggleVisibility,
-                  actions.isPublicVisible ? '设为私有' : '设为公开',
-                  actions.isPublicVisible ? EyeOff : Eye,
-                  actions.onToggleVisibility,
-                )}
-                {renderActionButton(
-                  !!actions.onSave,
-                  actions.saveLabel ?? '保存',
-                  Save,
-                  actions.onSave,
-                )}
-                {actions.extraActionsHint && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 text-amber-700 px-3 py-1 text-xs font-medium">
-                    <Sparkles className="w-3 h-3" />
-                    {actions.extraActionsHint}
-                  </span>
-                )}
+                  <ChevronUp className="h-3.5 w-3.5" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onSearchNavigate?.('next')}
+                  className="inline-flex h-6 w-6 items-center justify-center rounded-full bg-white/60 text-slate-600 shadow-sm transition hover:bg-white/80 dark:bg-slate-800/60 dark:text-slate-300 dark:hover:bg-slate-700/70"
+                  title="下一个"
+                >
+                  <ChevronDown className="h-3.5 w-3.5" />
+                </button>
               </div>
-            )}
+            </div>
+          )}
+        </div>
 
-            <div className="flex bg-white/50 dark:bg-slate-800/50 backdrop-blur-md rounded-full p-1 shadow-sm border border-white/20 dark:border-slate-600/20">
-              {(
-                [
-                  { value: 'en' as Lang, label: 'EN' },
-                  { value: 'both' as Lang, label: '双语' },
-                ] as const
-              ).map(({ value, label }) => (
+        <div className="flex shrink-0 items-center gap-3">
+          {actions && (
+            <>
+              {renderActionButton(
+                actions.canToggleVisibility,
+                actions.isPublicVisible ? '设为私有' : '设为公开',
+                actions.isPublicVisible ? EyeOff : Eye,
+                actions.onToggleVisibility,
+              )}
+              {renderActionButton(
+                !!actions.onSave,
+                actions.saveLabel ?? '保存',
+                Save,
+                actions.onSave,
+              )}
+            </>
+          )}
+
+          <div className="inline-flex rounded-full border border-white/40 bg-white/30 p-1 shadow-[0_14px_32px_rgba(15,23,42,0.18)] backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-800/40">
+            {(
+              [
+                { value: 'en' as Lang, label: 'EN' },
+                { value: 'both' as Lang, label: '双语' },
+              ] as const
+            ).map(({ value, label }) => {
+              const isActive = lang === value;
+              return (
                 <button
                   key={value}
                   type="button"
                   onClick={() => setLang(value)}
-                  className={`px-3 py-1 rounded-full text-sm font-medium transition-all ${
-                    lang === value
-                      ? 'bg-white/90 dark:bg-slate-700/90 text-blue-600 dark:text-blue-400 shadow-lg'
-                      : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-slate-200 hover:bg-white/30 dark:hover:bg-slate-700/30'
+                  aria-pressed={isActive}
+                  className={`px-3 py-1 text-sm font-medium transition ${
+                    isActive
+                      ? 'rounded-full bg-white/90 text-blue-600 shadow-[0_14px_34px_rgba(37,99,235,0.28)] dark:bg-slate-700/90 dark:text-blue-300'
+                      : 'rounded-full text-slate-600 hover:bg-white/50 hover:text-slate-900 dark:text-slate-400 dark:hover:bg-slate-700/55 dark:hover:text-slate-100'
                   }`}
-                  aria-pressed={lang === value}
                 >
                   {label}
                 </button>
-              ))}
-            </div>
+              );
+            })}
           </div>
         </div>
       </div>

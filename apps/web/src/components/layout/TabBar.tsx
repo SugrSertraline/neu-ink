@@ -365,7 +365,7 @@ export default function TabBar({
             onMouseUp={handleMouseUp}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
-            className="flex items-center gap-2 h-full overflow-x-auto overflow-y-hidden scrollbar-hide py-2 cursor-grab active:cursor-grabbing select-none"
+            className="flex items-center gap-2 h-full overflow-x-auto overflow-y-hidden scrollbar-hide py-2 cursor-pointer select-none"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
             {visibleTabs.map(tab => {

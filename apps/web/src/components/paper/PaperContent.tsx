@@ -168,20 +168,20 @@ export default function PaperContent({
         const headerText = Array.isArray((block as any).headers) ? (block as any).headers.join(' ') : '';
         const rowsText = Array.isArray((block as any).rows)
           ? (block as any).rows
-              .map((row: any[]) =>
-                row
-                  .map((cell: any) => {
-                    if (typeof cell === 'string') return cell;
-                    if (cell && typeof cell === 'object') {
-                      const en = cell.en ?? '';
-                      const zh = cell.zh ?? '';
-                      return [en, zh].filter(Boolean).join(' ');
-                    }
-                    return '';
-                  })
-                  .join(' '),
-              )
-              .join(' ')
+            .map((row: any[]) =>
+              row
+                .map((cell: any) => {
+                  if (typeof cell === 'string') return cell;
+                  if (cell && typeof cell === 'object') {
+                    const en = cell.en ?? '';
+                    const zh = cell.zh ?? '';
+                    return [en, zh].filter(Boolean).join(' ');
+                  }
+                  return '';
+                })
+                .join(' '),
+            )
+            .join(' ')
           : '';
         const cap = [
           extractInlineText((block as any).caption?.en),
@@ -201,13 +201,13 @@ export default function PaperContent({
       case 'unordered-list':
         return Array.isArray((block as any).items)
           ? (block as any).items
-              .map((it: any) =>
-                [
-                  extractInlineText(it?.content?.en),
-                  extractInlineText(it?.content?.zh),
-                ].join(' '),
-              )
-              .join(' ')
+            .map((it: any) =>
+              [
+                extractInlineText(it?.content?.en),
+                extractInlineText(it?.content?.zh),
+              ].join(' '),
+            )
+            .join(' ')
           : '';
       case 'quote':
         return [
@@ -372,18 +372,17 @@ export default function PaperContent({
             onDelete={
               canEditContent
                 ? () => {
-                    if (window.confirm('确定删除该章节及其所有内容吗？')) {
-                      onSectionDelete?.(section.id);
-                      if (renamingSectionId === section.id) setRenamingSectionId(null);
-                    }
+                  if (window.confirm('确定删除该章节及其所有内容吗？')) {
+                    onSectionDelete?.(section.id);
+                    if (renamingSectionId === section.id) setRenamingSectionId(null);
                   }
+                }
                 : undefined
             }
           >
             <div
-              className={`flex items-baseline gap-3 flex-wrap cursor-context-menu rounded-md transition-colors ${
-                hoveredSectionId === section.id ? 'bg-gray-100 dark:bg-gray-800' : ''
-              }`}
+              className={`flex items-baseline gap-3 flex-wrap cursor-context-menu rounded-md transition-colors ${hoveredSectionId === section.id ? 'bg-gray-100 dark:bg-gray-800' : ''
+                }`}
               onMouseEnter={() => setHoveredSectionId(section.id)}
               onMouseLeave={() => setHoveredSectionId(null)}
             >
@@ -420,28 +419,70 @@ export default function PaperContent({
               const isSelected = selectedBlockId === block.id;
               const isActive = isSelected || activeBlockId === block.id;
 
+              const blockContent = isEditingBlock ? (
+                <BlockEditor
+                  block={block}
+                  onChange={updatedBlock => onBlockUpdate?.(block.id, updatedBlock)}
+                  onMoveUp={() => onBlockMove?.(block.id, 'up')}
+                  onMoveDown={() => onBlockMove?.(block.id, 'down')}
+                  onDelete={() => onBlockDelete?.(block.id)}
+                  onDuplicate={() => onBlockDuplicate?.(block.id)}
+                  canMoveUp={blockIndex > 0}
+                  canMoveDown={blockIndex < (section.content?.length ?? 0) - 1}
+                  references={references}
+                  allSections={sections}
+                />
+              ) : (
+                <BlockRenderer
+                  block={block}
+                  lang={lang === 'both' ? 'zh' : 'en'}
+                  searchQuery={searchQuery}
+                  isActive={isActive}
+                  onMouseEnter={() => setActiveBlockId(block.id)}
+                  onMouseLeave={() => {
+                    if (!isSelected) setActiveBlockId(null);
+                  }}
+                  contentRef={contentRef}
+                  references={references}
+                  onBlockUpdate={updatedBlock => onBlockUpdate?.(block.id, updatedBlock)}
+                />
+              );
+
+              const blockShell = (
+                <div
+                  id={block.id}
+                  data-block-id={block.id}
+                    className={`rounded-md transition-colors ${isActive ? 'ring-2 ring-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : ''}`}
+
+                  style={{
+                    // 让 scrollIntoView 对齐到“头部下方 16px”
+                     scrollMarginTop: 'calc(var(--app-header-h, 0px) + 16px)',
+                  }}
+                  onClick={
+                    !isEditingBlock && onBlockClick
+                      ? () => {
+                        const selection = window.getSelection();
+                        if (selection && selection.toString()) return;
+                        onBlockClick(block.id);
+                      }
+                      : undefined
+                  }
+                >
+                  {blockContent}
+                </div>
+              );
+
               return (
                 <React.Fragment key={block.id}>
                   {isEditingBlock ? (
-                    <BlockEditor
-                      block={block}
-                      onChange={(updatedBlock) => onBlockUpdate?.(block.id, updatedBlock)}
-                      onMoveUp={() => onBlockMove?.(block.id, 'up')}
-                      onMoveDown={() => onBlockMove?.(block.id, 'down')}
-                      onDelete={() => onBlockDelete?.(block.id)}
-                      onDuplicate={() => onBlockDuplicate?.(block.id)}
-                      canMoveUp={blockIndex > 0}
-                      canMoveDown={blockIndex < (section.content?.length ?? 0) - 1}
-                      references={references}
-                      allSections={sections}
-                    />
+                    blockShell
                   ) : (
                     <BlockContextMenu
                       onEdit={
                         canEditContent
                           ? () => {
-                              handleBlockEditStart(block.id);
-                            }
+                            handleBlockEditStart(block.id);
+                          }
                           : undefined
                       }
                       onInsertAbove={canEditContent ? () => onBlockInsert?.(block.id, 'above') : undefined}
@@ -453,51 +494,27 @@ export default function PaperContent({
                         canEditContent ? () => onBlockAppendSubsection?.(block.id) : undefined
                       }
                       onAddComponentAfter={
-                        canEditContent ? (type) => onBlockAddComponent?.(block.id, type) : undefined
+                        canEditContent ? type => onBlockAddComponent?.(block.id, type) : undefined
                       }
                       onDelete={
                         canEditContent
                           ? () => {
-                              if (window.confirm('确定删除该内容块吗？')) {
-                                onBlockDelete?.(block.id);
-                                if (isEditing(block.id)) clearEditing();
-                              }
+                            if (window.confirm('确定删除该内容块吗？')) {
+                              onBlockDelete?.(block.id);
+                              if (isEditing(block.id)) clearEditing();
                             }
+                          }
                           : undefined
                       }
                     >
-                      <div
-                        id={block.id}
-                        onClick={() => {
-                          if (!onBlockClick) return;
-                          const selection = window.getSelection();
-                          if (selection && selection.toString()) return;
-                          onBlockClick(block.id);
-                        }}
-                        className={`rounded-md transition-colors ${
-                          isActive ? 'ring-2 ring-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : ''
-                        }`}
-                      >
-                        <BlockRenderer
-                          block={block}
-                          lang={lang === 'both' ? 'zh' : 'en'}
-                          searchQuery={searchQuery}
-                          isActive={isActive}
-                          onMouseEnter={() => setActiveBlockId(block.id)}
-                          onMouseLeave={() => {
-                            if (!isSelected) setActiveBlockId(null);
-                          }}
-                          contentRef={contentRef}
-                          references={references}
-                          onBlockUpdate={(updatedBlock) => onBlockUpdate?.(block.id, updatedBlock)}
-                        />
-                      </div>
+                      {blockShell}
                     </BlockContextMenu>
                   )}
                 </React.Fragment>
               );
             })}
           </div>
+
 
           {section.subsections?.length ? (
             <div className="space-y-8">
@@ -560,10 +577,10 @@ export default function PaperContent({
   const rootMenu =
     canEditContent && onSectionInsert
       ? (children: React.ReactNode) => (
-          <RootSectionContextMenu onAddSection={() => onSectionInsert(null, 'below', null)}>
-            {children}
-          </RootSectionContextMenu>
-        )
+        <RootSectionContextMenu onAddSection={() => onSectionInsert(null, 'below', null)}>
+          {children}
+        </RootSectionContextMenu>
+      )
       : (children: React.ReactNode) => <>{children}</>;
 
   return rootMenu(

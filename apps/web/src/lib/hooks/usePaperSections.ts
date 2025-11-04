@@ -8,18 +8,26 @@ export function usePaperSections(
   setHasUnsavedChanges: (value: boolean) => void
 ) {
   const updateSections = useCallback(
-    (updater: (sections: Section[]) => { sections: Section[]; touched: boolean }) => {
-      setEditableDraft(prev => {
-        if (!prev) return prev;
-        const { sections, touched } = updater(prev.sections);
-        if (touched) {
-          setHasUnsavedChanges(true);
-        }
-        return touched ? { ...prev, sections } : prev;
-      });
-    },
-    [setEditableDraft, setHasUnsavedChanges]
-  );
+  (updater: (sections: Section[]) => { sections: Section[]; touched: boolean }) => {
+    let didTouch = false;
+
+    setEditableDraft(prev => {
+      if (!prev) return prev;
+      const { sections, touched } = updater(prev.sections);
+      if (touched) {
+        didTouch = true;
+        return { ...prev, sections };
+      }
+      return prev;
+    });
+
+    if (didTouch) {
+      setHasUnsavedChanges(true);
+    }
+  },
+  [setEditableDraft, setHasUnsavedChanges]
+);
+
 
   const updateSectionTree = useCallback(
     (sectionId: string, apply: (section: Section) => Section) => {
@@ -49,16 +57,16 @@ export function usePaperSections(
     [updateSections]
   );
 
-  const handleSectionTitleUpdate = useCallback(
-    (sectionId: string, nextTitle: Section['title']) => {
-      updateSectionTree(sectionId, section => ({
-        ...section,
-        title: { ...section.title, ...nextTitle },
-      }));
-      setHasUnsavedChanges(true);
-    },
-    [updateSectionTree, setHasUnsavedChanges]
-  );
+ const handleSectionTitleUpdate = useCallback(
+  (sectionId: string, nextTitle: Section['title']) => {
+    updateSectionTree(sectionId, section => ({
+      ...section,
+      title: { ...section.title, ...nextTitle },
+    }));
+  },
+  [updateSectionTree]
+);
+
 
   const handleSectionAddSubsection = useCallback(
     (sectionId: string) => {

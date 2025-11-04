@@ -42,6 +42,7 @@ interface MetadataEditorProps {
   onCancel: () => void;
   isSubmitting?: boolean;
   externalError?: string | null;
+  appearance?: 'card' | 'plain';
 }
 
 const articleTypeOptions: { value: ArticleTypeOption; label: string }[] = [
@@ -165,6 +166,7 @@ export default function MetadataEditor({
   onCancel,
   isSubmitting,
   externalError,
+  appearance = 'card',
 }: MetadataEditorProps) {
   const [form, setForm] = useState<MetadataFormState>(() => toFormState(initialValue));
   const [validationErrors, setValidationErrors] = useState<string[]>([]);
@@ -269,10 +271,15 @@ export default function MetadataEditor({
     [],
   );
 
+  const formClassName =
+    appearance === 'card'
+      ? 'space-y-6 rounded-lg border border-gray-200 bg-white p-6 shadow-md dark:border-slate-700 dark:bg-slate-900'
+      : 'space-y-6';
+
   return (
     <form
       onSubmit={handleSubmit}
-      className="space-y-6 rounded-lg border border-gray-200 bg-white p-6 shadow-md dark:border-slate-700 dark:bg-slate-900"
+      className={formClassName}
     >
       <div className="space-y-4">
         <div>

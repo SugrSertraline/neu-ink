@@ -15,7 +15,7 @@ import {
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
 import { Badge } from '@/components/ui/badge';
-import { Button } from '@/components/ui/button';
+  import { Button } from '@/components/ui/button';
 import { type PaperListItem, type Author } from '@/types/paper';
 
 interface PersonalMeta {
@@ -33,6 +33,7 @@ interface PaperCardProps {
   onRemoveFromLibrary?: () => void;
   showLoginRequired?: boolean;
   personalMeta?: PersonalMeta;
+  isAdmin?: boolean;
 }
 
 function getStatusColor(status: string): string {
@@ -91,6 +92,7 @@ export default function PaperCard({
   onRemoveFromLibrary,
   showLoginRequired = false,
   personalMeta,
+  isAdmin = false,
 }: PaperCardProps) {
   const authors = paper.authors
     .slice(0, 3)
@@ -127,6 +129,18 @@ export default function PaperCard({
           </p>
 
           <div className="flex flex-wrap gap-1.5">
+            {isAdmin && (
+              <Badge
+                variant="outline"
+                className={`text-xs font-medium ${
+                  paper.isPublic
+                    ? 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-800/40 dark:bg-blue-900/30 dark:text-blue-300'
+                    : 'border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
+                }`}
+              >
+                {paper.isPublic ? '对外展示' : '暂不展示'}
+              </Badge>
+            )}
             {paper.sciQuartile && paper.sciQuartile !== '无' && (
               <Badge
                 variant="outline"
@@ -248,7 +262,7 @@ export default function PaperCard({
                   className="h-7 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-300 dark:hover:bg-rose-900/20"
                 >
                   <Trash2 className="mr-1 h-3 w-3" />
-                  移出个人库
+                  从个人库删除
                 </Button>
               )}
             </div>
@@ -321,6 +335,18 @@ export default function PaperCard({
                     </Badge>
                   )}
                 </div>
+              </div>
+            </div>
+          )}
+
+          {isAdmin && (
+            <div className="flex items-start gap-2">
+              <Bookmark className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+              <div>
+                <p className="text-xs font-medium text-gray-700 dark:text-gray-300">展示状态</p>
+                <p className="text-xs text-gray-600 dark:text-gray-400">
+                  {paper.isPublic ? '当前对所有访客可见' : '仅管理员可见，尚未公开'}
+                </p>
               </div>
             </div>
           )}
