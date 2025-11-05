@@ -335,6 +335,7 @@ interface SectionContextMenuProps {
   onAddSectionBefore?: MenuAction;
   onAddSectionAfter?: MenuAction;
   onAddSubsection?: MenuAction;
+  onAddBlock?: (type: BlockContent['type']) => void;
   onMoveUp?: MenuAction;
   onMoveDown?: MenuAction;
   onDelete?: MenuAction;
@@ -346,6 +347,7 @@ export function SectionContextMenu({
   onAddSectionBefore,
   onAddSectionAfter,
   onAddSubsection,
+  onAddBlock,
   onMoveUp,
   onMoveDown,
   onDelete,
@@ -377,13 +379,42 @@ export function SectionContextMenu({
     }
   }
 
-  if (onAddSubsection) {
+  if (onAddSubsection || onAddBlock) {
     if (entries.length) entries.push({ kind: 'separator' });
-    entries.push({
-      kind: 'item',
-      label: '添加子章节',
-      onSelect: onAddSubsection,
-    });
+    if (onAddSubsection) {
+      entries.push({
+        kind: 'item',
+        label: '添加子章节',
+        onSelect: onAddSubsection,
+      });
+    }
+    
+    if (onAddBlock) {
+      const blockTypes: { type: BlockContent['type']; label: string; icon: string }[] = [
+        { type: 'paragraph', label: '段落', icon: '📝' },
+        { type: 'heading', label: '标题', icon: '📌' },
+        { type: 'math', label: '数学公式', icon: '∑' },
+        { type: 'figure', label: '图片', icon: '🖼️' },
+        { type: 'table', label: '表格', icon: '📊' },
+        { type: 'code', label: '代码块', icon: '💻' },
+        { type: 'ordered-list', label: '有序列表', icon: '🔢' },
+        { type: 'unordered-list', label: '无序列表', icon: '•' },
+        { type: 'quote', label: '引用', icon: '💬' },
+        { type: 'divider', label: '分隔线', icon: '—' },
+      ];
+
+      const addBlockSubmenu: MenuEntry[] = blockTypes.map(blockType => ({
+        kind: 'item' as const,
+        label: `${blockType.icon} ${blockType.label}`,
+        onSelect: () => onAddBlock(blockType.type),
+      }));
+
+      entries.push({
+        kind: 'item',
+        label: '添加块',
+        submenu: addBlockSubmenu,
+      });
+    }
   }
 
   if (onMoveUp || onMoveDown) {

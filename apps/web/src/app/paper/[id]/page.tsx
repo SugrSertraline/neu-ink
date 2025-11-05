@@ -456,6 +456,7 @@ export default function PaperPage() {
     handleSectionInsert,
     handleSectionMove,
     handleSectionDelete,
+    handleSectionAddBlock,
     updateSections,
   } = usePaperSections(setEditableDraft, setHasUnsavedChanges);
 
@@ -933,6 +934,7 @@ export default function PaperPage() {
                     onSectionInsert={handleSectionInsert}
                     onSectionMove={handleSectionMove}
                     onSectionDelete={handleSectionDelete}
+                    onSectionAddBlock={(sectionId, type) => handleSectionAddBlock(sectionId, type, lang)}
                     onBlockUpdate={handleBlockUpdate}
                     onBlockDuplicate={handleBlockDuplicate}
                     onBlockDelete={handleBlockDelete}

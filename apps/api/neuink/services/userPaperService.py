@@ -123,49 +123,9 @@ class UserPaperService:
         request: Any,
     ) -> Dict[str, Any]:
         """
-        用户上传私有论文（支持Markdown解析）
+        用户上传私有论文（功能已移除）
         """
-        try:
-            # 获取上传的文件
-            if 'file' not in request.files:
-                return self._wrap_failure(BusinessCode.INVALID_PARAMS, "未找到上传的文件")
-
-            file = request.files['file']
-            if not file or file.filename == '':
-                return self._wrap_failure(BusinessCode.INVALID_PARAMS, "未选择文件")
-
-            # 检查文件类型
-            if not file.filename.lower().endswith(('.md', '.markdown')):
-                return self._wrap_failure(BusinessCode.INVALID_PARAMS, "只支持Markdown文件（.md或.markdown）")
-
-            # 获取补充信息
-            metadata = {
-                'title': request.form.get('title'),
-                'authors': request.form.get('authors'),
-                'year': request.form.get('year'),
-            }
-
-            # 解析Markdown
-            from .markdownParserService import get_markdown_parser_service
-            parser = get_markdown_parser_service()
-            paper_data = parser.parse_markdown_upload(file, metadata)
-
-            # 创建个人论文条目
-            user_paper_data = {
-                "userId": user_id,
-                "paperData": paper_data,
-                "customTags": [],
-                "readingStatus": "unread",
-                "priority": "medium",
-            }
-
-            user_paper = self.user_paper_model.create(user_paper_data)
-            return self._wrap_success("论文上传成功", user_paper)
-
-        except ValueError as e:
-            return self._wrap_failure(BusinessCode.INVALID_PARAMS, str(e))
-        except Exception as exc:
-            return self._wrap_error(f"上传失败: {exc}")
+        return self._wrap_failure(BusinessCode.INVALID_PARAMS, "论文上传功能已移除")
 
     # ------------------------------------------------------------------
     # 获取个人论文详情

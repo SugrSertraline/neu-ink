@@ -1,7 +1,7 @@
 // hooks/usePaperSections.ts
 import { useCallback } from 'react';
-import type { Section, PaperContent as PaperContentModel } from '@/types/paper';
-import { createEmptySection } from '../utils/paperHelpers';
+import type { Section, PaperContent as PaperContentModel, BlockContent } from '@/types/paper';
+import { createEmptySection, createBlock } from '../utils/paperHelpers';
 
 export function usePaperSections(
   setEditableDraft: React.Dispatch<React.SetStateAction<PaperContentModel | null>>,
@@ -234,6 +234,19 @@ export function usePaperSections(
     [updateSections]
   );
 
+  const handleSectionAddBlock = useCallback(
+    (sectionId: string, blockType: BlockContent['type'], lang: 'en' | 'both') => {
+      updateSectionTree(sectionId, section => {
+        const newBlock = createBlock(blockType, lang);
+        return {
+          ...section,
+          content: [...(section.content ?? []), newBlock],
+        };
+      });
+    },
+    [updateSectionTree]
+  );
+
   return {
     updateSections,
     updateSectionTree,
@@ -242,5 +255,6 @@ export function usePaperSections(
     handleSectionInsert,
     handleSectionMove,
     handleSectionDelete,
+    handleSectionAddBlock,
   };
 }

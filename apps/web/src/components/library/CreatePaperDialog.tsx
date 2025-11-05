@@ -2,7 +2,7 @@
 'use client';
 
 import React from 'react';
-import { X, Plus, FileText, Upload } from 'lucide-react';
+import { X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
@@ -33,13 +33,6 @@ const initialFormData = {
 
 type FormDataState = typeof initialFormData;
 
-const initialMarkdownMeta = {
-  title: '',
-  authors: '',
-  year: '',
-};
-
-type MarkdownMetaState = typeof initialMarkdownMeta;
 
 const glowButtonFilled =
   'rounded-xl bg-gradient-to-r from-[#28418A]/92 via-[#28418A]/88 to-[#28418A]/92 ' +
@@ -62,15 +55,10 @@ export default function CreatePaperDialog({
   onClose,
   onSuccess,
 }: CreatePaperDialogProps) {
-  const [activeTab, setActiveTab] = React.useState<'manual' | 'markdown'>('manual');
   const [loading, setLoading] = React.useState(false);
   const [pressing, setPressing] = React.useState(false);
 
   const [formData, setFormData] = React.useState<FormDataState>({ ...initialFormData });
-  const [markdownFile, setMarkdownFile] = React.useState<File | null>(null);
-  const [markdownMeta, setMarkdownMeta] = React.useState<MarkdownMetaState>({
-    ...initialMarkdownMeta,
-  });
 
   const triggerButtonPulse = React.useCallback(() => {
     if (pressing) return;
@@ -83,27 +71,8 @@ export default function CreatePaperDialog({
     triggerButtonPulse();
     setLoading(true);
     try {
-      if (activeTab === 'manual') {
-        // TODO: 手动创建论文的 API 调用
-      } else {
-        // Markdown 上传的 API 调用
-        if (!markdownFile) {
-          throw new Error('请选择要上传的文件');
-        }
-
-        const formData = new FormData();
-        formData.append('file', markdownFile);
-
-        // 添加补充信息到 formData
-        if (markdownMeta.title) formData.append('title', markdownMeta.title);
-        if (markdownMeta.authors) formData.append('authors', markdownMeta.authors);
-        if (markdownMeta.year) formData.append('year', markdownMeta.year);
-
-        const result = await userPaperService.uploadPrivatePaper(formData);
-        if (result.bizCode !== 0) {
-          throw new Error(result.bizMessage || '上传失败');
-        }
-      }
+      // 手动创建论文的 API 调用
+      // TODO: 实现手动创建论文的 API 调用
       onSuccess?.();
       handleClose();
     } catch (error) {
@@ -115,8 +84,6 @@ export default function CreatePaperDialog({
 
   const resetForm = () => {
     setFormData({ ...initialFormData });
-    setMarkdownFile(null);
-    setMarkdownMeta({ ...initialMarkdownMeta });
   };
 
   const handleClose = () => {
@@ -136,36 +103,9 @@ export default function CreatePaperDialog({
         </Button>
       </header>
 
-      <nav className="flex gap-3 border-b border-white/40 bg-white/45 px-6 py-3">
-        <button
-          type="button"
-          onClick={() => setActiveTab('manual')}
-          className={cn(tabBase, activeTab === 'manual' ? tabActive : tabInactive)}
-        >
-          <Plus className="h-4 w-4" />
-          手动创建
-        </button>
-        <button
-          type="button"
-          onClick={() => setActiveTab('markdown')}
-          className={cn(tabBase, activeTab === 'markdown' ? tabActive : tabInactive)}
-        >
-          <FileText className="h-4 w-4" />
-          Markdown 上传
-        </button>
-      </nav>
 
       <section className="max-h-[60vh] overflow-y-auto bg-white/45 px-6 py-6 backdrop-blur">
-        {activeTab === 'manual' ? (
-          <ManualForm formData={formData} setFormData={setFormData} />
-        ) : (
-          <MarkdownForm
-            markdownFile={markdownFile}
-            setMarkdownFile={setMarkdownFile}
-            markdownMeta={markdownMeta}
-            setMarkdownMeta={setMarkdownMeta}
-          />
-        )}
+        <ManualForm formData={formData} setFormData={setFormData} />
       </section>
 
       <footer className="flex items-center justify-end gap-3 border-t border-white/40 bg-white/45 px-6 py-5">
@@ -176,8 +116,7 @@ export default function CreatePaperDialog({
           onClick={handleSubmit}
           disabled={
             loading ||
-            (activeTab === 'manual' && !formData.title.trim()) ||
-            (activeTab === 'markdown' && !markdownFile)
+            !formData.title.trim()
           }
           className={cn(glowButtonFilled, 'min-w-[110px]', pressing && 'animate-glow-press')}
           onAnimationEnd={event => event.currentTarget.classList.remove('animate-glow-press')}
@@ -319,78 +258,6 @@ function ManualForm({
   );
 }
 
-function MarkdownForm({
-  markdownFile,
-  setMarkdownFile,
-  markdownMeta,
-  setMarkdownMeta,
-}: {
-  markdownFile: File | null;
-  setMarkdownFile: React.Dispatch<React.SetStateAction<File | null>>;
-  markdownMeta: MarkdownMetaState;
-  setMarkdownMeta: React.Dispatch<React.SetStateAction<MarkdownMetaState>>;
-}) {
-  return (
-    <div className="space-y-6">
-      <div
-        className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-white/65 bg-white/75 px-6 py-10 text-center shadow-[0_18px_44px_rgba(28,45,96,0.16)] backdrop-blur-2xl"
-        data-glow="true"
-      >
-        <Upload className="mb-4 h-12 w-12 text-[#5d6ca5]" />
-        <h3 className="text-lg font-medium text-slate-900">上传 Markdown 文件</h3>
-        <p className="mt-2 text-sm text-slate-600">支持 .md / .markdown，系统将自动解析论文内容</p>
-
-        <input
-          id="markdown-upload"
-          type="file"
-          accept=".md,.markdown"
-          className="hidden"
-          onChange={event => setMarkdownFile(event.target.files?.[0] ?? null)}
-        />
-
-        <label htmlFor="markdown-upload">
-          <span className={cn(glowButtonFilled, 'mt-5 inline-flex cursor-pointer px-4 py-2 text-sm text-white')}>
-            选择文件
-          </span>
-        </label>
-      </div>
-
-      {markdownFile && (
-        <div className="space-y-4">
-          <div className="flex items-center gap-2 rounded-2xl border border-white/70 bg-white/78 px-4 py-3 text-sm text-[#28603c] shadow-[0_16px_32px_rgba(13,148,136,0.22)] backdrop-blur-xl">
-            <FileText className="h-4 w-4" />
-            已选择：{markdownFile.name}
-          </div>
-
-          <div>
-            <h3 className="text-lg font-medium text-slate-900">补充信息（可选）</h3>
-            <div className="mt-4 grid grid-cols-1 gap-4 md:grid-cols-3">
-              <Field
-                label="标题"
-                placeholder="若 Markdown 无标题可填补"
-                value={markdownMeta.title}
-                onChange={({ target }) => setMarkdownMeta(prev => ({ ...prev, title: target.value }))}
-              />
-              <Field
-                label="作者"
-                placeholder="作者姓名"
-                value={markdownMeta.authors}
-                onChange={({ target }) => setMarkdownMeta(prev => ({ ...prev, authors: target.value }))}
-              />
-              <Field
-                label="年份"
-                placeholder="2024"
-                type="number"
-                value={markdownMeta.year}
-                onChange={({ target }) => setMarkdownMeta(prev => ({ ...prev, year: target.value }))}
-              />
-            </div>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 function Field({
   label,

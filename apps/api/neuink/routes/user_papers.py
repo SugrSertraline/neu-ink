@@ -124,28 +124,6 @@ def add_public_paper_to_library():
         return internal_error_response(f"服务器错误: {exc}")
 
 
-@bp.route("/uploads", methods=["POST"])
-@login_required
-def upload_private_paper():
-    """
-    用户上传私有论文（PDF 解析功能待实现）
-    
-    TODO: 实现文件上传和解析功能
-    """
-    try:
-        service = get_user_paper_service()
-        result = service.upload_private_paper(
-            user_id=g.current_user["user_id"],
-            request=request,
-        )
-
-        if result["code"] == BusinessCode.SUCCESS:
-            return success_response(result["data"], result["message"])
-        
-        return bad_request_response(result["message"])
-    
-    except Exception as exc:
-        return internal_error_response(f"服务器错误: {exc}")
 
 
 @bp.route("/<entry_id>", methods=["GET"])

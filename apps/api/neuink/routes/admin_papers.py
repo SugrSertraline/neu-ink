@@ -209,31 +209,3 @@ def get_admin_paper_detail(paper_id):
         return internal_error_response(f"服务器错误: {exc}")
 
 
-@bp.route("/markdown", methods=["POST"])
-@login_required
-@admin_required
-def create_paper_from_markdown():
-    """
-    管理员通过Markdown创建公共论文
-    """
-    try:
-        if 'file' not in request.files:
-            return bad_request_response("未找到上传的文件")
-
-        file = request.files['file']
-        if not file or file.filename == '':
-            return bad_request_response("未选择文件")
-
-        # 检查文件类型
-        if not file.filename.lower().endswith(('.md', '.markdown')):
-            return bad_request_response("只支持Markdown文件")
-
-        service = get_paper_service()
-        result = service.create_paper_from_markdown(file, g.current_user["user_id"])
-
-        if result["code"] == BusinessCode.SUCCESS:
-            return success_response(result["data"], result["message"])
-        return bad_request_response(result["message"])
-
-    except Exception as exc:
-        return internal_error_response(f"服务器错误: {exc}")

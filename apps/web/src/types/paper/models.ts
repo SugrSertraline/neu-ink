@@ -64,7 +64,6 @@ export interface PaperMetadata {
 // —— 论文附件 ——
 export interface PaperAttachments {
   pdf?: string;
-  markdown?: string;
 }
 
 // —— 公共论文（Paper Collection） ——

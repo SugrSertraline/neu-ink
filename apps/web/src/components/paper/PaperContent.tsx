@@ -48,6 +48,7 @@ interface PaperContentProps {
     parentSectionId: string | null,
   ) => void;
   onSectionDelete?: (sectionId: string) => void;
+  onSectionAddBlock?: (sectionId: string, type: BlockContent['type']) => void;
   onBlockUpdate?: (blockId: string, block: BlockContent) => void;
   onBlockDuplicate?: (blockId: string) => void;
   onBlockDelete?: (blockId: string) => void;
@@ -83,6 +84,7 @@ export default function PaperContent({
   onSectionInsert,
   onSectionMove,
   onSectionDelete,
+  onSectionAddBlock,
   onBlockUpdate,
   onBlockDuplicate,
   onBlockDelete,
@@ -359,6 +361,11 @@ export default function PaperContent({
                 : undefined
             }
             onAddSubsection={canEditContent ? () => onSectionAddSubsection?.(section.id) : undefined}
+            onAddBlock={
+              canEditContent && onSectionAddBlock
+                ? (type) => onSectionAddBlock(section.id, type)
+                : undefined
+            }
             onMoveUp={
               canEditContent && onSectionMove && !isFirstSibling
                 ? () => onSectionMove(section.id, 'up', parentSectionId)
@@ -550,6 +557,7 @@ export default function PaperContent({
     onSectionMove,
     onSectionAddSubsection,
     onSectionDelete,
+    onSectionAddBlock,
     onBlockDuplicate,
     onBlockDelete,
     onBlockInsert,

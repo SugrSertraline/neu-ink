@@ -126,14 +126,6 @@ export const userPaperService = {
     );
   },
 
-  /**
-   * 上传私有论文（预留）
-   */
-  uploadPrivatePaper(formData: FormData): Promise<UnifiedResult<UserPaper>> {
-    return callAndNormalize<UserPaper>(
-      apiClient.upload('/user/papers/uploads', formData)
-    );
-  },
 };
 
 // —— 笔记服务 —— //
