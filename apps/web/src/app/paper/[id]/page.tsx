@@ -61,6 +61,7 @@ type ReferenceEditorOverlayProps = {
   onCancel: () => void;
   onSave: () => void;
   container?: HTMLElement | null;
+  isOpen: boolean;
 };
 
 function ReferenceEditorOverlay({
@@ -70,9 +71,33 @@ function ReferenceEditorOverlay({
   onCancel,
   onSave,
   container,
+  isOpen,
 }: ReferenceEditorOverlayProps) {
   const portalTarget = container ?? document.body;
   if (!portalTarget) return null;
+
+  // 禁用页面滚动
+  useEffect(() => {
+    if (isOpen) {
+      // 禁用页面滚动
+      const originalOverflow = document.body.style.overflow;
+      const originalPaddingRight = document.body.style.paddingRight;
+      
+      // 如果有滚动条，添加右边距防止抖动
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      if (scrollbarWidth > 0) {
+        document.body.style.paddingRight = `${scrollbarWidth}px`;
+      }
+      
+      document.body.style.overflow = 'hidden';
+      
+      return () => {
+        // 恢复页面滚动
+        document.body.style.overflow = originalOverflow;
+        document.body.style.paddingRight = originalPaddingRight;
+      };
+    }
+  }, [isOpen]);
 
   const authorsValue = (reference.authors ?? []).join('\n');
   const yearDisplay =
@@ -783,6 +808,137 @@ const handleSaveToServer = useCallback(
     [resolvedUserPaperId, deleteNote],
   );
 
+  const handleParseTextAdd = useCallback(
+    async (sectionId: string, text: string, afterBlockId?: string) => {
+      try {
+        const service = isPersonalOwner ? userPaperService : adminPaperService;
+        const id = isPersonalOwner ? resolvedUserPaperId : paperId;
+
+        if (!id) {
+          toast.error('无法确定论文标识');
+          return { success: false, error: '无法确定论文标识' };
+        }
+
+        // 根据用户类型调用不同的服务
+        const requestData = { text, afterBlockId };
+        
+        if (isPersonalOwner && resolvedUserPaperId) {
+          // 个人论文库：使用 userPaperId 作为 entry_id
+          const result = await service.addBlocksToSection(resolvedUserPaperId, sectionId, requestData);
+          if (result.bizCode === 0) {
+            // 更新本地编辑副本
+            const addedBlocks = result.data?.addedBlocks;
+            if (addedBlocks && addedBlocks.length > 0) {
+              setEditableDraft(prev => {
+                if (!prev) return prev;
+                const nextDraft = { ...prev };
+                // 找到对应的section并添加新的blocks
+                const updateSection = (sections: any[]): any[] => {
+                  return sections.map(section => {
+                    if (section.id === sectionId) {
+                      // 获取当前section的所有blocks
+                      const currentBlocks = section.content || [];
+                      let insertIndex = currentBlocks.length; // 默认插在末尾
+                      
+                      // 如果指定了afterBlockId，插入到指定位置
+                      if (afterBlockId) {
+                        insertIndex = currentBlocks.findIndex((block: any) => block.id === afterBlockId);
+                        if (insertIndex >= 0) {
+                          insertIndex += 1; // 插入到指定block后面
+                        }
+                      }
+                      
+                      const newBlocks = [...currentBlocks];
+                      newBlocks.splice(insertIndex, 0, ...addedBlocks);
+                      
+                      return {
+                        ...section,
+                        content: newBlocks
+                      };
+                    }
+                    if (section.subsections) {
+                      return {
+                        ...section,
+                        subsections: updateSection(section.subsections)
+                      };
+                    }
+                    return section;
+                  });
+                };
+                nextDraft.sections = updateSection(nextDraft.sections);
+                return nextDraft;
+              });
+            }
+            setHasUnsavedChanges(true);
+            toast.success(`成功添加 ${result.data?.addedBlocks?.length || 0} 个内容块`);
+            return { success: true, blocks: result.data?.addedBlocks };
+          } else {
+            toast.error('添加失败', { description: result.bizMessage || '服务器错误' });
+            return { success: false, error: result.bizMessage || '服务器错误' };
+          }
+        } else {
+          // 管理员论文：直接使用 paperId
+          const result = await service.addBlocksToSection(paperId, sectionId, requestData);
+          if (result.bizCode === 0) {
+            // 更新本地编辑副本
+            const addedBlocks = result.data?.addedBlocks;
+            if (addedBlocks && addedBlocks.length > 0) {
+              setEditableDraft(prev => {
+                if (!prev) return prev;
+                const nextDraft = { ...prev };
+                const updateSection = (sections: any[]): any[] => {
+                  return sections.map(section => {
+                    if (section.id === sectionId) {
+                      // 获取当前section的所有blocks
+                      const currentBlocks = section.content || [];
+                      let insertIndex = currentBlocks.length; // 默认插在末尾
+                      
+                      // 如果指定了afterBlockId，插入到指定位置
+                      if (afterBlockId) {
+                        insertIndex = currentBlocks.findIndex((block: any) => block.id === afterBlockId);
+                        if (insertIndex >= 0) {
+                          insertIndex += 1; // 插入到指定block后面
+                        }
+                      }
+                      
+                      const newBlocks = [...currentBlocks];
+                      newBlocks.splice(insertIndex, 0, ...addedBlocks);
+                      
+                      return {
+                        ...section,
+                        content: newBlocks
+                      };
+                    }
+                    if (section.subsections) {
+                      return {
+                        ...section,
+                        subsections: updateSection(section.subsections)
+                      };
+                    }
+                    return section;
+                  });
+                };
+                nextDraft.sections = updateSection(nextDraft.sections);
+                return nextDraft;
+              });
+            }
+            setHasUnsavedChanges(true);
+            toast.success(`成功添加 ${result.data?.addedBlocks?.length || 0} 个内容块`);
+            return { success: true, blocks: result.data?.addedBlocks };
+          } else {
+            toast.error('添加失败', { description: result.bizMessage || '服务器错误' });
+            return { success: false, error: result.bizMessage || '服务器错误' };
+          }
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '添加过程中发生未知错误';
+        toast.error('添加失败', { description: message });
+        return { success: false, error: message };
+      }
+    },
+    [isPersonalOwner, resolvedUserPaperId, paperId, setHasUnsavedChanges]
+  );
+
   const handleToggleVisibility = useCallback(async () => {
     try {
       const newVisibility = !isPublicVisible;
@@ -938,6 +1094,7 @@ const handleSaveToServer = useCallback(
                     onBlockMove={handleBlockMove}
                     onBlockAppendSubsection={handleBlockAppendSubsection}
                     onBlockAddComponent={handleBlockAddComponent}
+                    onParseTextAdd={canEditContent ? handleParseTextAdd : undefined}
                     onSaveToServer={handleSaveToServer}
                   />
 
@@ -1052,6 +1209,7 @@ const handleSaveToServer = useCallback(
             onChange={handleReferenceDraftChange}
             onCancel={handleReferenceEditorCancel}
             onSave={handleReferenceEditorSubmit}
+            isOpen={Boolean(editingReferenceId && referenceDraft)}
           />
         )}
 

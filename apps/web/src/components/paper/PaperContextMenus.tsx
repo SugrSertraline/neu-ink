@@ -336,6 +336,7 @@ interface SectionContextMenuProps {
   onAddSectionAfter?: MenuAction;
   onAddSubsection?: MenuAction;
   onAddBlock?: (type: BlockContent['type']) => void;
+  onStartTextParse?: MenuAction;
   onMoveUp?: MenuAction;
   onMoveDown?: MenuAction;
   onDelete?: MenuAction;
@@ -348,6 +349,7 @@ export function SectionContextMenu({
   onAddSectionAfter,
   onAddSubsection,
   onAddBlock,
+  onStartTextParse,
   onMoveUp,
   onMoveDown,
   onDelete,
@@ -379,7 +381,7 @@ export function SectionContextMenu({
     }
   }
 
-  if (onAddSubsection || onAddBlock) {
+  if (onAddSubsection || onAddBlock || onStartTextParse) {
     if (entries.length) entries.push({ kind: 'separator' });
     if (onAddSubsection) {
       entries.push({
@@ -388,7 +390,7 @@ export function SectionContextMenu({
         onSelect: onAddSubsection,
       });
     }
-    
+     
     if (onAddBlock) {
       const blockTypes: { type: BlockContent['type']; label: string; icon: string }[] = [
         { type: 'paragraph', label: '段落', icon: '📝' },
@@ -413,6 +415,14 @@ export function SectionContextMenu({
         kind: 'item',
         label: '添加块',
         submenu: addBlockSubmenu,
+      });
+    }
+
+    if (onStartTextParse) {
+      entries.push({
+        kind: 'item',
+        label: '📝 通过文本解析添加',
+        onSelect: onStartTextParse,
       });
     }
   }
@@ -473,6 +483,8 @@ export function RootSectionContextMenu({
 
 interface BlockContextMenuProps {
   children: React.ReactNode;
+  sectionId: string;
+  sectionTitle: string;
   onEdit?: MenuAction;
   onInsertAbove?: MenuAction;
   onInsertBelow?: MenuAction;
@@ -482,10 +494,13 @@ interface BlockContextMenuProps {
   onAddSubsectionAfter?: MenuAction;
   onDelete?: MenuAction;
   onAddComponentAfter?: (type: BlockContent['type']) => void;
+  onStartTextParse?: MenuAction;
 }
 
 export function BlockContextMenu({
   children,
+  sectionId,
+  sectionTitle,
   onEdit,
   onInsertAbove,
   onInsertBelow,
@@ -495,8 +510,10 @@ export function BlockContextMenu({
   onAddSubsectionAfter,
   onDelete,
   onAddComponentAfter,
+  onStartTextParse,
 }: BlockContextMenuProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
+  
   if (!canEditContent) return <>{children}</>;
 
   const blockTypes: { type: BlockContent['type']; label: string; icon: string }[] = [
@@ -530,13 +547,22 @@ export function BlockContextMenu({
       entries.push({ kind: 'item', label: '在下方插入段落', onSelect: onInsertBelow });
   }
 
-  if (onAddComponentAfter) {
+  if (onAddComponentAfter || onStartTextParse) {
     if (entries.length) entries.push({ kind: 'separator' });
-    entries.push({
-      kind: 'item',
-      label: '添加组件',
-      submenu: addComponentSubmenu,
-    });
+    if (onAddComponentAfter) {
+      entries.push({
+        kind: 'item',
+        label: '添加组件',
+        submenu: addComponentSubmenu,
+      });
+    }
+    if (onStartTextParse) {
+      entries.push({
+        kind: 'item',
+        label: '📝 通过文本解析添加',
+        onSelect: onStartTextParse,
+      });
+    }
   }
 
   if (onMoveUp || onMoveDown) {
@@ -557,7 +583,9 @@ export function BlockContextMenu({
     entries.push({ kind: 'item', label: '删除块', onSelect: onDelete });
   }
 
-  return <ContextMenuWrapper entries={entries}>{children}</ContextMenuWrapper>;
+  return (
+    <ContextMenuWrapper entries={entries}>{children}</ContextMenuWrapper>
+  );
 }
 
 interface MetadataContextMenuProps {

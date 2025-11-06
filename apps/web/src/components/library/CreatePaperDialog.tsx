@@ -1,7 +1,7 @@
 // apps/web/src/components/library/CreatePaperDialog.tsx
 'use client';
 
-import React from 'react';
+import React, { useEffect } from 'react';
 import { X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -67,6 +67,29 @@ export default function CreatePaperDialog({
   const [pressing, setPressing] = React.useState(false);
 
   const [formData, setFormData] = React.useState<FormDataState>({ ...initialFormData });
+
+  // 禁用页面滚动
+  useEffect(() => {
+    if (open) {
+      // 禁用页面滚动
+      const originalOverflow = document.body.style.overflow;
+      const originalPaddingRight = document.body.style.paddingRight;
+      
+      // 如果有滚动条，添加右边距防止抖动
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      if (scrollbarWidth > 0) {
+        document.body.style.paddingRight = `${scrollbarWidth}px`;
+      }
+      
+      document.body.style.overflow = 'hidden';
+      
+      return () => {
+        // 恢复页面滚动
+        document.body.style.overflow = originalOverflow;
+        document.body.style.paddingRight = originalPaddingRight;
+      };
+    }
+  }, [open]);
 
   // 新增：创建模式（手动 / 文本）
   const [mode, setMode] = React.useState<'manual' | 'text'>('manual');

@@ -42,17 +42,41 @@ export default function MetadataEditorOverlay({
   useEffect(() => {
     if (typeof window === 'undefined') return;
     if (container) {
-      const prev = container.style.overflow;
+      const prevOverflow = container.style.overflow;
+      const prevPaddingRight = container.style.paddingRight;
       container.style.overflow = 'hidden';
-      return () => { container.style.overflow = prev; };
+      
+      // 如果有滚动条，添加右边距防止抖动
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      if (scrollbarWidth > 0) {
+        container.style.paddingRight = `${scrollbarWidth}px`;
+      }
+      
+      return () => {
+        container.style.overflow = prevOverflow;
+        container.style.paddingRight = prevPaddingRight;
+      };
     } else {
       const html = document.documentElement;
       const body = document.body;
-      const prevHtml = html.style.overflow;
-      const prevBody = body.style.overflow;
+      const prevHtmlOverflow = html.style.overflow;
+      const prevBodyOverflow = body.style.overflow;
+      const prevBodyPaddingRight = body.style.paddingRight;
+      
       html.style.overflow = 'hidden';
       body.style.overflow = 'hidden';
-      return () => { html.style.overflow = prevHtml; body.style.overflow = prevBody; };
+      
+      // 如果有滚动条，添加右边距防止抖动
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      if (scrollbarWidth > 0) {
+        body.style.paddingRight = `${scrollbarWidth}px`;
+      }
+      
+      return () => {
+        html.style.overflow = prevHtmlOverflow;
+        body.style.overflow = prevBodyOverflow;
+        body.style.paddingRight = prevBodyPaddingRight;
+      };
     }
   }, [container]);
 

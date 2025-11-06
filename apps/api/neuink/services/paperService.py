@@ -274,6 +274,7 @@ class PaperService:
         text: str,
         user_id: str,
         is_admin: bool = False,
+        after_block_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         使用大模型解析文本并将生成的blocks添加到指定section中
@@ -284,6 +285,7 @@ class PaperService:
             text: 需要解析的文本
             user_id: 用户ID
             is_admin: 是否为管理员
+            after_block_id: 在指定block后插入，不传则在末尾添加
             
         Returns:
             操作结果
@@ -328,10 +330,21 @@ class PaperService:
                 return self._wrap_error("文本解析失败，无法生成有效的blocks")
 
             # 将新blocks添加到section中
-            if "blocks" not in target_section:
-                target_section["blocks"] = []
+            if "content" not in target_section:
+                target_section["content"] = []
             
-            target_section["blocks"].extend(new_blocks)
+            # 根据after_block_id确定插入位置
+            current_blocks = target_section["content"]
+            insert_index = len(current_blocks)  # 默认在末尾
+            
+            if after_block_id:
+                for i, block in enumerate(current_blocks):
+                    if block.get("id") == after_block_id:
+                        insert_index = i + 1  # 插入到指定block后面
+                        break
+            
+            # 插入新blocks
+            current_blocks[insert_index:insert_index] = new_blocks
             sections[section_index] = target_section
 
             # 更新论文

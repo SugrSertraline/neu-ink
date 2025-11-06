@@ -1,6 +1,6 @@
 // 论文服务层 - 对接后端真实 API
 
-import { AddToLibraryRequest, CreateNoteRequest, CreatePaperFromTextRequest, CreatePaperFromMetadataRequest, DeleteResult, Note, NoteFilters, NoteListData, Paper, PaperContent, PaperListData, PublicPaperFilters, UpdateNoteRequest, UpdateReadingProgressRequest, UpdateUserPaperRequest, UserPaper, UserPaperFilters, UserPaperListData, UserStatistics } from '@/types/paper/index';
+import { AddBlocksToSectionRequest, AddBlocksToSectionResult, AddToLibraryRequest, CreateNoteRequest, CreatePaperFromTextRequest, CreatePaperFromMetadataRequest, DeleteResult, Note, NoteFilters, NoteListData, Paper, PaperContent, PaperListData, PublicPaperFilters, UpdateNoteRequest, UpdateReadingProgressRequest, UpdateUserPaperRequest, UserPaper, UserPaperFilters, UserPaperListData, UserStatistics } from '@/types/paper/index';
 import { apiClient, callAndNormalize } from '../http';
 import type { UnifiedResult } from '@/types/api';
 
@@ -141,6 +141,19 @@ export const userPaperService = {
   createPaperFromMetadata(request: CreatePaperFromMetadataRequest): Promise<UnifiedResult<UserPaper>> {
     return callAndNormalize<UserPaper>(
       apiClient.post('/user/papers/create-from-metadata', request)
+    );
+  },
+
+  /**
+   * 向个人论文的指定section添加blocks
+   */
+  addBlocksToSection(
+    userPaperId: string,
+    sectionId: string,
+    request: AddBlocksToSectionRequest
+  ): Promise<UnifiedResult<AddBlocksToSectionResult>> {
+    return callAndNormalize<AddBlocksToSectionResult>(
+      apiClient.post(`/user/papers/${userPaperId}/sections/${sectionId}/add-blocks`, request)
     );
   },
 
@@ -309,6 +322,19 @@ export const adminPaperService = {
   async getAdminPaperDetail(paperId: string): Promise<UnifiedResult<Paper>> {
     return callAndNormalize<Paper>(
       apiClient.get(`/admin/papers/${paperId}`)
+    );
+  },
+
+  /**
+   * 向管理员论文的指定section添加blocks
+   */
+  addBlocksToSection(
+    paperId: string,
+    sectionId: string,
+    request: AddBlocksToSectionRequest
+  ): Promise<UnifiedResult<AddBlocksToSectionResult>> {
+    return callAndNormalize<AddBlocksToSectionResult>(
+      apiClient.post(`/admin/papers/${paperId}/sections/${sectionId}/add-blocks`, request)
     );
   },
 };

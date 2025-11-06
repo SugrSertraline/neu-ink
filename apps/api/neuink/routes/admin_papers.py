@@ -253,7 +253,8 @@ def add_blocks_to_section(paper_id, section_id):
     
     请求体示例:
     {
-        "text": "这是需要解析并添加到section中的文本内容..."
+        "text": "这是需要解析并添加到section中的文本内容...",
+        "afterBlockId": "block_123"  // 可选：指定在哪个block后插入
     }
     """
     try:
@@ -262,6 +263,7 @@ def add_blocks_to_section(paper_id, section_id):
             return bad_request_response("文本内容不能为空")
         
         text = data.get("text")
+        after_block_id = data.get("afterBlockId")  # 获取插入位置
         
         service = get_paper_service()
         result = service.add_blocks_to_section(
@@ -269,7 +271,8 @@ def add_blocks_to_section(paper_id, section_id):
             section_id=section_id,
             text=text,
             user_id=g.current_user["user_id"],
-            is_admin=True
+            is_admin=True,
+            after_block_id=after_block_id
         )
         
         if result["code"] == BusinessCode.SUCCESS:

@@ -13,6 +13,7 @@ import type {
 } from '@/types/paper';
 import BlockRenderer from './BlockRenderer';
 import BlockEditor from './editor/BlockEditor';
+import InlineTextParserEditor from './editor/InlineTextParserEditor';
 import {
   SectionContextMenu,
   BlockContextMenu,
@@ -56,6 +57,12 @@ interface PaperContentProps {
   onBlockMove?: (blockId: string, direction: 'up' | 'down') => void;
   onBlockAppendSubsection?: (blockId: string) => void;
   onBlockAddComponent?: (blockId: string, type: BlockContent['type']) => void;
+  onParseTextAdd?: (sectionId: string, text: string, afterBlockId?: string) => Promise<{
+    success: boolean;
+    blocks?: BlockContent[];
+    error?: string;
+  }>;
+  onStartTextParse?: (sectionId: string) => void;
   onSaveToServer?: () => Promise<void>;
 }
 
@@ -93,6 +100,7 @@ export default function PaperContent({
   onBlockMove,
   onBlockAppendSubsection,
   onBlockAddComponent,
+  onParseTextAdd,
   onSaveToServer,
 }: PaperContentProps) {
   const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -265,6 +273,8 @@ export default function PaperContent({
   const { isEditing, clearEditing, setHasUnsavedChanges, switchToEdit } = useEditingState();
   const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
   const [hoveredSectionId, setHoveredSectionId] = useState<string | null>(null);
+  const [textParseSectionId, setTextParseSectionId] = useState<string | null>(null);
+  const [textParseBlockId, setTextParseBlockId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!canEditContent) {
@@ -327,6 +337,35 @@ export default function PaperContent({
     [switchToEdit, renamingSectionId],
   );
 
+  const handleStartTextParse = useCallback(
+    (sectionId: string) => {
+      if (textParseSectionId === sectionId) {
+        setTextParseSectionId(null);
+      } else {
+        setTextParseSectionId(sectionId);
+        setTextParseBlockId(null); // 清除block级别的编辑器
+      }
+    },
+    [textParseSectionId],
+  );
+
+  const handleStartBlockTextParse = useCallback(
+    (sectionId: string, blockId: string) => {
+      if (textParseBlockId === blockId) {
+        setTextParseBlockId(null);
+      } else {
+        setTextParseBlockId(blockId);
+        setTextParseSectionId(null); // 清除section级别的编辑器
+      }
+    },
+    [textParseBlockId],
+  );
+
+  const handleParseTextComplete = useCallback(() => {
+    setTextParseSectionId(null);
+    setTextParseBlockId(null);
+  }, []);
+
   const renderedTree = useMemo(() => {
     const renderSection = (
       section: Section,
@@ -368,6 +407,7 @@ export default function PaperContent({
                 ? (type) => onSectionAddBlock(section.id, type)
                 : undefined
             }
+            onStartTextParse={canEditContent ? () => handleStartTextParse(section.id) : undefined}
             onMoveUp={
               canEditContent && onSectionMove && !isFirstSibling
                 ? () => onSectionMove(section.id, 'up', parentSectionId)
@@ -381,11 +421,11 @@ export default function PaperContent({
             onDelete={
               canEditContent
                 ? () => {
-                  if (window.confirm('确定删除该章节及其所有内容吗？')) {
-                    onSectionDelete?.(section.id);
-                    if (renamingSectionId === section.id) setRenamingSectionId(null);
+                    if (window.confirm('确定删除该章节及其所有内容吗？')) {
+                      onSectionDelete?.(section.id);
+                      if (renamingSectionId === section.id) setRenamingSectionId(null);
+                    }
                   }
-                }
                 : undefined
             }
           >
@@ -482,12 +522,51 @@ export default function PaperContent({
                 </div>
               );
 
+              // 检查是否需要显示内联文本解析编辑器
+              const showBlockTextParser = canEditContent && textParseBlockId === block.id;
+              
+              if (showBlockTextParser) {
+                return (
+                  <React.Fragment key={block.id}>
+                    <div
+                      id={block.id}
+                      data-block-id={block.id}
+                      className={`rounded-md transition-colors ${isActive ? 'ring-2 ring-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : ''}`}
+                      style={{
+                        scrollMarginTop: 'calc(var(--app-header-h, 0px) + 16px)',
+                      }}
+                      onClick={
+                        !isEditingBlock && onBlockClick
+                          ? () => {
+                              const selection = window.getSelection();
+                              if (selection && selection.toString()) return;
+                              onBlockClick(block.id);
+                            }
+                          : undefined
+                      }
+                    >
+                      {blockContent}
+                    </div>
+                    <InlineTextParserEditor
+                      sectionId={section.id}
+                      sectionTitle={section.title?.en || section.title?.zh || '未命名章节'}
+                      context="block"
+                      blockId={block.id}
+                      onParseText={(text) => onParseTextAdd?.(section.id, text, block.id) || Promise.resolve({ success: false })}
+                      onCancel={handleParseTextComplete}
+                    />
+                  </React.Fragment>
+                );
+              }
+
               return (
                 <React.Fragment key={block.id}>
                   {isEditingBlock ? (
                     blockShell
                   ) : (
                     <BlockContextMenu
+                      sectionId={section.id}
+                      sectionTitle={section.title?.en || section.title?.zh || '未命名章节'}
                       onEdit={
                         canEditContent
                           ? () => {
@@ -506,6 +585,7 @@ export default function PaperContent({
                       onAddComponentAfter={
                         canEditContent ? type => onBlockAddComponent?.(block.id, type) : undefined
                       }
+                      onStartTextParse={canEditContent ? () => handleStartBlockTextParse(section.id, block.id) : undefined}
                       onDelete={
                         canEditContent
                           ? () => {
@@ -525,6 +605,15 @@ export default function PaperContent({
             })}
           </div>
 
+          {canEditContent && textParseSectionId === section.id && (
+            <InlineTextParserEditor
+              sectionId={section.id}
+              sectionTitle={section.title?.en || section.title?.zh || '未命名章节'}
+              context="section"
+              onParseText={(text) => onParseTextAdd?.(section.id, text) || Promise.resolve({ success: false })}
+              onCancel={handleParseTextComplete}
+            />
+          )}
 
           {section.subsections?.length ? (
             <div className="space-y-8">
@@ -568,9 +657,15 @@ export default function PaperContent({
     onBlockAppendSubsection,
     onBlockAddComponent,
     onBlockUpdate,
+    onParseTextAdd,
     handleSectionEditStart,
     handleSectionRenameConfirm,
     handleBlockEditStart,
+    handleStartTextParse,
+    handleParseTextComplete,
+    textParseSectionId,
+    textParseBlockId,
+    handleStartBlockTextParse,
     isEditing,
     clearEditing,
     setHoveredSectionId,

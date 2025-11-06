@@ -160,3 +160,16 @@ export interface DeleteResult {
   deletedNotes?: number;
   deletedCount?: number;
 }
+
+// —— 请求：向section添加blocks ——
+export interface AddBlocksToSectionRequest {
+  text: string;
+  afterBlockId?: string;  // 可选：指定在哪个block后插入
+}
+
+// —— 响应：添加blocks结果 ——
+export interface AddBlocksToSectionResult {
+  paper: Paper;
+  addedBlocks: import('./content').BlockContent[];
+  sectionId: string;
+}

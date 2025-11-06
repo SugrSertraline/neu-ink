@@ -120,6 +120,29 @@ export default function InlineEditor({
   const [selectedCitations, setSelectedCitations] = useState<Set<string>>(new Set());
   const [selectionTicker, bumpSelectionTicker] = useReducer((tick: number) => tick + 1, 0);
 
+  // 禁用页面滚动（当引用选择器打开时）
+  useEffect(() => {
+    if (showRefPicker) {
+      // 禁用页面滚动
+      const originalOverflow = document.body.style.overflow;
+      const originalPaddingRight = document.body.style.paddingRight;
+      
+      // 如果有滚动条，添加右边距防止抖动
+      const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
+      if (scrollbarWidth > 0) {
+        document.body.style.paddingRight = `${scrollbarWidth}px`;
+      }
+      
+      document.body.style.overflow = 'hidden';
+      
+      return () => {
+        // 恢复页面滚动
+        document.body.style.overflow = originalOverflow;
+        document.body.style.paddingRight = originalPaddingRight;
+      };
+    }
+  }, [showRefPicker]);
+
   const extensions = useMemo(() => {
     const ext: AnyExtension[] = [
       StarterKit.configure({
