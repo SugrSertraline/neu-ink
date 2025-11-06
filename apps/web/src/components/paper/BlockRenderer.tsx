@@ -24,6 +24,7 @@ import katex from 'katex';
 import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
 import { useEditingState } from '@/stores/useEditingState';
 import BlockEditor from './editor/BlockEditor';
+import { toast } from 'sonner';
 
 /** ===================== 工具与类型 ===================== */
 
@@ -49,6 +50,8 @@ interface BlockRendererProps {
   canMoveDown?: boolean;
   onAddBlockAfter?: (type: BlockContent['type']) => void;
   allSections?: Section[];
+  /** 保存到服务器的回调 */
+  onSaveToServer?: () => Promise<void>;
 }
 
 type InlineRendererBaseProps = Omit<ComponentProps<typeof InlineRenderer>, 'nodes'>;
@@ -209,6 +212,7 @@ export default function BlockRenderer({
   canMoveDown,
   onAddBlockAfter,
   allSections = [],
+  onSaveToServer,
 }: BlockRendererProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
   const { hasUnsavedChanges, setHasUnsavedChanges, switchToEdit, clearEditing } = useEditingState();
@@ -221,6 +225,7 @@ export default function BlockRenderer({
   const [selectedText, setSelectedText] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [draftBlock, setDraftBlock] = useState<BlockContent>(() => cloneBlock(block));
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     if (!isEditing) return;
@@ -326,21 +331,38 @@ export default function BlockRenderer({
     clearEditing();
   }, [block, setHasUnsavedChanges, clearEditing]);
 
-  const handleSaveEdit = useCallback(() => {
+  const handleSaveEdit = useCallback(async () => {
     if (!onBlockUpdate) {
       setDraftBlock(cloneBlock(block));
       setIsEditing(false);
       clearEditing();
       return;
     }
+
+    // 如果内容有变化，先更新本地
     if (JSON.stringify(draftBlock) !== JSON.stringify(block)) {
       onBlockUpdate(draftBlock);
     }
+
     setDraftBlock(cloneBlock(draftBlock));
     setHasUnsavedChanges(false);
     setIsEditing(false);
     clearEditing();
-  }, [draftBlock, block, onBlockUpdate, setHasUnsavedChanges, clearEditing]);
+
+    // 然后保存到服务器
+    if (onSaveToServer) {
+      setIsSaving(true);
+      try {
+        await onSaveToServer();
+        // toast.success 已经在 onSaveToServer 中处理
+      } catch (err) {
+        // 错误处理已经在 onSaveToServer 中处理
+        console.error('Save to server failed:', err);
+      } finally {
+        setIsSaving(false);
+      }
+    }
+  }, [draftBlock, block, onBlockUpdate, setHasUnsavedChanges, clearEditing, onSaveToServer]);
 
   const handleTextSelection = useCallback(
     (_e: MouseEvent<HTMLElement>) => {
@@ -866,15 +888,24 @@ export default function BlockRenderer({
                 type="button"
                 onClick={handleCancelEdit}
                 className="px-4 py-2 rounded border border-gray-300 text-gray-600 hover:bg-gray-100"
+                disabled={isSaving}
               >
                 取消
               </button>
               <button
                 type="button"
                 onClick={handleSaveEdit}
-                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700"
+                disabled={isSaving}
+                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                保存
+                {isSaving ? (
+                  <>
+                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                    保存中...
+                  </>
+                ) : (
+                  '保存'
+                )}
               </button>
             </div>
           </div>

@@ -6,6 +6,7 @@ from typing import Dict, Any, Optional, Tuple, List
 
 from ..models.paper import PaperModel
 from ..config.constants import BusinessCode
+from ..utils.llm_utils import get_llm_utils
 
 
 class PaperService:
@@ -130,6 +131,86 @@ class PaperService:
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"创建论文失败: {exc}")
 
+    def create_paper_from_text(self, text: str, creator_id: str, is_public: bool = True) -> Dict[str, Any]:
+        """
+        从文本创建论文，通过大模型解析 metadata、abstract 和 keywords
+        """
+        try:
+            # 检查输入文本
+            if not text or not text.strip():
+                return self._wrap_error("文本内容不能为空")
+
+            # 使用 LLM 工具类解析文本
+            llm_utils = get_llm_utils()
+            parsed_data = llm_utils.extract_paper_metadata(text)
+
+            if not parsed_data:
+                return self._wrap_error("文本解析失败，无法提取论文元数据。请检查文本格式或尝试使用手动输入。")
+
+            # 验证解析结果
+            metadata = parsed_data.get("metadata", {})
+            if not metadata.get("title"):
+                return self._wrap_error("解析结果中缺少标题信息，请尝试使用手动输入或重新格式化文本。")
+
+            # 构建论文数据，只包含 metadata、abstract 和 keywords
+            paper_data = {
+                "isPublic": is_public,
+                "metadata": metadata,
+                "abstract": parsed_data.get("abstract", {}),
+                "keywords": parsed_data.get("keywords", []),
+                "sections": [],  # 空的章节列表
+                "references": [],  # 空的参考文献列表
+                "attachments": {},  # 空的附件
+                "parseStatus": {
+                    "status": "partial",
+                    "progress": 30,
+                    "message": "已解析基本信息（metadata、abstract、keywords），章节内容待补充",
+                },
+            }
+
+            # 创建论文
+            return self.create_paper(paper_data, creator_id)
+        except Exception as exc:  # pylint: disable=broad-except
+            return self._wrap_error(f"从文本创建论文失败: {exc}")
+
+    def create_paper_from_metadata(self, metadata: Dict[str, Any], creator_id: str, is_public: bool = False) -> Dict[str, Any]:
+        """
+        从元数据创建论文，直接提供 metadata、abstract 和 keywords 等信息
+
+        Args:
+            metadata: 论文元数据，包含 title, authors, year 等
+            creator_id: 创建者ID
+            is_public: 是否公开（个人论文设为False）
+
+        Returns:
+            创建结果
+        """
+        try:
+            # 验证必填字段
+            if not metadata or not metadata.get("title"):
+                return self._wrap_error("元数据不完整，标题不能为空")
+
+            # 构建论文数据
+            paper_data = {
+                "isPublic": is_public,
+                "metadata": metadata,
+                "abstract": metadata.get("abstract", ""),
+                "keywords": metadata.get("keywords", []),
+                "sections": [],  # 空的章节列表
+                "references": [],  # 空的参考文献列表
+                "attachments": {},  # 空的附件
+                "parseStatus": {
+                    "status": "partial",
+                    "progress": 20,
+                    "message": "已提供基本元数据，章节内容待补充",
+                },
+            }
+
+            # 创建论文
+            return self.create_paper(paper_data, creator_id)
+        except Exception as exc:  # pylint: disable=broad-except
+            return self._wrap_error(f"从元数据创建论文失败: {exc}")
+
     def get_paper_by_id(
         self,
         paper_id: str,
@@ -185,6 +266,91 @@ class PaperService:
             return self._wrap_success("论文删除成功", None)
 
         return self._wrap_error("论文删除失败")
+
+    def add_blocks_to_section(
+        self,
+        paper_id: str,
+        section_id: str,
+        text: str,
+        user_id: str,
+        is_admin: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        使用大模型解析文本并将生成的blocks添加到指定section中
+        
+        Args:
+            paper_id: 论文ID
+            section_id: section ID
+            text: 需要解析的文本
+            user_id: 用户ID
+            is_admin: 是否为管理员
+            
+        Returns:
+            操作结果
+        """
+        try:
+            # 检查论文是否存在及权限
+            paper = self.paper_model.find_by_id(paper_id)
+            if not paper:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+
+            if not is_admin and paper["createdBy"] != user_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
+
+            # 检查输入文本
+            if not text or not text.strip():
+                return self._wrap_error("文本内容不能为空")
+
+            # 查找目标section
+            sections = paper.get("sections", [])
+            target_section = None
+            section_index = -1
+            
+            for i, section in enumerate(sections):
+                if section.get("id") == section_id:
+                    target_section = section
+                    section_index = i
+                    break
+            
+            if target_section is None:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
+
+            # 获取section上下文信息
+            section_context = f"Section标题: {target_section.get('title', '未知')}"
+            if target_section.get('content'):
+                section_context += f", Section内容: {target_section['content'][:200]}..."
+
+            # 使用LLM解析文本为blocks
+            llm_utils = get_llm_utils()
+            new_blocks = llm_utils.parse_text_to_blocks(text, section_context)
+
+            if not new_blocks:
+                return self._wrap_error("文本解析失败，无法生成有效的blocks")
+
+            # 将新blocks添加到section中
+            if "blocks" not in target_section:
+                target_section["blocks"] = []
+            
+            target_section["blocks"].extend(new_blocks)
+            sections[section_index] = target_section
+
+            # 更新论文
+            update_data = {"sections": sections}
+            if self.paper_model.update(paper_id, update_data):
+                updated_paper = self.paper_model.find_by_id(paper_id)
+                return self._wrap_success(
+                    f"成功向section添加了{len(new_blocks)}个blocks",
+                    {
+                        "paper": updated_paper,
+                        "addedBlocks": new_blocks,
+                        "sectionId": section_id
+                    }
+                )
+            else:
+                return self._wrap_error("更新论文失败")
+
+        except Exception as exc:
+            return self._wrap_error(f"添加blocks到section失败: {exc}")
 
 
     # ------------------------------------------------------------------
@@ -310,6 +476,7 @@ class PaperService:
 
     def _wrap_error(self, message: str) -> Dict[str, Any]:
         return self._wrap_failure(BusinessCode.UNKNOWN_ERROR, message)
+
 
 
 _paper_service: Optional[PaperService] = None

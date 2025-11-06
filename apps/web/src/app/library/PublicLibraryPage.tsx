@@ -11,6 +11,56 @@ import ViewModeSwitcher from '@/components/library/ViewModeSwitcher';
 import CreatePaperDialog from '@/components/library/CreatePaperDialog';
 import { usePublicLibraryController } from '@/lib/hooks/usePublicLibraryController';
 import type { Author } from '@/types/paper';
+import { toast } from 'sonner';
+import { adminPaperService } from '@/lib/services/paper';
+
+const splitList = (v: string) =>
+  v.split(/[,，;；、\s]+/).map(s => s.trim()).filter(Boolean);
+
+const toNumber = (v: string) => (v?.trim() ? Number(v) : undefined);
+
+// 👇 新增：把单字符串映射为多语言对象
+const toBilingualText:any = (v?: string): { en?: string; zh?: string } | undefined => {
+  const t = v?.trim();
+  if (!t) return undefined;
+  const hasCJK = /[\u4e00-\u9fff]/.test(t); // 粗略判断是否中文
+  return hasCJK ? { zh: t } : { en: t };
+};
+
+/** 把 CreatePaperDialog 的 formData 直接就地转成后端要的结构 */
+function buildCreatePayload(form: {
+  title: string; titleZh: string; authors: string; publication: string;
+  year: string; doi: string; articleType: any; sciQuartile: any;
+  casQuartile: any; ccfRank: any; impactFactor: string; tags: string;
+  abstract?: string; keywords?: string;
+}) {
+  // 构建 metadata 对象
+  const metadata = {
+    title: form.title.trim(),
+    titleZh: form.titleZh.trim() || undefined,
+    publication: form.publication.trim() || undefined,
+    year: toNumber(form.year),
+    doi: form.doi.trim() || undefined,
+    articleType: form.articleType,
+    sciQuartile: form.sciQuartile === '无' ? undefined : form.sciQuartile,
+    casQuartile: form.casQuartile === '无' ? undefined : form.casQuartile,
+    ccfRank: form.ccfRank === '无' ? undefined : form.ccfRank,
+    impactFactor: toNumber(form.impactFactor),
+    tags: splitList(form.tags),
+    authors: splitList(form.authors).map(name => ({ name })),
+    // 👇 关键修复：把字符串 abstract 映射为多语言对象
+    abstract: toBilingualText(form.abstract),
+    keywords: splitList(form.keywords || ''),
+  };
+
+  // 返回后端期望的数据结构，包含 metadata 字段
+  return {
+    metadata,
+    isPublic: true, // 管理员创建的论文默认为公开
+  };
+}
+
+
 
 export default function PublicLibraryPage() {
   const {
@@ -105,8 +155,8 @@ export default function PublicLibraryPage() {
                 {isAdmin
                   ? '管理与浏览所有论文'
                   : isAuthenticated
-                  ? '浏览公共论文库'
-                  : '浏览公共论文库（无需登录）'}{' '}
+                    ? '浏览公共论文库'
+                    : '浏览公共论文库（无需登录）'}{' '}
                 · 共 {totalCount} 篇论文
               </p>
               {!isAuthenticated && (
@@ -210,13 +260,13 @@ export default function PublicLibraryPage() {
                       className="rounded-2xl border border-white/70 bg-white/78 p-4 shadow backdrop-blur-2xl transition-transform duration-300 hover:-translate-y-1.5 hover:shadow-[0_24px_54px_rgba(28,45,96,0.2)]"
                     >
                       <PaperCard
-  paper={paper}
-  onClick={() => openPaper(paper)}
-  onDelete={isAdmin ? () => handleDeletePaper(paper.id) : undefined}
-  onAddToLibrary={isAuthenticated ? () => handleAddToLibrary(paper.id) : undefined}
-  showLoginRequired={!isAuthenticated}
-  isAdmin={isAdmin}
-/>
+                        paper={paper}
+                        onClick={() => openPaper(paper)}
+                        onDelete={isAdmin ? () => handleDeletePaper(paper.id) : undefined}
+                        onAddToLibrary={isAuthenticated ? () => handleAddToLibrary(paper.id) : undefined}
+                        showLoginRequired={!isAuthenticated}
+                        isAdmin={isAdmin}
+                      />
                     </div>
                   ))}
                 </div>
@@ -279,8 +329,27 @@ export default function PublicLibraryPage() {
             open={showCreateDialog}
             onClose={() => setShowCreateDialog(false)}
             onSuccess={() => {
+              toast.success('创建成功');
+              reload();
               setShowCreateDialog(false);
-              void reload();
+            }}
+            onSave={async (payload) => {
+              try {
+                if (payload.mode === 'manual') {
+                  const data = buildCreatePayload(payload.data);
+                  await adminPaperService.createPaper(data);
+                } else {
+                  await adminPaperService.createPaperFromText({ text: payload.text.trim() });
+                }
+              } catch (e: any) {
+                const errorMessage = e?.message || '创建失败';
+                if (errorMessage.includes('文本解析失败')) {
+                  toast.error('文本解析失败，建议使用手动输入模式或检查文本格式');
+                } else {
+                  toast.error(`创建失败：${errorMessage}`);
+                }
+                throw e;
+              }
             }}
           />
         </>

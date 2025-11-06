@@ -6,12 +6,20 @@ import { X, Plus } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { userPaperService } from '@/lib/services/paper';
 
 interface CreatePaperDialogProps {
   open: boolean;
   onClose: () => void;
   onSuccess?: () => void;
+  /**
+   * 由父组件传入的保存函数：
+   * 父组件可以在这里根据来源（管理员 / 个人）路由到不同接口
+   */
+  onSave: (
+    payload:
+      | { mode: 'manual'; data: FormDataState }
+      | { mode: 'text'; text: string }
+  ) => Promise<unknown>;
 }
 
 const initialFormData = {
@@ -33,7 +41,6 @@ const initialFormData = {
 
 type FormDataState = typeof initialFormData;
 
-
 const glowButtonFilled =
   'rounded-xl bg-gradient-to-r from-[#28418A]/92 via-[#28418A]/88 to-[#28418A]/92 ' +
   'shadow-[0_16px_38px_rgba(40,65,138,0.28)] hover:shadow-[0_20px_46px_rgba(40,65,138,0.36)] ' +
@@ -54,11 +61,16 @@ export default function CreatePaperDialog({
   open,
   onClose,
   onSuccess,
+  onSave,
 }: CreatePaperDialogProps) {
   const [loading, setLoading] = React.useState(false);
   const [pressing, setPressing] = React.useState(false);
 
   const [formData, setFormData] = React.useState<FormDataState>({ ...initialFormData });
+
+  // 新增：创建模式（手动 / 文本）
+  const [mode, setMode] = React.useState<'manual' | 'text'>('manual');
+  const [textInput, setTextInput] = React.useState('');
 
   const triggerButtonPulse = React.useCallback(() => {
     if (pressing) return;
@@ -71,8 +83,11 @@ export default function CreatePaperDialog({
     triggerButtonPulse();
     setLoading(true);
     try {
-      // 手动创建论文的 API 调用
-      // TODO: 实现手动创建论文的 API 调用
+      if (mode === 'manual') {
+        await onSave({ mode: 'manual', data: formData });
+      } else {
+        await onSave({ mode: 'text', text: textInput });
+      }
       onSuccess?.();
       handleClose();
     } catch (error) {
@@ -84,6 +99,8 @@ export default function CreatePaperDialog({
 
   const resetForm = () => {
     setFormData({ ...initialFormData });
+    setTextInput('');
+    setMode('manual');
   };
 
   const handleClose = () => {
@@ -93,41 +110,64 @@ export default function CreatePaperDialog({
 
   if (!open) return null;
 
- return (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-50/10 px-4 py-6 backdrop-blur">
-    <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-white/45 bg-white/55 shadow-[0_28px_72px_rgba(15,23,42,0.28)] backdrop-blur-xl">
-      <header className="flex items-center justify-between border-b border-white/40 bg-white/50 px-6 py-5">
-        <h2 className="text-lg font-semibold text-slate-900">新建论文</h2>
-        <Button variant="ghost" size="icon" onClick={handleClose} className={cn(glowButtonGhost, 'h-9 w-9 p-0')}>
-          <X className="h-4 w-4" />
-        </Button>
-      </header>
+  const canSubmit =
+    !loading &&
+    (mode === 'manual'
+      ? !!formData.title.trim()
+      : !!textInput.trim());
 
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-50/10 px-4 py-6 backdrop-blur">
+      <div className="w-full max-w-3xl overflow-hidden rounded-2xl border border-white/45 bg-white/55 shadow-[0_28px_72px_rgba(15,23,42,0.28)] backdrop-blur-xl">
+        <header className="flex items-center justify-between border-b border-white/40 bg-white/50 px-6 py-5">
+          <h2 className="text-lg font-semibold text-slate-900">新建论文</h2>
+          <Button variant="ghost" size="icon" onClick={handleClose} className={cn(glowButtonGhost, 'h-9 w-9 p-0')}>
+            <X className="h-4 w-4" />
+          </Button>
+        </header>
 
-      <section className="max-h-[60vh] overflow-y-auto bg-white/45 px-6 py-6 backdrop-blur">
-        <ManualForm formData={formData} setFormData={setFormData} />
-      </section>
+        {/* 新增：模式切换 Tab */}
+        <div className="flex items-center gap-2 border-b border-white/40 bg-white/50 px-6 py-3">
+          <button
+            type="button"
+            className={cn(tabBase, mode === 'manual' ? tabActive : tabInactive)}
+            onClick={() => setMode('manual')}
+          >
+            手动录入
+          </button>
+          <button
+            type="button"
+            className={cn(tabBase, mode === 'text' ? tabActive : tabInactive)}
+            onClick={() => setMode('text')}
+          >
+            文本导入
+          </button>
+        </div>
 
-      <footer className="flex items-center justify-end gap-3 border-t border-white/40 bg-white/45 px-6 py-5">
-        <Button variant="outline" onClick={handleClose} className={glowButtonGhost}>
-          取消
-        </Button>
-        <Button
-          onClick={handleSubmit}
-          disabled={
-            loading ||
-            !formData.title.trim()
-          }
-          className={cn(glowButtonFilled, 'min-w-[110px]', pressing && 'animate-glow-press')}
-          onAnimationEnd={event => event.currentTarget.classList.remove('animate-glow-press')}
-        >
-          {loading ? '创建中…' : '创建论文'}
-        </Button>
-      </footer>
+        <section className="max-h-[60vh] overflow-y-auto bg-white/45 px-6 py-6 backdrop-blur">
+          {mode === 'manual' ? (
+            <ManualForm formData={formData} setFormData={setFormData} />
+          ) : (
+            <TextForm text={textInput} onChange={setTextInput} />
+          )}
+        </section>
+
+        <footer className="flex items-center justify-end gap-3 border-t border-white/40 bg-white/45 px-6 py-5">
+          <Button variant="outline" onClick={handleClose} className={glowButtonGhost}>
+            取消
+          </Button>
+          <Button
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            className={cn(glowButtonFilled, 'min-w-[110px]', pressing && 'animate-glow-press')}
+            onAnimationEnd={event => event.currentTarget.classList.remove('animate-glow-press')}
+          >
+            {loading ? '创建中…' : mode === 'manual' ? '创建论文' : '从文本创建'}
+          </Button>
+        </footer>
+      </div>
     </div>
-  </div>
-);
-
+  );
 }
 
 function ManualForm({
@@ -258,6 +298,35 @@ function ManualForm({
   );
 }
 
+function TextForm({
+  text,
+  onChange,
+}: {
+  text: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-medium text-slate-900">从文本创建</h3>
+      <label className="block space-y-2" data-glow="true">
+        <span className="text-sm font-medium text-slate-700">原始文本 *</span>
+        <textarea
+          placeholder="将论文的元数据或整段文本粘贴到这里（可包含标题、作者、期刊、DOI、摘要等）"
+          value={text}
+          onChange={(e) => onChange(e.target.value)}
+          className={cn(
+            'min-h-[220px] w-full rounded-xl border border-white/70 bg-white/78 p-3 text-sm text-slate-700',
+            'shadow-[0_12px_30px_rgba(40,65,138,0.16)]',
+            'focus:ring-2 focus:ring-[#4769b8]/35 focus:ring-offset-1 focus:ring-offset-white'
+          )}
+        />
+        <span className="block text-xs text-slate-500">
+          支持粘贴 DOI/ BibTeX/ 引文/ 摘要等文本；具体解析与落库由上层传入的 onSave 决定。
+        </span>
+      </label>
+    </div>
+  );
+}
 
 function Field({
   label,

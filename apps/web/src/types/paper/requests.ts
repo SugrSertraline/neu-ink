@@ -96,6 +96,35 @@ export interface AddToLibraryRequest {
   };
 }
 
+// —— 请求：从文本创建论文 ——
+export interface CreatePaperFromTextRequest {
+  text: string;
+  extra?: {
+    customTags?: string[];
+    readingStatus?: 'unread' | 'reading' | 'finished';
+    priority?: 'high' | 'medium' | 'low';
+  };
+}
+
+// —— 请求：从元数据创建论文 ——
+export interface CreatePaperFromMetadataRequest {
+  metadata: {
+    title: string;
+    authors?: string[];
+    year?: number;
+    journal?: string;
+    abstract?: string;
+    keywords?: string[];
+    doi?: string;
+    url?: string;
+  };
+  extra?: {
+    customTags?: string[];
+    readingStatus?: 'unread' | 'reading' | 'finished';
+    priority?: 'high' | 'medium' | 'low';
+  };
+}
+
 // —— 请求：更新个人论文 ——
 export interface UpdateUserPaperRequest {
   paperData?: Partial<UserPaper['paperData']>;

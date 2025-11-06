@@ -1,15 +1,18 @@
 'use client';
 
 import React from 'react';
-import { BookOpen, Tag, SlidersHorizontal, BookmarkMinus } from 'lucide-react';
+import { BookOpen, Tag, SlidersHorizontal, BookmarkMinus, Plus } from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import ViewModeSwitcher from '@/components/library/ViewModeSwitcher';
 import PaperCard from '@/components/library/PaperCard';
+import CreatePaperDialog from '@/components/library/CreatePaperDialog';
 import { usePersonalLibraryController } from '@/lib/hooks/usePersonalLibraryController';
 import type { Author } from '@/types/paper';
+import { userPaperService } from '@/lib';
+import { toast } from 'sonner';
 
 const STATUS_LABEL: Record<string, string> = {
   all: '全部状态',
@@ -24,6 +27,39 @@ const PRIORITY_LABEL: Record<string, string> = {
   medium: '中优先级',
   low: '低优先级',
 };
+
+const splitList = (v: string) =>
+  v.split(/[,，;；、\s]+/).map(s => s.trim()).filter(Boolean);
+
+const toNumber = (v: string) => (v?.trim() ? Number(v) : undefined);
+
+/** 把 CreatePaperDialog 的 formData 直接就地转成后端要的结构（CreatePaperFromMetadataRequest） */
+function buildCreatePayload(form: {
+  title: string; titleZh: string; authors: string; publication: string;
+  year: string; doi: string; articleType: any; sciQuartile: any;
+  casQuartile: any; ccfRank: any; impactFactor: string; tags: string;
+  abstract?: string; keywords?: string;
+}) {
+  return {
+    title: form.title.trim(),
+    titleZh: form.titleZh.trim() || undefined,
+    publication: form.publication.trim() || undefined,
+    year: toNumber(form.year),
+    doi: form.doi.trim() || undefined,
+    articleType: form.articleType,
+    sciQuartile: form.sciQuartile === '无' ? undefined : form.sciQuartile,
+    casQuartile: form.casQuartile === '无' ? undefined : form.casQuartile,
+    ccfRank: form.ccfRank === '无' ? undefined : form.ccfRank,
+    impactFactor: toNumber(form.impactFactor),
+    tags: splitList(form.tags),
+    // 后端通常接受作者名数组或 AuthorInput[]，此处传作者名数组最通用
+    authors: splitList(form.authors),
+    // 个人库：keywords 没有多语言，保持 string[]
+    keywords: splitList(form.keywords || ''),
+    // 个人库通常 abstract 为 string（若你的后端是多语言对象，可在此处改造）
+    abstract: form.abstract?.trim() || undefined,
+  } as any; // 若你有 CreatePaperFromMetadataRequest 类型，可把 any 替换为该类型
+}
 
 export default function PersonalLibraryView() {
   const { user } = useAuth();
@@ -46,6 +82,9 @@ export default function PersonalLibraryView() {
     handleRemove,
     handleOpen,
     resetFilters,
+    reload,
+    currentPage,
+    setCurrentPage,
   } = usePersonalLibraryController();
 
   const displayName = user?.nickname || user?.username || '已登录用户';
@@ -57,6 +96,16 @@ export default function PersonalLibraryView() {
     PRIORITY_LABEL[priority],
     customTag !== 'all' ? `#${customTag}` : null,
   ].filter(Boolean) as string[];
+
+  const [showCreateDialog, setShowCreateDialog] = React.useState(false);
+
+  const handleCreateSuccess = React.useCallback(() => {
+    toast.success('论文创建成功');
+    // 跳转到第一页并刷新数据，确保新创建的论文能立即显示
+    setCurrentPage(1);
+    reload();
+    setShowCreateDialog(false);
+  }, [setCurrentPage, reload]);
 
   return (
     <div className="relative flex h-full flex-col">
@@ -89,10 +138,19 @@ export default function PersonalLibraryView() {
               variant="ghost"
               size="sm"
               onClick={resetFilters}
-              className="inline-flex items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-600 transition hover:border-white/60 hover:bg-white/70 hover:text-slate-900"
+              className="inline-flex items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-600 transition hover:border-white/60 hover:bg白/70 hover:text-slate-900"
             >
               <SlidersHorizontal className="h-4 w-4" />
               重置筛选
+            </Button>
+            {/* 新建论文按钮 */}
+            <Button
+              size="sm"
+              className="flex items-center gap-2 rounded-xl bg-[#28418A] px-4 py-2 text-sm font-medium text-white shadow hover:bg-[#223672]"
+              onClick={() => setShowCreateDialog(true)}
+            >
+              <Plus className="h-4 w-4" />
+              新建论文
             </Button>
           </div>
         </div>
@@ -126,7 +184,7 @@ export default function PersonalLibraryView() {
               <select
                 value={priority}
                 onChange={event => setPriority(event.target.value as typeof priority)}
-                className="h-11 rounded-xl border border-white/70 bg-white/80 px-3 text-sm text-slate-700 shadow focus:outline-none focus:ring-2 focus:ring-[#4769b8]"
+                className="h-11 rounded-xl border border白/70 bg白/80 px-3 text-sm text-slate-700 shadow focus:outline-none focus:ring-2 focus:ring-[#4769b8]"
               >
                 <option value="all">全部优先级</option>
                 <option value="high">高优先级</option>
@@ -290,6 +348,36 @@ export default function PersonalLibraryView() {
           )}
         </div>
       </main>
+
+      {/* 新建论文对话框 */}
+      {showCreateDialog && (
+        <>
+          <div className="fixed inset-0 z-40 bg-white/10 backdrop-blur-md" />
+          <CreatePaperDialog
+            open={showCreateDialog}
+            onClose={() => setShowCreateDialog(false)}
+            onSuccess={handleCreateSuccess}
+            onSave={async (payload) => {
+              try {
+                if (payload.mode === 'manual') {
+                  const data = buildCreatePayload(payload.data);
+                  await userPaperService.createPaperFromMetadata({ metadata: data } as any);
+                } else {
+                  await userPaperService.createPaperFromText({ text: payload.text.trim() });
+                }
+              } catch (e: any) {
+                const errorMessage = e?.message || '创建失败';
+                if (errorMessage.includes('文本解析失败')) {
+                  toast.error('文本解析失败，建议使用手动输入模式或检查文本格式');
+                } else {
+                  toast.error(`创建失败：${errorMessage}`);
+                }
+                throw e;
+              }
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }

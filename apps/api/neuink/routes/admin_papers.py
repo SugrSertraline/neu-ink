@@ -109,6 +109,41 @@ def create_paper():
         return internal_error_response(f"服务器错误: {exc}")
 
 
+@bp.route("/create-from-text", methods=["POST"])
+@login_required
+@admin_required
+def create_paper_from_text():
+    """
+    管理员通过文本创建公共论文（使用大模型解析）
+    
+    请求体示例:
+    {
+        "text": "这是一段论文文本内容...",
+        "isPublic": true
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or not data.get("text"):
+            return bad_request_response("文本内容不能为空")
+        
+        text = data.get("text")
+        is_public = data.get("isPublic", True)
+        
+        service = get_paper_service()
+        result = service.create_paper_from_text(
+            text=text,
+            creator_id=g.current_user["user_id"],
+            is_public=is_public
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
 @bp.route("/<paper_id>", methods=["PUT"])
 @login_required
 @admin_required
@@ -206,6 +241,45 @@ def get_admin_paper_detail(paper_id):
             return bad_request_response(result["message"])
         return internal_error_response(result["message"])
     except Exception as exc:  # pylint: disable=broad-except
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>/sections/<section_id>/add-blocks", methods=["POST"])
+@login_required
+@admin_required
+def add_blocks_to_section(paper_id, section_id):
+    """
+    管理员向指定论文的指定section中添加blocks（使用大模型解析文本）
+    
+    请求体示例:
+    {
+        "text": "这是需要解析并添加到section中的文本内容..."
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or not data.get("text"):
+            return bad_request_response("文本内容不能为空")
+        
+        text = data.get("text")
+        
+        service = get_paper_service()
+        result = service.add_blocks_to_section(
+            paper_id=paper_id,
+            section_id=section_id,
+            text=text,
+            user_id=g.current_user["user_id"],
+            is_admin=True
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
 
 

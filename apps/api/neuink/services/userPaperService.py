@@ -127,6 +127,33 @@ class UserPaperService:
         """
         return self._wrap_failure(BusinessCode.INVALID_PARAMS, "论文上传功能已移除")
 
+    def add_uploaded_paper(
+        self,
+        user_id: str,
+        paper_data: Dict[str, Any],
+        extra: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        """
+        添加用户上传的论文到个人论文库
+        """
+        try:
+            # 构建用户论文数据
+            user_paper_data = {
+                "userId": user_id,
+                "sourcePaperId": None,  # 上传的论文没有来源
+                "paperData": self._extract_paper_data(paper_data),
+                "customTags": extra.get("customTags", []) if extra else [],
+                "readingStatus": extra.get("readingStatus", "unread") if extra else "unread",
+                "priority": extra.get("priority", "medium") if extra else "medium",
+            }
+
+            user_paper = self.user_paper_model.create(user_paper_data)
+            
+            return self._wrap_success("添加到个人论文库成功", user_paper)
+
+        except Exception as exc:  # pylint: disable=broad-except
+            return self._wrap_error(f"添加论文失败: {exc}")
+
     # ------------------------------------------------------------------
     # 获取个人论文详情
     # ------------------------------------------------------------------

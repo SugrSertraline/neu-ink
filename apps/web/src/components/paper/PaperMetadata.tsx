@@ -4,10 +4,17 @@ import { Calendar, Users, FileText, Award, Tag, BookOpen } from 'lucide-react';
 import type { PaperMetadata } from '@/types/paper';
 import { MetadataContextMenu } from '@/components/paper/PaperContextMenus';
 import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
+import AbstractAndKeywords from './AbstractAndKeywords';
 import clsx from 'clsx';
 
 interface PaperMetadataProps {
   metadata: PaperMetadata;
+  abstract?: {
+    en?: string;
+    zh?: string;
+  };
+  keywords?: string[];
+  lang?: 'en' | 'both';
   onEditRequest?: () => void;
 }
 
@@ -179,6 +186,9 @@ function MetadataReadOnly({
 
 export default function PaperMetadata({
   metadata,
+  abstract,
+  keywords,
+  lang = 'en',
   onEditRequest,
 }: PaperMetadataProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
@@ -186,10 +196,18 @@ export default function PaperMetadata({
   const allowEdit = canEditContent && Boolean(onEditRequest);
 
   return (
-    <MetadataContextMenu
-      onEdit={allowEdit ? onEditRequest : undefined}
-    >
-      <MetadataReadOnly metadata={metadata} />
-    </MetadataContextMenu>
+    <>
+      <MetadataContextMenu
+        onEdit={allowEdit ? onEditRequest : undefined}
+      >
+        <MetadataReadOnly metadata={metadata} />
+      </MetadataContextMenu>
+       
+      <AbstractAndKeywords
+        abstract={abstract}
+        keywords={keywords}
+        lang={lang}
+      />
+    </>
   );
 }

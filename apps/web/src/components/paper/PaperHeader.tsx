@@ -8,7 +8,6 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
-  Save,
 } from 'lucide-react';
 import { ViewerSource } from '@/types/paper/viewer';
 
@@ -18,8 +17,6 @@ interface PaperHeaderActions {
   canToggleVisibility?: boolean;
   isPublicVisible?: boolean;
   onToggleVisibility?: () => void;
-  onSave?: () => void;
-  saveLabel?: string;
   extraActionsHint?: string;
 }
 
@@ -168,12 +165,6 @@ export default function PaperHeader({
                 actions.isPublicVisible ? '设为私有' : '设为公开',
                 actions.isPublicVisible ? EyeOff : Eye,
                 actions.onToggleVisibility,
-              )}
-              {renderActionButton(
-                !!actions.onSave,
-                actions.saveLabel ?? '保存',
-                Save,
-                actions.onSave,
               )}
             </>
           )}

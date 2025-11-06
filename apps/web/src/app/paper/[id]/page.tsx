@@ -392,7 +392,6 @@ export default function PaperPage() {
   );
   const [metadataEditorError, setMetadataEditorError] = useState<string | null>(null);
   const [isMetadataSubmitting, setIsMetadataSubmitting] = useState(false);
-  const [isSaving, setIsSaving] = useState(false);
   const [isHeaderAffixed, setIsHeaderAffixed] = useState(false);
 
   const contentRef = useRef<HTMLDivElement>(null);
@@ -647,42 +646,88 @@ export default function PaperPage() {
   );
 
   const handleMetadataUpdate = useCallback(
-    async (next: PaperMetadataModel) => {
+    async (next: PaperMetadataModel, abstract?: { en?: string; zh?: string }, keywords?: string[]) => {
       setEditableDraft(prev => {
         if (!prev) return prev;
-        setHasUnsavedChanges(true);
-        return { ...prev, metadata: next };
+        return {
+          ...prev,
+          metadata: next,
+          abstract: abstract || prev.abstract,
+          keywords: keywords || prev.keywords,
+        };
       });
+      // 避免在setEditableDraft的回调中调用其他状态更新
+      setHasUnsavedChanges(true);
     },
     [setHasUnsavedChanges],
   );
+  // 保存到服务器的函数
+const handleSaveToServer = useCallback(
+  async (data?: PaperContentModel) => {
+    const payload = data ?? editableDraft;
+    if (!payload) return;
 
-  const handleMetadataOverlaySubmit = useCallback(
-    async (next: PaperMetadataModel) => {
-      setIsMetadataSubmitting(true);
-      setMetadataEditorError(null);
-      try {
-        await handleMetadataUpdate(next);
-        setHasUnsavedChanges(false);
-        setIsMetadataEditorOpen(false);
-        setMetadataEditorInitial(null);
-        clearEditing();
-        toast.success('元数据已更新', {
-          description: '新的元数据已经保存到草稿中。',
-        });
-      } catch (err) {
-        const message = err instanceof Error ? err.message : '保存失败，请稍后重试';
-        setMetadataEditorError(message);
-        toast.error('元数据保存失败', {
-          description: message,
-        });
-      } finally {
-        setIsMetadataSubmitting(false);
+    try {
+      const service = isPersonalOwner ? userPaperService : adminPaperService;
+      const id = isPersonalOwner ? resolvedUserPaperId : paperId;
+
+      if (!id) {
+        toast.error('保存失败', { description: '无法确定要保存的论文标识' });
+        return;
       }
-    },
-    [handleMetadataUpdate, clearEditing, setHasUnsavedChanges],
-  );
 
+      const result = isPersonalOwner
+        ? await userPaperService.updateUserPaper(id, { paperData: payload })
+        : await adminPaperService.updatePaper(id, payload);
+
+      if (result.bizCode === 0) {
+        setHasUnsavedChanges(false);
+        toast.success('保存成功', { description: '最新变更已同步到服务器。' });
+      } else {
+        toast.error('保存失败', {
+          description: result.bizMessage ?? '服务器未返回详细信息，请稍后重试。',
+        });
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '保存过程中发生未知错误，请稍后再试。';
+      toast.error('保存出错', { description: message });
+    }
+  },
+  [editableDraft, paperId, resolvedUserPaperId, isPersonalOwner, setHasUnsavedChanges]
+);
+  const handleMetadataOverlaySubmit = useCallback(
+  async (next: PaperMetadataModel, abstract?: { en?: string; zh?: string }, keywords?: string[]) => {
+    setIsMetadataSubmitting(true);
+    setMetadataEditorError(null);
+    try {
+      const base = (editableDraft ?? paper)!; // paper 已加载时不为空
+      const nextDraft: PaperContentModel = {
+        ...base,
+        metadata: next,
+        abstract: abstract ?? base.abstract,
+        keywords: keywords ?? base.keywords,
+      };
+
+      // 先更新本地 UI
+      setEditableDraft(nextDraft);
+
+      // 直接用 nextDraft 保存到后端（不会用到闭包里的旧值）
+      await handleSaveToServer(nextDraft);
+
+      // 成功后关闭弹层 & 收尾
+      setIsMetadataEditorOpen(false);
+      setMetadataEditorInitial(null);
+      clearEditing();
+    } catch (err) {
+      const message = err instanceof Error ? err.message : '保存失败，请稍后重试';
+      setMetadataEditorError(message);
+      toast.error('元数据保存失败', { description: message });
+    } finally {
+      setIsMetadataSubmitting(false);
+    }
+  },
+  [editableDraft, paper, handleSaveToServer, clearEditing]
+);
   const handleMetadataOverlayCancel = useCallback(() => {
     setMetadataEditorError(null);
     setIsMetadataEditorOpen(false);
@@ -704,46 +749,6 @@ export default function PaperPage() {
     setSelectedBlockId(null);
   }, []);
 
-  const handleSave = useCallback(async () => {
-    if (!editableDraft || isSaving) return;
-
-    setIsSaving(true);
-    try {
-      // 根据当前源类型选择正确的服务
-      const service = isPersonalOwner ? userPaperService : adminPaperService;
-      const id = isPersonalOwner ? resolvedUserPaperId : paperId;
-
-      if (!id) {
-        toast.error('保存失败', {
-          description: '无法确定要保存的论文标识',
-        });
-        return;
-      }
-
-      const result = isPersonalOwner
-        ? await userPaperService.updateUserPaper(id, { paperData: editableDraft })
-        : await adminPaperService.updatePaper(id, editableDraft);
-
-      if (result.bizCode === 0) {
-        setHasUnsavedChanges(false);
-        toast.success('保存成功', {
-          description: '最新变更已同步到服务器。',
-        });
-      } else {
-        toast.error('保存失败', {
-          description: result.bizMessage ?? '服务器未返回详细信息，请稍后重试。',
-        });
-      }
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : '保存过程中发生未知错误，请稍后再试。';
-      toast.error('保存出错', {
-        description: message,
-      });
-    } finally {
-      setIsSaving(false);
-    }
-  }, [editableDraft, paperId, resolvedUserPaperId, isPersonalOwner, setHasUnsavedChanges, isSaving]);
 
   const handleCreateNote = useCallback(
     async (blockId: string, content: InlineContent[]) => {
@@ -817,26 +822,14 @@ export default function PaperPage() {
       isPublicVisible,
       onToggleVisibility:
         isPublicAdmin && canToggleVisibility ? handleToggleVisibility : undefined,
-      onSave:
-        (isPublicAdmin || isPersonalOwner) && canEditContent ? handleSave : undefined,
-      saveLabel: isSaving
-        ? '保存中...'
-        : isPersonalOwner
-          ? '保存我的修改'
-          : '保存草稿',
       extraActionsHint: isPublicAdmin
         ? '公共库管理员视图，操作将对所有用户生效'
         : undefined,
-      isSaveDisabled: isSaving,
     };
   }, [
     effectiveSource,
     canToggleVisibility,
     isPublicVisible,
-    canEditContent,
-    handleSave,
-    isPersonalOwner,
-    isSaving,
     handleToggleVisibility,
   ]);
 
@@ -914,6 +907,9 @@ export default function PaperPage() {
                 <div className="flex flex-col gap-8 pb-24">
                   <PaperMetadata
                     metadata={displayContent.metadata}
+                    abstract={displayContent.abstract}
+                    keywords={displayContent.keywords}
+                    lang={lang}
                     onEditRequest={handleMetadataEditStart}
                   />
 
@@ -942,6 +938,7 @@ export default function PaperPage() {
                     onBlockMove={handleBlockMove}
                     onBlockAppendSubsection={handleBlockAppendSubsection}
                     onBlockAddComponent={handleBlockAddComponent}
+                    onSaveToServer={handleSaveToServer}
                   />
 
                   <PaperReferences
@@ -1058,15 +1055,20 @@ export default function PaperPage() {
           />
         )}
 
-        {canEditContent && isMetadataEditorOpen && metadataEditorInitial && (
-          <MetadataEditorOverlay
-            metadata={metadataEditorInitial}
-            onCancel={handleMetadataOverlayCancel}
-            onSubmit={handleMetadataOverlaySubmit}
-            isSubmitting={isMetadataSubmitting}
-            externalError={metadataEditorError}
-          />
-        )}
+       {canEditContent && isMetadataEditorOpen && metadataEditorInitial && (
+  <MetadataEditorOverlay
+    metadata={metadataEditorInitial}
+    abstract={displayContent?.abstract}
+    keywords={displayContent?.keywords}
+    onCancel={handleMetadataOverlayCancel}
+    onSubmit={handleMetadataOverlaySubmit}     
+    isSubmitting={isMetadataSubmitting}
+    externalError={metadataEditorError}
+    userPaperId={resolvedUserPaperId ?? undefined}
+    paperId={paperId}
+
+  />
+)}
       </div>
     </PaperEditPermissionsContext.Provider>
   );

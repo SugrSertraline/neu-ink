@@ -12,7 +12,7 @@ export class ApiClient {
   private baseURL: string;
   private apiPrefix: string;
   private token: string | null = null;
-  private defaultTimeoutMs = 30_000;
+  private defaultTimeoutMs = 120_000;
 
   constructor(baseURL: string, apiPrefix: string = '') {
     this.baseURL = baseURL.replace(/\/+$/, '');
@@ -23,26 +23,43 @@ export class ApiClient {
   // ===== Token =====
   private loadToken(): void {
     if (typeof window !== 'undefined') {
-      this.token = localStorage.getItem(AUTH_STORAGE_KEY);
+      try {
+        this.token = localStorage.getItem(AUTH_STORAGE_KEY);
+      } catch {}
     }
   }
 
-  setToken(token: string): void {
-    this.token = token;
+  /** 每次请求前用它拿“最新”的 token（优先内存，其次 localStorage） */
+  private resolveToken(): string | null {
+    if (this.token) return this.token;
     if (typeof window !== 'undefined') {
-      localStorage.setItem(AUTH_STORAGE_KEY, token);
+      try {
+        return localStorage.getItem(AUTH_STORAGE_KEY);
+      } catch {}
+    }
+    return null;
+  }
+
+  setToken(token: string): void {
+    this.token = token || null;
+    if (typeof window !== 'undefined' && token) {
+      try {
+        localStorage.setItem(AUTH_STORAGE_KEY, token);
+      } catch {}
     }
   }
 
   clearToken(): void {
     this.token = null;
     if (typeof window !== 'undefined') {
-      localStorage.removeItem(AUTH_STORAGE_KEY);
+      try {
+        localStorage.removeItem(AUTH_STORAGE_KEY);
+      } catch {}
     }
   }
 
   getToken(): string | null {
-    return this.token;
+    return this.resolveToken();
   }
 
   // ===== URL helpers =====
@@ -62,11 +79,28 @@ export class ApiClient {
 
   // ===== Request core =====
   private getHeaders(extra?: HeadersInit): HeadersInit {
-    const headers: HeadersInit = {
+    const token = this.resolveToken();
+
+    // 统一默认 JSON；上传（FormData）会走 upload()，不受这里影响
+    const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
-    return { ...headers, ...extra };
+
+    if (token) headers['Authorization'] = `Bearer ${token}`;
+
+    // 让调用方可以覆盖/追加
+    if (extra) {
+      // 兼容多种 HeadersInit 形态
+      if (extra instanceof Headers) {
+        extra.forEach((v, k) => (headers[k] = v));
+      } else if (Array.isArray(extra)) {
+        for (const [k, v] of extra) headers[k] = String(v);
+      } else {
+        Object.assign(headers, extra as Record<string, string>);
+      }
+    }
+
+    return headers;
   }
 
   private async doFetch(url: string, init: RequestInit & { timeout?: number } = {}) {
@@ -74,11 +108,18 @@ export class ApiClient {
     const timeoutId = setTimeout(() => controller.abort(), init.timeout ?? this.defaultTimeoutMs);
 
     try {
-      const res = await fetch(url, { ...init, signal: controller.signal });
+      const res = await fetch(url, {
+        // 👇 总是带上 cookie（如后端也做了 session 校验时）
+        credentials: 'include',
+        // 可按需保留/移除，跨域时建议保留
+        mode: 'cors',
+        ...init,
+        signal: controller.signal,
+      });
+
       const text = await res.text();
 
       if (!text) {
-        // 空体也视为错误，便于上层统一处理
         throw new ApiError('Empty response from server', { status: res.status, url });
       }
 
@@ -90,7 +131,6 @@ export class ApiClient {
       }
 
       if (!res.ok) {
-        // 服务端通常会在 data.message 上放错误文案
         const message = data?.message || `HTTP ${res.status}`;
         throw new ApiError(message, { status: res.status, url, payload: data });
       }
@@ -111,7 +151,7 @@ export class ApiClient {
     const url = this.getFullURL(endpoint);
     return this.doFetch(url, {
       method,
-      headers: this.getHeaders(headers),
+      headers: this.getHeaders(headers), // 👈 这里的 headers 已经包含最新 token
       body: body !== undefined ? JSON.stringify(body) : undefined,
     }) as Promise<ApiResponse<T>>;
   }
@@ -128,9 +168,10 @@ export class ApiClient {
   put<T>(endpoint: string, data?: any) {
     return this.request<T>(endpoint, 'PUT', data);
   }
+
   patch<T>(endpoint: string, data?: any) {
-  return this.request<T>(endpoint, 'PATCH', data);
-}
+    return this.request<T>(endpoint, 'PATCH', data);
+  }
 
   delete<T>(endpoint: string) {
     return this.request<T>(endpoint, 'DELETE');
@@ -139,13 +180,17 @@ export class ApiClient {
   // 上传走 multipart/form-data
   async upload<T>(endpoint: string, formData: FormData) {
     const url = this.getFullURL(endpoint);
+    const token = this.resolveToken();
+
     const headers: HeadersInit = {};
-    if (this.token) headers['Authorization'] = `Bearer ${this.token}`;
+    if (token) (headers as Record<string, string>)['Authorization'] = `Bearer ${token}`;
 
     const data = await this.doFetch(url, {
       method: 'POST',
-      headers,
+      headers,               // 不设置 Content-Type，浏览器会自动带 boundary
       body: formData,
+      credentials: 'include',// 👈 上传也带 cookie
+      mode: 'cors',
     });
 
     return data as ApiResponse<T>;

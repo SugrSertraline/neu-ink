@@ -124,6 +124,125 @@ def add_public_paper_to_library():
         return internal_error_response(f"服务器错误: {exc}")
 
 
+@bp.route("/create-from-text", methods=["POST"])
+@login_required
+def create_user_paper_from_text():
+    """
+    用户通过文本创建个人论文（使用大模型解析）
+    
+    请求体示例:
+    {
+        "text": "这是一段论文文本内容...",
+        "extra": {
+            "customTags": ["重要", "机器学习"],
+            "readingStatus": "unread",
+            "priority": "high"
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or not data.get("text"):
+            return bad_request_response("文本内容不能为空")
+        
+        text = data.get("text")
+        extra = data.get("extra", {})
+        
+        # 使用PaperService创建论文（设为非公开）
+        from ..services.paperService import get_paper_service
+        paper_service = get_paper_service()
+        
+        # 首先创建论文数据
+        paper_result = paper_service.create_paper_from_text(
+            text=text,
+            creator_id=g.current_user["user_id"],
+            is_public=False  # 个人论文设为非公开
+        )
+        
+        if paper_result["code"] != BusinessCode.SUCCESS:
+            return internal_error_response(paper_result["message"])
+        
+        # 然后添加到个人论文库
+        paper_data = paper_result["data"]
+        service = get_user_paper_service()
+        result = service.add_uploaded_paper(
+            user_id=g.current_user["user_id"],
+            paper_data=paper_data,
+            extra=extra
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        
+        return bad_request_response(result["message"])
+    
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+@bp.route("/create-from-metadata", methods=["POST"])
+@login_required
+def create_user_paper_from_metadata():
+    """
+    用户通过元数据创建个人论文
+    
+    请求体示例:
+    {
+        "metadata": {
+            "title": "论文标题",
+            "authors": ["作者1", "作者2"],
+            "year": 2023,
+            "journal": "期刊名称",
+            "abstract": "摘要内容",
+            "keywords": ["关键词1", "关键词2"]
+        },
+        "extra": {
+            "customTags": ["重要", "机器学习"],
+            "readingStatus": "unread",
+            "priority": "high"
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or not data.get("metadata"):
+            return bad_request_response("元数据不能为空")
+        
+        metadata = data.get("metadata")
+        extra = data.get("extra", {})
+        
+        # 使用PaperService创建论文（设为非公开）
+        from ..services.paperService import get_paper_service
+        paper_service = get_paper_service()
+        
+        # 首先创建论文数据
+        paper_result = paper_service.create_paper_from_metadata(
+            metadata=metadata,
+            creator_id=g.current_user["user_id"],
+            is_public=False  # 个人论文设为非公开
+        )
+        
+        if paper_result["code"] != BusinessCode.SUCCESS:
+            return internal_error_response(paper_result["message"])
+        
+        # 然后添加到个人论文库
+        paper_data = paper_result["data"]
+        service = get_user_paper_service()
+        result = service.add_uploaded_paper(
+            user_id=g.current_user["user_id"],
+            paper_data=paper_data,
+            extra=extra
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        
+        return bad_request_response(result["message"])
+    
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+
 
 
 @bp.route("/<entry_id>", methods=["GET"])
@@ -312,5 +431,79 @@ def get_user_statistics():
         
         return internal_error_response(result["message"])
     
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<entry_id>/sections/<section_id>/add-blocks", methods=["POST"])
+@login_required
+def add_blocks_to_user_paper_section(entry_id, section_id):
+    """
+    用户向个人论文库中指定论文的指定section中添加blocks（使用大模型解析文本）
+    
+    请求体示例:
+    {
+        "text": "这是需要解析并添加到section中的文本内容..."
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or not data.get("text"):
+            return bad_request_response("文本内容不能为空")
+        
+        text = data.get("text")
+        
+        # 首先获取用户论文详情，确保用户有权限
+        service = get_user_paper_service()
+        user_paper_result = service.get_user_paper_detail(
+            user_paper_id=entry_id,
+            user_id=g.current_user["user_id"]
+        )
+        
+        if user_paper_result["code"] != BusinessCode.SUCCESS:
+            return bad_request_response(user_paper_result["message"])
+        
+        user_paper = user_paper_result["data"]
+        paper_data = user_paper.get("paperData")
+        
+        if not paper_data:
+            return bad_request_response("论文数据不存在")
+        
+        # 获取实际的paper_id（可能是引用的公共论文，也可能是用户自己的论文）
+        paper_id = paper_data.get("id")
+        if not paper_id:
+            return bad_request_response("无效的论文ID")
+        
+        # 使用paperService添加blocks
+        from ..services.paperService import get_paper_service
+        paper_service = get_paper_service()
+        result = paper_service.add_blocks_to_section(
+            paper_id=paper_id,
+            section_id=section_id,
+            text=text,
+            user_id=g.current_user["user_id"],
+            is_admin=False
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            # 如果成功，需要更新用户论文库中的paperData
+            updated_paper = result["data"]["paper"]
+            update_result = service.update_user_paper(
+                entry_id=entry_id,
+                user_id=g.current_user["user_id"],
+                update_data={"paperData": updated_paper}
+            )
+            
+            if update_result["code"] == BusinessCode.SUCCESS:
+                return success_response(result["data"], result["message"])
+            else:
+                return internal_error_response("更新用户论文库失败")
+        
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+        
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")

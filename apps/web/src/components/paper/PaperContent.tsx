@@ -56,6 +56,7 @@ interface PaperContentProps {
   onBlockMove?: (blockId: string, direction: 'up' | 'down') => void;
   onBlockAppendSubsection?: (blockId: string) => void;
   onBlockAddComponent?: (blockId: string, type: BlockContent['type']) => void;
+  onSaveToServer?: () => Promise<void>;
 }
 
 type ContentBlock = HeadingBlock | ParagraphBlock | QuoteBlock;
@@ -92,6 +93,7 @@ export default function PaperContent({
   onBlockMove,
   onBlockAppendSubsection,
   onBlockAddComponent,
+  onSaveToServer,
 }: PaperContentProps) {
   const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -452,6 +454,7 @@ export default function PaperContent({
                   contentRef={contentRef}
                   references={references}
                   onBlockUpdate={updatedBlock => onBlockUpdate?.(block.id, updatedBlock)}
+                  onSaveToServer={onSaveToServer}
                 />
               );
 
@@ -462,7 +465,7 @@ export default function PaperContent({
                     className={`rounded-md transition-colors ${isActive ? 'ring-2 ring-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : ''}`}
 
                   style={{
-                    // 让 scrollIntoView 对齐到“头部下方 16px”
+                    // 让 scrollIntoView 对齐到"头部下方 16px"
                      scrollMarginTop: 'calc(var(--app-header-h, 0px) + 16px)',
                   }}
                   onClick={
@@ -573,6 +576,7 @@ export default function PaperContent({
     setHoveredSectionId,
     onBlockClick,
     contentRef,
+    onSaveToServer,
   ]);
 
   const emptyState = (

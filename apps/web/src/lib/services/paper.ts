@@ -1,6 +1,6 @@
 // 论文服务层 - 对接后端真实 API
 
-import { AddToLibraryRequest, CreateNoteRequest, DeleteResult, Note, NoteFilters, NoteListData, Paper, PaperContent, PaperListData, PublicPaperFilters, UpdateNoteRequest, UpdateReadingProgressRequest, UpdateUserPaperRequest, UserPaper, UserPaperFilters, UserPaperListData, UserStatistics } from '@/types/paper/index';
+import { AddToLibraryRequest, CreateNoteRequest, CreatePaperFromTextRequest, CreatePaperFromMetadataRequest, DeleteResult, Note, NoteFilters, NoteListData, Paper, PaperContent, PaperListData, PublicPaperFilters, UpdateNoteRequest, UpdateReadingProgressRequest, UpdateUserPaperRequest, UserPaper, UserPaperFilters, UserPaperListData, UserStatistics } from '@/types/paper/index';
 import { apiClient, callAndNormalize } from '../http';
 import type { UnifiedResult } from '@/types/api';
 
@@ -123,6 +123,24 @@ export const userPaperService = {
   getUserStatistics(): Promise<UnifiedResult<UserStatistics>> {
     return callAndNormalize<UserStatistics>(
       apiClient.get('/user/papers/statistics')
+    );
+  },
+
+  /**
+   * 从文本创建个人论文
+   */
+  createPaperFromText(request: CreatePaperFromTextRequest): Promise<UnifiedResult<UserPaper>> {
+    return callAndNormalize<UserPaper>(
+      apiClient.post('/user/papers/create-from-text', request)
+    );
+  },
+
+  /**
+   * 从元数据创建个人论文
+   */
+  createPaperFromMetadata(request: CreatePaperFromMetadataRequest): Promise<UnifiedResult<UserPaper>> {
+    return callAndNormalize<UserPaper>(
+      apiClient.post('/user/papers/create-from-metadata', request)
     );
   },
 
@@ -263,8 +281,8 @@ export const adminPaperService = {
   },
 
   /**
-   * 获取统计信息
-   */
+    * 获取统计信息
+    */
   getStatistics(): Promise<UnifiedResult<{
     total: number;
     public: number;
@@ -278,6 +296,16 @@ export const adminPaperService = {
       apiClient.get('/admin/papers/statistics')
     );
   },
+
+  /**
+    * 从文本创建管理员论文
+    */
+  createPaperFromText(request: CreatePaperFromTextRequest): Promise<UnifiedResult<Paper>> {
+    return callAndNormalize<Paper>(
+      apiClient.post('/admin/papers/create-from-text', request)
+    );
+  },
+
   async getAdminPaperDetail(paperId: string): Promise<UnifiedResult<Paper>> {
     return callAndNormalize<Paper>(
       apiClient.get(`/admin/papers/${paperId}`)
