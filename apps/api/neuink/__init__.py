@@ -21,10 +21,14 @@ def create_app():
                 "http://localhost:8000",
                 "http://127.0.0.1:8000",
             ],
-            "methods": ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-            "allow_headers": ["Content-Type", "Authorization"],
-            "expose_headers": ["Content-Type", "Authorization"],
-            "supports_credentials": True,
+            "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+            "allow_headers": "*",
+            "expose_headers": [
+                "Content-Type",
+                "Authorization",
+                "X-Total-Count"
+            ],
+            "supports_credentials": True
         }
     })
 
@@ -45,7 +49,7 @@ def create_app():
     @app.before_request
     def log_request():
         from flask import request
-        print(f"📥 {request.method} {request.path}")
+        print(f"[IN] {request.method} {request.path}")
         payload = request.get_json(silent=True)
         if payload is not None:
             print(f"   Body: {payload}")
@@ -53,7 +57,7 @@ def create_app():
     @app.after_request
     def log_response(response):
         from flask import request
-        print(f"📤 {request.method} {request.path} -> {response.status_code}")
+        print(f"[OUT] {request.method} {request.path} -> {response.status_code}")
         return response
 
     return app

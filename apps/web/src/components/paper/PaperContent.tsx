@@ -674,24 +674,22 @@ export default function PaperContent({
     onSaveToServer,
   ]);
 
-  const emptyState = (
+  const emptyState = canEditContent && onSectionInsert ? (
+    <RootSectionContextMenu onAddSection={() => onSectionInsert(null, 'below', null)}>
+      <div className="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900">
+        <p className="text-lg font-semibold text-gray-700 dark:text-gray-200">论文暂无内容</p>
+        <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">右键此区域以添加第一章。</p>
+      </div>
+    </RootSectionContextMenu>
+  ) : (
     <div className="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900">
       <p className="text-lg font-semibold text-gray-700 dark:text-gray-200">论文暂无内容</p>
-      <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">右键此区域以添加第一章。</p>
+      <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">请联系管理员添加内容。</p>
     </div>
   );
 
-  const rootMenu =
-    canEditContent && onSectionInsert
-      ? (children: React.ReactNode) => (
-        <RootSectionContextMenu onAddSection={() => onSectionInsert(null, 'below', null)}>
-          {children}
-        </RootSectionContextMenu>
-      )
-      : (children: React.ReactNode) => <>{children}</>;
-
-  return rootMenu(
-    <div className="space-y-8">{sections.length ? renderedTree : emptyState}</div>,
+  return (
+    <div className="space-y-8">{sections.length ? renderedTree : emptyState}</div>
   );
 }
 

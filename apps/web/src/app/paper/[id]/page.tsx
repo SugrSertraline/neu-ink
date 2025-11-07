@@ -492,7 +492,14 @@ export default function PaperPage() {
     handleBlockMove,
     handleBlockAppendSubsection,
     handleBlockAddComponent,
-  } = usePaperBlocks(lang, updateSections, setActiveBlockId);
+  } = usePaperBlocks(
+    lang,
+    paperId,
+    isPersonalOwner ? resolvedUserPaperId : null,
+    isPersonalOwner,
+    updateSections,
+    setActiveBlockId
+  );
 
   const handleMetadataEditStart = useCallback(() => {
     if (!metadata) return;
@@ -824,15 +831,15 @@ const handleSaveToServer = useCallback(
         
         if (isPersonalOwner && resolvedUserPaperId) {
           // 个人论文库：使用 userPaperId 作为 entry_id
-          const result = await service.addBlocksToSection(resolvedUserPaperId, sectionId, requestData);
+          const result = await service.addBlockFromTextToSection(resolvedUserPaperId, sectionId, requestData);
           if (result.bizCode === 0) {
             // 更新本地编辑副本
-            const addedBlocks = result.data?.addedBlocks;
-            if (addedBlocks && addedBlocks.length > 0) {
+            const addedBlock = result.data?.addedBlock;
+            if (addedBlock) {
               setEditableDraft(prev => {
                 if (!prev) return prev;
                 const nextDraft = { ...prev };
-                // 找到对应的section并添加新的blocks
+                // 找到对应的section并添加新的block
                 const updateSection = (sections: any[]): any[] => {
                   return sections.map(section => {
                     if (section.id === sectionId) {
@@ -849,7 +856,7 @@ const handleSaveToServer = useCallback(
                       }
                       
                       const newBlocks = [...currentBlocks];
-                      newBlocks.splice(insertIndex, 0, ...addedBlocks);
+                      newBlocks.splice(insertIndex, 0, addedBlock);
                       
                       return {
                         ...section,
@@ -870,19 +877,19 @@ const handleSaveToServer = useCallback(
               });
             }
             setHasUnsavedChanges(true);
-            toast.success(`成功添加 ${result.data?.addedBlocks?.length || 0} 个内容块`);
-            return { success: true, blocks: result.data?.addedBlocks };
+            toast.success(`成功添加 1 个内容块`);
+            return { success: true, blocks: [result.data?.addedBlock] };
           } else {
             toast.error('添加失败', { description: result.bizMessage || '服务器错误' });
             return { success: false, error: result.bizMessage || '服务器错误' };
           }
         } else {
           // 管理员论文：直接使用 paperId
-          const result = await service.addBlocksToSection(paperId, sectionId, requestData);
+          const result = await service.addBlockFromTextToSection(paperId, sectionId, requestData);
           if (result.bizCode === 0) {
             // 更新本地编辑副本
-            const addedBlocks = result.data?.addedBlocks;
-            if (addedBlocks && addedBlocks.length > 0) {
+            const addedBlock = result.data?.addedBlock;
+            if (addedBlock) {
               setEditableDraft(prev => {
                 if (!prev) return prev;
                 const nextDraft = { ...prev };
@@ -902,7 +909,7 @@ const handleSaveToServer = useCallback(
                       }
                       
                       const newBlocks = [...currentBlocks];
-                      newBlocks.splice(insertIndex, 0, ...addedBlocks);
+                      newBlocks.splice(insertIndex, 0, addedBlock);
                       
                       return {
                         ...section,
@@ -923,8 +930,8 @@ const handleSaveToServer = useCallback(
               });
             }
             setHasUnsavedChanges(true);
-            toast.success(`成功添加 ${result.data?.addedBlocks?.length || 0} 个内容块`);
-            return { success: true, blocks: result.data?.addedBlocks };
+            toast.success(`成功添加 1 个内容块`);
+            return { success: true, blocks: [result.data?.addedBlock] };
           } else {
             toast.error('添加失败', { description: result.bizMessage || '服务器错误' });
             return { success: false, error: result.bizMessage || '服务器错误' };
@@ -1052,7 +1059,7 @@ const handleSaveToServer = useCallback(
             }}
           >
             <div
-              className="lg:flex lg:items-start lg:gap-[var(--notes-gap,0)]"
+              className="lg:flex lg:items-start lg:gap-(--notes-gap,0)"
               style={{ '--notes-gap': `${NOTES_PANEL_GAP}px` } as CSSProperties}
             >
               {/* 左侧 content：保持原来的 max-w-5xl，自动占满剩余 */}
@@ -1081,15 +1088,39 @@ const handleSaveToServer = useCallback(
                     setSearchResults={setSearchResults}
                     setCurrentSearchIndex={setCurrentSearchIndex}
                     onBlockClick={handleBlockSelect}
-                    onSectionTitleUpdate={handleSectionTitleUpdate}
+                    onSectionTitleUpdate={(sectionId, title) => {
+                      if (!isPersonalOwner && !resolvedUserPaperId) {
+                        handleSectionTitleUpdate(sectionId, title, paperId, null, isPersonalOwner, handleSaveToServer);
+                      } else {
+                        handleSectionTitleUpdate(sectionId, title, paperId, resolvedUserPaperId, isPersonalOwner, handleSaveToServer);
+                      }
+                    }}
                     onSectionAddSubsection={handleSectionAddSubsection}
-                    onSectionInsert={handleSectionInsert}
+                    onSectionInsert={(targetSectionId, position, parentSectionId) => {
+                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                      return handleSectionInsert(targetSectionId, position, parentSectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
+                    }}
                     onSectionMove={handleSectionMove}
-                    onSectionDelete={handleSectionDelete}
+                    onSectionDelete={(sectionId) => {
+                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                      return handleSectionDelete(sectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
+                    }}
                     onSectionAddBlock={(sectionId, type) => handleSectionAddBlock(sectionId, type, lang)}
-                    onBlockUpdate={handleBlockUpdate}
+                    onBlockUpdate={(blockId, block) => {
+                      const blockInfo = findBlockSection(blockId);
+                      if (!blockInfo) return;
+                      
+                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                      return handleBlockUpdate(blockId, block, blockInfo.section.id, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
+                    }}
                     onBlockDuplicate={handleBlockDuplicate}
-                    onBlockDelete={handleBlockDelete}
+                    onBlockDelete={(blockId) => {
+                      const blockInfo = findBlockSection(blockId);
+                      if (!blockInfo) return;
+                      
+                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                      return handleBlockDelete(blockId, blockInfo.section.id, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
+                    }}
                     onBlockInsert={handleBlockInsert}
                     onBlockMove={handleBlockMove}
                     onBlockAppendSubsection={handleBlockAppendSubsection}

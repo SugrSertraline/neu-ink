@@ -1,10 +1,13 @@
-// hooks/usePaperBlocks.ts
 import { useCallback } from 'react';
+import { toast } from 'sonner';
 import type { BlockContent, Section, PaperContent as PaperContentModel } from '@/types/paper';
 import { cloneBlock, createBlock, createPlaceholderParagraph, generateId } from '../utils/paperHelpers';
 
 export function usePaperBlocks(
   lang: 'en' | 'both',
+  paperId: string,
+  userPaperId: string | null,
+  isPersonalOwner: boolean,
   updateSections: (
     updater: (sections: Section[]) => { sections: Section[]; touched: boolean }
   ) => void,
@@ -70,13 +73,319 @@ export function usePaperBlocks(
     [updateSections]
   );
 
-  const handleBlockUpdate = useCallback(
-    (blockId: string, nextBlock: BlockContent) => {
-      updateBlockTree(blockId, () => ({ block: nextBlock }));
+  // 修复后的API调用函数
+  const handleBlockAddWithAPI = useCallback(async (
+    sectionId: string,
+    block: BlockContent,
+    afterBlockId: string | null,
+    paperId: string,
+    userPaperId: string | null,
+    isPersonalOwner: boolean
+  ) => {
+    try {
+      // 构建blockData，确保所有必要字段都存在
+      const blockData: any = {
+        type: block.type,
+      };
+
+      // 根据不同block类型添加相应的数据
+      if ('content' in block && block.content !== undefined) {
+        blockData.content = block.content;
+      }
+      
+      if ('metadata' in block && block.metadata !== undefined) {
+        blockData.metadata = block.metadata;
+      }
+      
+      if ('latex' in block && block.latex !== undefined) {
+        blockData.latex = block.latex;
+      }
+      
+      if ('code' in block && block.code !== undefined) {
+        blockData.code = block.code;
+        if ('language' in block && block.language !== undefined) {
+          blockData.language = block.language;
+        }
+      }
+      
+      if ('url' in block && block.url !== undefined) {
+        blockData.url = block.url;
+        if ('alt' in block && block.alt !== undefined) {
+          blockData.alt = block.alt;
+        }
+      }
+      
+      if ('headers' in block && block.headers !== undefined) {
+        blockData.headers = block.headers;
+      }
+      
+      if ('rows' in block && block.rows !== undefined) {
+        blockData.rows = block.rows;
+      }
+
+      if ('items' in block && block.items !== undefined) {
+        blockData.items = block.items;
+      }
+
+      if ('author' in block && block.author !== undefined) {
+        blockData.author = block.author;
+      }
+
+      if ('level' in block && block.level !== undefined) {
+        blockData.level = block.level;
+      }
+
+      if ('align' in block && block.align !== undefined) {
+        blockData.align = block.align;
+      }
+
+      if ('number' in block && block.number !== undefined) {
+        blockData.number = block.number;
+      }
+
+      if ('start' in block && block.start !== undefined) {
+        blockData.start = block.start;
+      }
+
+      if ('caption' in block && block.caption !== undefined) {
+        blockData.caption = block.caption;
+      }
+
+      if ('description' in block && block.description !== undefined) {
+        blockData.description = block.description;
+      }
+
+      if ('alt' in block && block.alt !== undefined) {
+        blockData.alt = block.alt;
+      }
+
+      if ('src' in block && block.src !== undefined) {
+        blockData.src = block.src;
+      }
+
+      if ('width' in block && block.width !== undefined) {
+        blockData.width = block.width;
+      }
+
+      if ('height' in block && block.height !== undefined) {
+        blockData.height = block.height;
+      }
+
+      if ('showLineNumbers' in block && block.showLineNumbers !== undefined) {
+        blockData.showLineNumbers = block.showLineNumbers;
+      }
+
+      if (isPersonalOwner && userPaperId) {
+        // 个人论文
+        const { userPaperService } = await import('@/lib/services/paper');
+        const result = await userPaperService.addBlockToSection(userPaperId, sectionId, {
+          blockData,
+          ...(afterBlockId && { afterBlockId })
+        });
+        
+        if (result.bizCode === 0) {
+          return { success: true, data: result.data };
+        } else {
+          const errorMsg = result.bizMessage || '服务器错误';
+          toast.error('添加失败', { description: errorMsg });
+          return { success: false, error: errorMsg };
+        }
+      } else {
+        // 管理员论文
+        const { adminPaperService } = await import('@/lib/services/paper');
+        const result = await adminPaperService.addBlockToSection(paperId, sectionId, {
+          blockData,
+          ...(afterBlockId && { afterBlockId })
+        });
+        
+        if (result.bizCode === 0) {
+          return { success: true, data: result.data };
+        } else {
+          const errorMsg = result.bizMessage || '服务器错误';
+          toast.error('添加失败', { description: errorMsg });
+          return { success: false, error: errorMsg };
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '添加block时发生未知错误';
+      toast.error('添加失败', { description: message });
+      return { success: false, error: message };
+    }
+  }, []);
+
+  // API调用函数 - 更新block
+  const handleBlockUpdateWithAPI = useCallback(async (
+    sectionId: string,
+    blockId: string,
+    updateData: {
+      content?: any;
+      type?: string;
+      metadata?: any;
     },
-    [updateBlockTree]
+    paperId: string,
+    userPaperId: string | null,
+    isPersonalOwner: boolean
+  ) => {
+    try {
+      if (isPersonalOwner && userPaperId) {
+        const { userPaperService } = await import('@/lib/services/paper');
+        const result = await userPaperService.updateBlock(userPaperId, sectionId, blockId, updateData);
+        
+        if (result.bizCode === 0) {
+          return { success: true };
+        } else {
+          toast.error('更新失败', { description: result.bizMessage || '服务器错误' });
+          return { success: false, error: result.bizMessage || '更新内容块失败' };
+        }
+      } else {
+        const { adminPaperService } = await import('@/lib/services/paper');
+        const result = await adminPaperService.updateBlock(paperId, sectionId, blockId, updateData);
+        
+        if (result.bizCode === 0) {
+          return { success: true };
+        } else {
+          toast.error('更新失败', { description: result.bizMessage || '服务器错误' });
+          return { success: false, error: result.bizMessage || '更新内容块失败' };
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '更新内容块时发生未知错误';
+      toast.error('更新失败', { description: message });
+      return { success: false, error: message };
+    }
+  }, []);
+
+  // API调用函数 - 删除block
+  const handleBlockDeleteWithAPI = useCallback(async (
+    sectionId: string,
+    blockId: string,
+    paperId: string,
+    userPaperId: string | null,
+    isPersonalOwner: boolean
+  ) => {
+    try {
+      if (isPersonalOwner && userPaperId) {
+        const { userPaperService } = await import('@/lib/services/paper');
+        const result = await userPaperService.deleteBlock(userPaperId, sectionId, blockId);
+        
+        if (result.bizCode === 0) {
+          // 本地更新UI - 移除该block
+          updateBlockTree(blockId, () => ({ remove: true }));
+          toast.success('内容块删除成功');
+          return { success: true };
+        } else {
+          toast.error('删除失败', { description: result.bizMessage || '服务器错误' });
+          return { success: false, error: result.bizMessage || '删除内容块失败' };
+        }
+      } else {
+        const { adminPaperService } = await import('@/lib/services/paper');
+        const result = await adminPaperService.deleteBlock(paperId, sectionId, blockId);
+        
+        if (result.bizCode === 0) {
+          // 本地更新UI - 移除该block
+          updateBlockTree(blockId, () => ({ remove: true }));
+          toast.success('内容块删除成功');
+          return { success: true };
+        } else {
+          toast.error('删除失败', { description: result.bizMessage || '服务器错误' });
+          return { success: false, error: result.bizMessage || '删除内容块失败' };
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '删除内容块时发生未知错误';
+      toast.error('删除失败', { description: message });
+      return { success: false, error: message };
+    }
+  }, [updateBlockTree]);
+
+  const handleBlockUpdate = useCallback(
+    async (
+      blockId: string,
+      nextBlock: BlockContent,
+      sectionId: string,
+      paperId: string,
+      userPaperId: string | null,
+      isPersonalOwner: boolean,
+      onSaveToServer?: () => Promise<void>
+    ) => {
+      try {
+        // 先本地更新
+        updateBlockTree(blockId, () => ({ block: nextBlock }));
+        
+        // 然后调用API保存
+        const updateData: any = {
+          type: nextBlock.type
+        };
+        
+        // 只添加存在的属性
+        if ('content' in nextBlock && nextBlock.content !== undefined) {
+          updateData.content = nextBlock.content;
+        }
+        
+        if ('metadata' in nextBlock && nextBlock.metadata !== undefined) {
+          updateData.metadata = nextBlock.metadata;
+        }
+        
+        if ('latex' in nextBlock && nextBlock.latex !== undefined) {
+          updateData.latex = nextBlock.latex;
+        }
+        
+        if ('code' in nextBlock && nextBlock.code !== undefined) {
+          updateData.code = nextBlock.code;
+        }
+        
+        if ('language' in nextBlock && nextBlock.language !== undefined) {
+          updateData.language = nextBlock.language;
+        }
+        
+        if ('caption' in nextBlock && nextBlock.caption !== undefined) {
+          updateData.caption = nextBlock.caption;
+        }
+        
+        if ('description' in nextBlock && nextBlock.description !== undefined) {
+          updateData.description = nextBlock.description;
+        }
+        
+        if ('alt' in nextBlock && nextBlock.alt !== undefined) {
+          updateData.alt = nextBlock.alt;
+        }
+        
+        if ('headers' in nextBlock && nextBlock.headers !== undefined) {
+          updateData.headers = nextBlock.headers;
+        }
+        
+        if ('rows' in nextBlock && nextBlock.rows !== undefined) {
+          updateData.rows = nextBlock.rows;
+        }
+        
+        if ('items' in nextBlock && nextBlock.items !== undefined) {
+          updateData.items = nextBlock.items;
+        }
+        
+        if ('author' in nextBlock && nextBlock.author !== undefined) {
+          updateData.author = nextBlock.author;
+        }
+        
+        const result = await handleBlockUpdateWithAPI(
+          sectionId,
+          blockId,
+          updateData,
+          paperId,
+          userPaperId,
+          isPersonalOwner
+        );
+        
+        if (!result.success) {
+          console.error('Failed to update block:', result.error);
+        }
+      } catch (error) {
+        console.error('Failed to update block:', error);
+      }
+    },
+    [updateBlockTree, handleBlockUpdateWithAPI]
   );
 
+  // 保留原有函数，但标记为已弃用
   const handleBlockDuplicate = useCallback(
     (blockId: string) => {
       updateBlockTree(blockId, (_, block) => {
@@ -90,16 +399,39 @@ export function usePaperBlocks(
   );
 
   const handleBlockDelete = useCallback(
-    (blockId: string) => {
-      updateBlockTree(blockId, () => ({ remove: true }));
+    async (
+      blockId: string,
+      sectionId: string,
+      paperId: string,
+      userPaperId: string | null,
+      isPersonalOwner: boolean,
+      onSaveToServer?: () => Promise<void>
+    ) => {
+      const result = await handleBlockDeleteWithAPI(
+        sectionId,
+        blockId,
+        paperId,
+        userPaperId,
+        isPersonalOwner
+      );
+
+      // 不再调用 handleSaveToServer，因为 handleBlockDeleteWithAPI 已经更新了数据库
+      if (!result.success) {
+        console.error('Failed to delete block:', result.error);
+      }
     },
-    [updateBlockTree]
+    [handleBlockDeleteWithAPI]
   );
 
   const handleBlockInsert = useCallback(
-    (blockId: string, position: 'above' | 'below') => {
+    (
+      blockId: string,
+      position: 'above' | 'below'
+    ) => {
       let newBlockId: string | null = null;
+      let targetSectionId: string | null = null;
 
+      // 先本地更新UI
       updateSections(sections => {
         let touched = false;
 
@@ -111,6 +443,7 @@ export function usePaperBlocks(
             if (idx !== -1) {
               const newBlock = createPlaceholderParagraph(lang);
               newBlockId = newBlock.id;
+              targetSectionId = section.id;
               const nextContent = [...section.content];
               const insertIndex = position === 'above' ? idx : idx + 1;
               nextContent.splice(insertIndex, 0, newBlock);
@@ -133,11 +466,25 @@ export function usePaperBlocks(
         return { sections: touched ? nextSections : sections, touched };
       });
 
-      if (newBlockId) {
-        setActiveBlockId(newBlockId);
+      // 然后调用API
+      if (newBlockId && targetSectionId) {
+        handleBlockAddWithAPI(
+          targetSectionId,
+          createPlaceholderParagraph(lang),
+          position === 'below' ? blockId : null,
+          paperId,
+          userPaperId,
+          isPersonalOwner
+        ).then(result => {
+          if (result.success) {
+            setActiveBlockId(newBlockId);
+          } else {
+            console.error('Failed to insert block:', result.error);
+          }
+        });
       }
     },
-    [lang, setActiveBlockId, updateSections]
+    [lang, setActiveBlockId, updateSections, handleBlockAddWithAPI, paperId, userPaperId, isPersonalOwner]
   );
 
   const handleBlockMove = useCallback(
@@ -182,6 +529,8 @@ export function usePaperBlocks(
 
       if (didMove) {
         setActiveBlockId(blockId);
+        // TODO: 移动功能的后端API实现
+        console.log('Block moved locally:', blockId, direction);
       }
     },
     [setActiveBlockId, updateSections]
@@ -221,7 +570,9 @@ export function usePaperBlocks(
   const handleBlockAddComponent = useCallback(
     (blockId: string, type: BlockContent['type']) => {
       let newBlockId: string | null = null;
+      let targetSectionId: string | null = null;
 
+      // 先本地更新UI
       updateSections(sections => {
         let touched = false;
 
@@ -233,6 +584,7 @@ export function usePaperBlocks(
             if (idx !== -1) {
               const newBlock = createBlock(type, lang);
               newBlockId = newBlock.id;
+              targetSectionId = section.id;
               const nextContent = [...section.content];
               nextContent.splice(idx + 1, 0, newBlock);
               nextSection = { ...section, content: nextContent };
@@ -242,7 +594,7 @@ export function usePaperBlocks(
             if (section.subsections?.length) {
               const nextSubsections = walk(section.subsections);
               if (nextSubsections !== section.subsections) {
-                nextSection = { ...nextSection, subsections: nextSubsections };
+                nextSection = { ...section, subsections: nextSubsections };
                 touched = true;
               }
             }
@@ -254,11 +606,48 @@ export function usePaperBlocks(
         return { sections: touched ? nextSections : sections, touched };
       });
 
-      if (newBlockId) {
-        setActiveBlockId(newBlockId);
+      // 然后调用API保存
+      if (newBlockId && targetSectionId) {
+        handleBlockAddWithAPI(
+          targetSectionId,
+          createBlock(type, lang),
+          blockId, // 使用当前blockId作为afterBlockId
+          paperId,
+          userPaperId,
+          isPersonalOwner
+        ).then(result => {
+          if (result.success) {
+            setActiveBlockId(newBlockId);
+            toast.success('组件添加成功');
+          } else {
+            // 如果API调用失败，回滚本地更新
+            if (targetSectionId && newBlockId) {
+              updateSections(sections => {
+                const walk = (nodes: Section[]): Section[] =>
+                  nodes.map(section => {
+                    if (section.id === targetSectionId) {
+                      const nextContent = section.content.filter(block => block.id !== newBlockId);
+                      return { ...section, content: nextContent };
+                    }
+                    if (section.subsections?.length) {
+                      return {
+                        ...section,
+                        subsections: walk(section.subsections)
+                      };
+                    }
+                    return section;
+                  });
+
+                const nextSections = walk(sections);
+                return { sections: nextSections, touched: true };
+              });
+            }
+            console.error('Failed to add component:', result.error);
+          }
+        });
       }
     },
-    [lang, setActiveBlockId, updateSections]
+    [lang, setActiveBlockId, updateSections, handleBlockAddWithAPI, paperId, userPaperId, isPersonalOwner]
   );
 
   return {
@@ -269,6 +658,9 @@ export function usePaperBlocks(
     handleBlockMove,
     handleBlockAppendSubsection,
     handleBlockAddComponent,
+    // 新增的API调用函数
+    handleBlockDeleteWithAPI,
+    handleBlockUpdateWithAPI,
   };
 }
 

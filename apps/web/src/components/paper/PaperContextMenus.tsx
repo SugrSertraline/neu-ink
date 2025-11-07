@@ -4,6 +4,7 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -47,22 +48,41 @@ const Submenu: React.FC<SubmenuProps> = ({
   const submenuRef = useRef<HTMLDivElement>(null);
   const [position, setPosition] = useState({ top: 0, left: 0 });
 
-  useEffect(() => {
-    if (submenuRef.current) {
-      const parentElement = submenuRef.current.parentElement;
-      if (parentElement) {
-        const parentRect = parentElement.getBoundingClientRect();
-        let left = parentRect.width - 4;
-        let top = -4;
+  useLayoutEffect(() => {
+    const node = submenuRef.current;
+    if (!node) return;
+    const parentElement = node.parentElement;
+    if (!parentElement) return;
 
-        if (parentRect.right + left > window.innerWidth - 20) {
-          left = -parentRect.width + 4;
-        }
+    const parentRect = parentElement.getBoundingClientRect();
+    const rect = node.getBoundingClientRect();
+    const margin = 4;
 
-        setPosition({ top, left });
-      }
+    let left = parentRect.width - 4; // 默认靠右展开
+    let top = -4;
+
+    let viewportLeft = parentRect.left + left;
+    let viewportTop = parentRect.top + top;
+
+    if (viewportLeft + rect.width > window.innerWidth - margin) {
+      left = -rect.width + 4; // 改到左侧
+      viewportLeft = parentRect.left + left;
     }
-  }, []);
+    if (viewportLeft < margin) {
+      left += margin - viewportLeft;
+      viewportLeft = margin;
+    }
+
+    if (viewportTop + rect.height > window.innerHeight - margin) {
+      top -= rect.height - parentRect.height + 8; // 往上挪
+      viewportTop = parentRect.top + top;
+    }
+    if (viewportTop < margin) {
+      top += margin - viewportTop;
+    }
+
+    setPosition({ top, left });
+  }, [submenu]);
 
   return (
     <div
@@ -111,6 +131,7 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
   entries,
 }) => {
   const triggerRef = useRef<HTMLElement | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ x: 0, y: 0 });
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
@@ -176,48 +197,63 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
     };
   }, [open, closeMenu]);
 
+  useLayoutEffect(() => {
+    if (!open || !menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    const margin = 4;
+    let nextX = coords.x;
+    let nextY = coords.y;
+
+    if (nextX + rect.width > window.innerWidth - margin) {
+      nextX = Math.max(margin, coords.x - rect.width);
+    }
+    if (nextX < margin) {
+      nextX = margin;
+    }
+
+    if (nextY + rect.height > window.innerHeight - margin) {
+      nextY = Math.max(margin, coords.y - rect.height);
+    }
+    if (nextY < margin) {
+      nextY = margin;
+    }
+
+    if (nextX !== coords.x || nextY !== coords.y) {
+      setCoords({ x: nextX, y: nextY });
+    }
+  }, [open, coords]);
+
   const handleContextMenu = useCallback(
     (event: React.MouseEvent<HTMLElement>) => {
       if (!validEntries.length) return;
 
+      const target = event.target as HTMLElement;
+
+      const isValidTarget = () => {
+        if (target.closest('h1, h2, h3, h4, h5, h6')) return true;
+        if (target.closest('[data-block-id]')) return true;
+        if (target.closest('button, input, textarea, select, a')) return true;
+        if (target.closest('[contenteditable="true"]')) return true;
+        if (target.closest('img, figure, pre, code')) return true;
+        return false;
+      };
+
+      const isOnlyAddSection =
+        validEntries.length === 1 &&
+        validEntries[0].kind === 'item' &&
+        validEntries[0].label === '添加新章节';
+
+      if (!isValidTarget() && !isOnlyAddSection) {
+        return;
+      }
+
       event.preventDefault();
       event.stopPropagation();
 
-      const { clientX, clientY } = event;
-
-      const menuWidth = 200;
-      const menuItemHeight = 30;
-      const menuPadding = 1;
-      const estimatedMenuHeight =
-        validEntries.length * menuItemHeight + menuPadding;
-
-      const spaceToRight = window.innerWidth - clientX;
-      const spaceToLeft = clientX;
-      const spaceBelow = window.innerHeight - clientY;
-      const spaceAbove = clientY;
-
-      let x = clientX + 5;
-      let y = clientY + 5;
-
-      if (x + menuWidth > window.innerWidth && spaceToLeft > menuWidth) {
-        x = clientX - menuWidth - 5;
-      } else if (x + menuWidth > window.innerWidth) {
-        x = Math.max(12, window.innerWidth - menuWidth - 12);
-      }
-
-      if (y + estimatedMenuHeight > window.innerHeight && spaceAbove > estimatedMenuHeight) {
-        y = clientY - estimatedMenuHeight;
-      } else if (y + estimatedMenuHeight > window.innerHeight) {
-        y = Math.max(12, window.innerHeight - estimatedMenuHeight - 12);
-      }
-
-      x = Math.max(12, Math.min(x, window.innerWidth - menuWidth - 12));
-      y = Math.max(12, Math.min(y, window.innerHeight - estimatedMenuHeight - 12));
-
-      setCoords({ x, y });
+      setCoords({ x: event.clientX + 2, y: event.clientY + 2 });
       setOpen(true);
     },
-    [validEntries.length],
+    [validEntries],
   );
 
   const enhancedChild = useMemo(() => {
@@ -245,6 +281,7 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
     open && validEntries.length
       ? createPortal(
           <div
+            ref={menuRef}
             role="menu"
             className="fixed z-60000 min-w-48 rounded-md border border-gray-200 bg-white/95 p-1 shadow-xl backdrop-blur dark:border-gray-700 dark:bg-slate-900/95"
             style={{ top: coords.y, left: coords.x }}
@@ -329,6 +366,8 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
   );
 };
 
+// SectionContextMenu, RootSectionContextMenu, BlockContextMenu, MetadataContextMenu,
+// ReferenceContextMenu, RootReferenceContextMenu remain unchanged below.
 interface SectionContextMenuProps {
   children: React.ReactNode;
   onRename?: MenuAction;
@@ -390,7 +429,7 @@ export function SectionContextMenu({
         onSelect: onAddSubsection,
       });
     }
-     
+
     if (onAddBlock) {
       const blockTypes: { type: BlockContent['type']; label: string; icon: string }[] = [
         { type: 'paragraph', label: '段落', icon: '📝' },
@@ -513,7 +552,7 @@ export function BlockContextMenu({
   onStartTextParse,
 }: BlockContextMenuProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
-  
+
   if (!canEditContent) return <>{children}</>;
 
   const blockTypes: { type: BlockContent['type']; label: string; icon: string }[] = [

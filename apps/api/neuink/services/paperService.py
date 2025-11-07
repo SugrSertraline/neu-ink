@@ -2,6 +2,7 @@
 Paper 业务逻辑服务
 处理论文相关的业务逻辑
 """
+import time
 from typing import Dict, Any, Optional, Tuple, List
 
 from ..models.paper import PaperModel
@@ -365,6 +366,743 @@ class PaperService:
         except Exception as exc:
             return self._wrap_error(f"添加blocks到section失败: {exc}")
 
+    def add_section(
+        self,
+        paper_id: str,
+        section_data: Dict[str, Any],
+        user_id: str,
+        is_admin: bool = False,
+        parent_section_id: Optional[str] = None,
+        position: Optional[int] = None,
+    ) -> Dict[str, Any]:
+        """
+        向论文添加新章节
+        
+        Args:
+            paper_id: 论文ID
+            section_data: 新章节数据
+            user_id: 用户ID
+            is_admin: 是否为管理员
+            parent_section_id: 父章节ID，为null则添加到根级
+            position: 插入位置，-1为末尾
+            
+        Returns:
+            操作结果
+        """
+        try:
+            # 检查论文是否存在及权限
+            paper = self.paper_model.find_by_id(paper_id)
+            if not paper:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+
+            if not is_admin and paper["createdBy"] != user_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
+
+            # 获取当前sections
+            sections = paper.get("sections", [])
+            
+            # 确保新章节有必要的字段
+            new_section = {
+                "id": section_data.get("id"),
+                "title": section_data.get("title", {"en": "Untitled Section", "zh": "未命名章节"}),
+                "content": section_data.get("content", []),
+                "subsections": section_data.get("subsections", [])
+            }
+            
+            # 如果没有提供ID，生成一个
+            if not new_section["id"]:
+                new_section["id"] = f"section_{len(sections) + 1}_{int(time.time())}"
+            
+            # 确定插入位置
+            if position is None:
+                position = -1
+                
+            # 如果指定了父章节，添加到子章节中
+            if parent_section_id:
+                sections = self._insert_section_into_subsections(
+                    sections, parent_section_id, new_section, position
+                )
+            else:
+                # 添加到根级章节
+                if position == -1:
+                    sections.append(new_section)
+                elif 0 <= position < len(sections):
+                    sections.insert(position, new_section)
+                else:
+                    sections.append(new_section)
+            
+            # 更新论文
+            update_data = {"sections": sections}
+            if self.paper_model.update(paper_id, update_data):
+                updated_paper = self.paper_model.find_by_id(paper_id)
+                return self._wrap_success(
+                    "成功添加章节",
+                    {
+                        "paper": updated_paper,
+                        "addedSection": new_section,
+                        "parentSectionId": parent_section_id,
+                        "position": position
+                    }
+                )
+            else:
+                return self._wrap_error("更新论文失败")
+
+        except Exception as exc:
+            return self._wrap_error(f"添加章节失败: {exc}")
+
+    def update_section(
+        self,
+        paper_id: str,
+        section_id: str,
+        update_data: Dict[str, Any],
+        user_id: str,
+        is_admin: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        更新指定章节
+        
+        Args:
+            paper_id: 论文ID
+            section_id: 章节ID
+            update_data: 更新数据，包含title, content等
+            user_id: 用户ID
+            is_admin: 是否为管理员
+            
+        Returns:
+            操作结果
+        """
+        try:
+            # 检查论文是否存在及权限
+            paper = self.paper_model.find_by_id(paper_id)
+            if not paper:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+
+            if not is_admin and paper["createdBy"] != user_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
+
+            # 查找并更新section
+            sections = paper.get("sections", [])
+            target_section, section_index, parent_path = self._find_section_by_id(
+                sections, section_id
+            )
+            
+            if target_section is None:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
+
+            # 更新section数据
+            for key, value in update_data.items():
+                if key in ["title", "content", "subsections"]:
+                    target_section[key] = value
+
+            # 重新更新sections结构
+            if parent_path:
+                # 如果是在子章节中，需要递归更新
+                sections = self._update_section_in_path(sections, parent_path, target_section)
+            else:
+                # 根级章节直接更新
+                sections[section_index] = target_section
+
+            # 更新论文
+            update_paper_data = {"sections": sections}
+            if self.paper_model.update(paper_id, update_paper_data):
+                updated_paper = self.paper_model.find_by_id(paper_id)
+                return self._wrap_success(
+                    "章节更新成功",
+                    {
+                        "paper": updated_paper,
+                        "updatedSection": target_section
+                    }
+                )
+            else:
+                return self._wrap_error("更新论文失败")
+
+        except Exception as exc:
+            return self._wrap_error(f"更新章节失败: {exc}")
+
+    def delete_section(
+        self,
+        paper_id: str,
+        section_id: str,
+        user_id: str,
+        is_admin: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        删除指定章节
+        
+        Args:
+            paper_id: 论文ID
+            section_id: 章节ID
+            user_id: 用户ID
+            is_admin: 是否为管理员
+            
+        Returns:
+            操作结果
+        """
+        try:
+            # 检查论文是否存在及权限
+            paper = self.paper_model.find_by_id(paper_id)
+            if not paper:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+
+            if not is_admin and paper["createdBy"] != user_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
+
+            # 查找并删除section
+            sections = paper.get("sections", [])
+            target_section, section_index, parent_path = self._find_section_by_id(
+                sections, section_id
+            )
+            
+            if target_section is None:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
+
+            # 删除section
+            if parent_path:
+                # 如果是在子章节中，需要递归更新
+                sections = self._delete_section_in_path(sections, parent_path)
+            else:
+                # 根级章节直接删除
+                sections.pop(section_index)
+
+            # 更新论文
+            update_paper_data = {"sections": sections}
+            if self.paper_model.update(paper_id, update_paper_data):
+                return self._wrap_success("章节删除成功", {"deletedSectionId": section_id})
+            else:
+                return self._wrap_error("更新论文失败")
+
+        except Exception as exc:
+            return self._wrap_error(f"删除章节失败: {exc}")
+
+    def update_block(
+        self,
+        paper_id: str,
+        section_id: str,
+        block_id: str,
+        update_data: Dict[str, Any],
+        user_id: str,
+        is_admin: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        更新指定block
+        
+        Args:
+            paper_id: 论文ID
+            section_id: 章节ID
+            block_id: block ID
+            update_data: 更新数据，包含content等
+            user_id: 用户ID
+            is_admin: 是否为管理员
+            
+        Returns:
+            操作结果
+        """
+        try:
+            # 检查论文是否存在及权限
+            paper = self.paper_model.find_by_id(paper_id)
+            if not paper:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+
+            if not is_admin and paper["createdBy"] != user_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
+
+            # 查找目标section
+            sections = paper.get("sections", [])
+            target_section, section_index, parent_path = self._find_section_by_id(
+                sections, section_id
+            )
+            
+            if target_section is None:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
+
+            # 查找并更新block
+            blocks = target_section.get("content", [])
+            target_block_index = -1
+            
+            for i, block in enumerate(blocks):
+                if block.get("id") == block_id:
+                    target_block_index = i
+                    break
+            
+            if target_block_index == -1:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的block不存在")
+
+            # 更新block数据
+            target_block = blocks[target_block_index]
+            for key, value in update_data.items():
+                if key in ["content", "type", "metadata"]:
+                    target_block[key] = value
+
+            blocks[target_block_index] = target_block
+            target_section["content"] = blocks
+
+            # 重新更新sections结构
+            if parent_path:
+                sections = self._update_section_in_path(sections, parent_path, target_section)
+            else:
+                sections[section_index] = target_section
+
+            # 更新论文
+            update_paper_data = {"sections": sections}
+            if self.paper_model.update(paper_id, update_paper_data):
+                updated_paper = self.paper_model.find_by_id(paper_id)
+                return self._wrap_success(
+                    "block更新成功",
+                    {
+                        "paper": updated_paper,
+                        "updatedBlock": target_block
+                    }
+                )
+            else:
+                return self._wrap_error("更新论文失败")
+
+        except Exception as exc:
+            return self._wrap_error(f"更新block失败: {exc}")
+
+    def delete_block(
+        self,
+        paper_id: str,
+        section_id: str,
+        block_id: str,
+        user_id: str,
+        is_admin: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        删除指定block
+        
+        Args:
+            paper_id: 论文ID
+            section_id: 章节ID
+            block_id: block ID
+            user_id: 用户ID
+            is_admin: 是否为管理员
+            
+        Returns:
+            操作结果
+        """
+        try:
+            # 检查论文是否存在及权限
+            paper = self.paper_model.find_by_id(paper_id)
+            if not paper:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+
+            if not is_admin and paper["createdBy"] != user_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
+
+            # 查找目标section
+            sections = paper.get("sections", [])
+            target_section, section_index, parent_path = self._find_section_by_id(
+                sections, section_id
+            )
+            
+            if target_section is None:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
+
+            # 查找并删除block
+            blocks = target_section.get("content", [])
+            target_block_index = -1
+            
+            for i, block in enumerate(blocks):
+                if block.get("id") == block_id:
+                    target_block_index = i
+                    break
+            
+            if target_block_index == -1:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的block不存在")
+
+            # 删除block
+            deleted_block = blocks.pop(target_block_index)
+            target_section["content"] = blocks
+
+            # 重新更新sections结构
+            if parent_path:
+                sections = self._update_section_in_path(sections, parent_path, target_section)
+            else:
+                sections[section_index] = target_section
+
+            # 更新论文
+            update_paper_data = {"sections": sections}
+            if self.paper_model.update(paper_id, update_paper_data):
+                return self._wrap_success("block删除成功", {"deletedBlockId": block_id})
+            else:
+                return self._wrap_error("更新论文失败")
+
+        except Exception as exc:
+            return self._wrap_error(f"删除block失败: {exc}")
+
+    def add_block_directly(
+        self,
+        paper_id: str,
+        section_id: str,
+        block_data: Dict[str, Any],
+        user_id: str,
+        is_admin: bool = False,
+        after_block_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        直接向指定section添加一个block，不通过LLM解析
+        
+        Args:
+            paper_id: 论文ID
+            section_id: section ID
+            block_data: block数据
+            user_id: 用户ID
+            is_admin: 是否为管理员
+            after_block_id: 在指定block后插入，不传则在末尾添加
+            
+        Returns:
+            操作结果
+        """
+        try:
+            # 检查论文是否存在及权限
+            paper = self.paper_model.find_by_id(paper_id)
+            if not paper:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+
+            if not is_admin and paper["createdBy"] != user_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
+
+            # 验证block数据
+            if not block_data or not block_data.get("type"):
+                return self._wrap_error("block数据不完整，缺少type字段")
+
+            # 查找目标section
+            sections = paper.get("sections", [])
+            target_section = None
+            section_index = -1
+            
+            for i, section in enumerate(sections):
+                if section.get("id") == section_id:
+                    target_section = section
+                    section_index = i
+                    break
+            
+            if target_section is None:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
+
+            # 确保section有content字段
+            if "content" not in target_section:
+                target_section["content"] = []
+            
+            # 根据after_block_id确定插入位置
+            current_blocks = target_section["content"]
+            insert_index = len(current_blocks)  # 默认在末尾
+            
+            if after_block_id:
+                for i, block in enumerate(current_blocks):
+                    if block.get("id") == after_block_id:
+                        insert_index = i + 1  # 插入到指定block后面
+                        break
+            
+            # 创建新block
+            new_block = {
+                "id": block_data.get("id", f"block_{int(time.time())}_{hash(block_data.get('type', 'unknown'))}"),
+                "type": block_data.get("type"),
+                "content": block_data.get("content", {}),
+                "metadata": block_data.get("metadata", {}),
+            }
+            
+            # 根据不同类型设置默认值
+            if block_data.get("type") == "math" and "latex" in block_data:
+                new_block["latex"] = block_data["latex"]
+            elif block_data.get("type") == "code" and "code" in block_data:
+                new_block["code"] = block_data["code"]
+                new_block["language"] = block_data.get("language", "python")
+            elif block_data.get("type") == "figure" and "url" in block_data:
+                new_block["url"] = block_data["url"]
+                new_block["alt"] = block_data.get("alt", "")
+            elif block_data.get("type") == "table":
+                new_block["headers"] = block_data.get("headers", ["Column 1", "Column 2"])
+                new_block["rows"] = block_data.get("rows", [[]])
+            elif block_data.get("type") in ["ordered-list", "unordered-list"]:
+                # 处理列表类型的items字段
+                new_block["items"] = block_data.get("items", [
+                    {
+                        "content": {
+                            "en": [{"type": "text", "content": "First item"}],
+                            "zh": [{"type": "text", "content": "第一项"}]
+                        }
+                    },
+                    {
+                        "content": {
+                            "en": [{"type": "text", "content": "Second item"}],
+                            "zh": [{"type": "text", "content": "第二项"}]
+                        }
+                    }
+                ])
+                if block_data.get("type") == "ordered-list":
+                    new_block["start"] = block_data.get("start", 1)
+            elif block_data.get("type") == "quote":
+                new_block["author"] = block_data.get("author", "Author")
+            elif block_data.get("type") == "heading":
+                new_block["level"] = block_data.get("level", 2)
+            
+            # 插入新block
+            current_blocks.insert(insert_index, new_block)
+            target_section["content"] = current_blocks
+            sections[section_index] = target_section
+
+            # 更新论文
+            update_data = {"sections": sections}
+            if self.paper_model.update(paper_id, update_data):
+                updated_paper = self.paper_model.find_by_id(paper_id)
+                return self._wrap_success(
+                    "成功添加block",
+                    {
+                        "paper": updated_paper,
+                        "addedBlock": new_block,
+                        "sectionId": section_id
+                    }
+                )
+            else:
+                return self._wrap_error("更新论文失败")
+
+        except Exception as exc:
+            return self._wrap_error(f"添加block失败: {exc}")
+
+    def add_block_from_text(
+        self,
+        paper_id: str,
+        section_id: str,
+        text: str,
+        user_id: str,
+        is_admin: bool = False,
+        after_block_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """
+        使用大模型解析文本并将生成的block添加到指定section中
+        
+        Args:
+            paper_id: 论文ID
+            section_id: section ID
+            text: 需要解析的文本
+            user_id: 用户ID
+            is_admin: 是否为管理员
+            after_block_id: 在指定block后插入，不传则在末尾添加
+            
+        Returns:
+            操作结果
+        """
+        try:
+            # 检查论文是否存在及权限
+            paper = self.paper_model.find_by_id(paper_id)
+            if not paper:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+
+            if not is_admin and paper["createdBy"] != user_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
+
+            # 检查输入文本
+            if not text or not text.strip():
+                return self._wrap_error("文本内容不能为空")
+
+            # 查找目标section
+            sections = paper.get("sections", [])
+            target_section = None
+            section_index = -1
+            
+            for i, section in enumerate(sections):
+                if section.get("id") == section_id:
+                    target_section = section
+                    section_index = i
+                    break
+            
+            if target_section is None:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
+
+            # 获取section上下文信息
+            section_context = f"Section标题: {target_section.get('title', '未知')}"
+            if target_section.get('content'):
+                section_context += f", Section内容: {target_section['content'][:200]}..."
+
+            # 使用LLM解析文本为block
+            llm_utils = get_llm_utils()
+            new_blocks = llm_utils.parse_text_to_blocks(text, section_context)
+
+            if not new_blocks:
+                return self._wrap_error("文本解析失败，无法生成有效的block")
+
+            # 取第一个block（因为现在只添加一个block）
+            new_block = new_blocks[0]
+
+            # 将新block添加到section中
+            if "content" not in target_section:
+                target_section["content"] = []
+            
+            # 根据after_block_id确定插入位置
+            current_blocks = target_section["content"]
+            insert_index = len(current_blocks)  # 默认在末尾
+            
+            if after_block_id:
+                for i, block in enumerate(current_blocks):
+                    if block.get("id") == after_block_id:
+                        insert_index = i + 1  # 插入到指定block后面
+                        break
+            
+            # 插入新block
+            current_blocks.insert(insert_index, new_block)
+            target_section["content"] = current_blocks
+            sections[section_index] = target_section
+
+            # 更新论文
+            update_data = {"sections": sections}
+            if self.paper_model.update(paper_id, update_data):
+                updated_paper = self.paper_model.find_by_id(paper_id)
+                return self._wrap_success(
+                    f"成功向section添加了1个block",
+                    {
+                        "paper": updated_paper,
+                        "addedBlock": new_block,
+                        "sectionId": section_id
+                    }
+                )
+            else:
+                return self._wrap_error("更新论文失败")
+
+        except Exception as exc:
+            return self._wrap_error(f"从文本添加block到section失败: {exc}")
+
+    def _insert_section_into_subsections(
+        self,
+        sections: List[Dict[str, Any]],
+        parent_section_id: str,
+        new_section: Dict[str, Any],
+        position: int
+    ) -> List[Dict[str, Any]]:
+        """在指定章节的子章节中插入新章节"""
+        for i, section in enumerate(sections):
+            if section.get("id") == parent_section_id:
+                # 找到父章节
+                current_subsections = section.get("subsections", [])
+                if position == -1 or position >= len(current_subsections):
+                    current_subsections.append(new_section)
+                elif 0 <= position < len(current_subsections):
+                    current_subsections.insert(position, new_section)
+                else:
+                    current_subsections.append(new_section)
+                
+                sections[i]["subsections"] = current_subsections
+                return sections
+            
+            # 递归检查子章节
+            if section.get("subsections"):
+                updated_subsections = self._insert_section_into_subsections(
+                    section["subsections"], parent_section_id, new_section, position
+                )
+                if updated_subsections != section["subsections"]:
+                    sections[i]["subsections"] = updated_subsections
+                    return sections
+        
+        return sections
+
+    def _find_section_by_id(
+        self, sections: List[Dict[str, Any]], section_id: str, parent_path: str = ""
+    ) -> Tuple[Optional[Dict[str, Any]], int, Optional[str]]:
+        """
+        根据ID查找章节，返回章节、索引和父路径
+        
+        Args:
+            sections: 章节列表
+            section_id: 章节ID
+            parent_path: 父路径
+            
+        Returns:
+            (章节对象, 索引, 父路径)
+        """
+        for i, section in enumerate(sections):
+            current_path = f"{parent_path}/{i}" if parent_path else str(i)
+            
+            if section.get("id") == section_id:
+                return section, i, parent_path if parent_path else None
+            
+            # 递归查找子章节
+            if section.get("subsections"):
+                found, index, path = self._find_section_by_id(
+                    section["subsections"], section_id, current_path
+                )
+                if found:
+                    return found, index, path
+        
+        return None, -1, None
+
+    def _update_section_in_path(
+        self,
+        sections: List[Dict[str, Any]],
+        parent_path: str,
+        updated_section: Dict[str, Any]
+    ) -> List[Dict[str, Any]]:
+        """
+        根据路径更新章节
+        
+        Args:
+            sections: 章节列表
+            parent_path: 父路径
+            updated_section: 更新后的章节
+            
+        Returns:
+            更新后的章节列表
+        """
+        if not parent_path:
+            return sections
+        
+        path_parts = parent_path.split("/")
+        if not path_parts:
+            return sections
+        
+        # 找到要更新的章节索引
+        section_index = int(path_parts[0])
+        
+        if len(path_parts) == 1:
+            # 根级章节，直接更新
+            sections[section_index] = updated_section
+        else:
+            # 子章节，递归更新
+            remaining_path = "/".join(path_parts[1:])
+            sections[section_index]["subsections"] = self._update_section_in_path(
+                sections[section_index].get("subsections", []),
+                remaining_path,
+                updated_section
+            )
+        
+        return sections
+
+    def _delete_section_in_path(
+        self,
+        sections: List[Dict[str, Any]],
+        parent_path: str
+    ) -> List[Dict[str, Any]]:
+        """
+        根据路径删除章节
+        
+        Args:
+            sections: 章节列表
+            parent_path: 父路径
+            
+        Returns:
+            更新后的章节列表
+        """
+        if not parent_path:
+            return sections
+        
+        path_parts = parent_path.split("/")
+        if not path_parts:
+            return sections
+        
+        # 找到要删除的章节索引
+        section_index = int(path_parts[0])
+        
+        if len(path_parts) == 1:
+            # 根级章节，直接删除
+            sections.pop(section_index)
+        else:
+            # 子章节，递归删除
+            remaining_path = "/".join(path_parts[1:])
+            sections[section_index]["subsections"] = self._delete_section_in_path(
+                sections[section_index].get("subsections", []),
+                remaining_path
+            )
+        
+        return sections
 
     # ------------------------------------------------------------------
     # 统计 & 个人论文库占位
@@ -489,7 +1227,6 @@ class PaperService:
 
     def _wrap_error(self, message: str) -> Dict[str, Any]:
         return self._wrap_failure(BusinessCode.UNKNOWN_ERROR, message)
-
 
 
 _paper_service: Optional[PaperService] = None

@@ -4,3 +4,4 @@ python-dotenv==1.0.1
 PyJWT==2.9.0
 Flask-CORS==4.0.0
 zai-sdk==0.0.4
+requests==2.32.5

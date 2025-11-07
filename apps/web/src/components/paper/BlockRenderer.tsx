@@ -767,7 +767,7 @@ export default function BlockRenderer({
       case 'ordered-list':
         return (
           <ol start={block.start ?? 1} className="my-3 list-decimal space-y-1.5 pl-6">
-            {block.items.map((item, i) => {
+            {(block.items || []).map((item, i) => {
               const wantZh = previewLang === 'zh';
               const zhMissing = wantZh && !hasZh(item.content?.zh);
               return (
@@ -792,7 +792,7 @@ export default function BlockRenderer({
       case 'unordered-list':
         return (
           <ul className="my-3 list-disc space-y-1.5 pl-6">
-            {block.items.map((item, i) => {
+            {(block.items || []).map((item, i) => {
               const wantZh = previewLang === 'zh';
               const zhMissing = wantZh && !hasZh(item.content?.zh);
               return (

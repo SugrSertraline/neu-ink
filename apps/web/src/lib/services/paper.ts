@@ -1,6 +1,36 @@
 // 论文服务层 - 对接后端真实 API
 
-import { AddBlocksToSectionRequest, AddBlocksToSectionResult, AddToLibraryRequest, CreateNoteRequest, CreatePaperFromTextRequest, CreatePaperFromMetadataRequest, DeleteResult, Note, NoteFilters, NoteListData, Paper, PaperContent, PaperListData, PublicPaperFilters, UpdateNoteRequest, UpdateReadingProgressRequest, UpdateUserPaperRequest, UserPaper, UserPaperFilters, UserPaperListData, UserStatistics } from '@/types/paper/index';
+import {
+  AddBlockFromTextToSectionRequest,
+  AddBlockFromTextToSectionResult,
+  AddBlockToSectionRequest,
+  AddBlockToSectionResult,
+  AddToLibraryRequest,
+  CreateNoteRequest,
+  CreatePaperFromTextRequest,
+  CreatePaperFromMetadataRequest,
+  DeleteResult,
+  UpdateSectionRequest,
+  UpdateSectionResult,
+  DeleteSectionResult,
+  UpdateBlockRequest,
+  UpdateBlockResult,
+  DeleteBlockResult,
+  Note,
+  NoteFilters,
+  NoteListData,
+  Paper,
+  PaperContent,
+  PaperListData,
+  PublicPaperFilters,
+  UpdateNoteRequest,
+  UpdateReadingProgressRequest,
+  UpdateUserPaperRequest,
+  UserPaper,
+  UserPaperFilters,
+  UserPaperListData,
+  UserStatistics
+} from '@/types/paper/index';
 import { apiClient, callAndNormalize } from '../http';
 import type { UnifiedResult } from '@/types/api';
 
@@ -145,15 +175,103 @@ export const userPaperService = {
   },
 
   /**
-   * 向个人论文的指定section添加blocks
+   * 向个人论文的指定section直接添加block（不通过LLM解析）
    */
-  addBlocksToSection(
+  addBlockToSection(
     userPaperId: string,
     sectionId: string,
-    request: AddBlocksToSectionRequest
-  ): Promise<UnifiedResult<AddBlocksToSectionResult>> {
-    return callAndNormalize<AddBlocksToSectionResult>(
-      apiClient.post(`/user/papers/${userPaperId}/sections/${sectionId}/add-blocks`, request)
+    request: AddBlockToSectionRequest
+  ): Promise<UnifiedResult<AddBlockToSectionResult>> {
+    return callAndNormalize<AddBlockToSectionResult>(
+      apiClient.post(`/user/papers/${userPaperId}/sections/${sectionId}/add-block`, request)
+    );
+  },
+
+  /**
+   * 向个人论文的指定section从文本解析添加block
+   */
+  addBlockFromTextToSection(
+    userPaperId: string,
+    sectionId: string,
+    request: AddBlockFromTextToSectionRequest
+  ): Promise<UnifiedResult<AddBlockFromTextToSectionResult>> {
+    return callAndNormalize<AddBlockFromTextToSectionResult>(
+      apiClient.post(`/user/papers/${userPaperId}/sections/${sectionId}/add-block-from-text`, request)
+    );
+  },
+
+  /**
+   * 向个人论文添加新章节
+   */
+  addSection(
+    userPaperId: string,
+    sectionData: {
+      title: { en: string; zh: string };
+      content?: any[];
+    },
+    options?: {
+      parentSectionId?: string;
+      position?: number;
+    }
+  ): Promise<UnifiedResult<AddBlockToSectionResult>> {
+    return callAndNormalize<AddBlockToSectionResult>(
+      apiClient.post(`/user/papers/${userPaperId}/add-section`, {
+        sectionData,
+        parentSectionId: options?.parentSectionId,
+        position: options?.position ?? -1
+      })
+    );
+  },
+
+  /**
+   * 更新个人论文的指定section
+   */
+  updateSection(
+    userPaperId: string,
+    sectionId: string,
+    updateData: UpdateSectionRequest
+  ): Promise<UnifiedResult<UpdateSectionResult>> {
+    return callAndNormalize<UpdateSectionResult>(
+      apiClient.put(`/user/papers/${userPaperId}/sections/${sectionId}`, updateData)
+    );
+  },
+
+  /**
+   * 删除个人论文的指定section
+   */
+  deleteSection(
+    userPaperId: string,
+    sectionId: string
+  ): Promise<UnifiedResult<DeleteSectionResult>> {
+    return callAndNormalize<DeleteSectionResult>(
+      apiClient.delete(`/user/papers/${userPaperId}/sections/${sectionId}`)
+    );
+  },
+
+  /**
+   * 更新个人论文的指定section中的指定block
+   */
+  updateBlock(
+    userPaperId: string,
+    sectionId: string,
+    blockId: string,
+    updateData: UpdateBlockRequest
+  ): Promise<UnifiedResult<UpdateBlockResult>> {
+    return callAndNormalize<UpdateBlockResult>(
+      apiClient.put(`/user/papers/${userPaperId}/sections/${sectionId}/blocks/${blockId}`, updateData)
+    );
+  },
+
+  /**
+   * 删除个人论文的指定section中的指定block
+   */
+  deleteBlock(
+    userPaperId: string,
+    sectionId: string,
+    blockId: string
+  ): Promise<UnifiedResult<DeleteBlockResult>> {
+    return callAndNormalize<DeleteBlockResult>(
+      apiClient.delete(`/user/papers/${userPaperId}/sections/${sectionId}/blocks/${blockId}`)
     );
   },
 
@@ -326,15 +444,103 @@ export const adminPaperService = {
   },
 
   /**
-   * 向管理员论文的指定section添加blocks
+   * 向管理员论文的指定section直接添加block（不通过LLM解析）
    */
-  addBlocksToSection(
+  addBlockToSection(
     paperId: string,
     sectionId: string,
-    request: AddBlocksToSectionRequest
-  ): Promise<UnifiedResult<AddBlocksToSectionResult>> {
-    return callAndNormalize<AddBlocksToSectionResult>(
-      apiClient.post(`/admin/papers/${paperId}/sections/${sectionId}/add-blocks`, request)
+    request: AddBlockToSectionRequest
+  ): Promise<UnifiedResult<AddBlockToSectionResult>> {
+    return callAndNormalize<AddBlockToSectionResult>(
+      apiClient.post(`/admin/papers/${paperId}/sections/${sectionId}/add-block`, request)
+    );
+  },
+
+  /**
+   * 向管理员论文的指定section从文本解析添加block
+   */
+  addBlockFromTextToSection(
+    paperId: string,
+    sectionId: string,
+    request: AddBlockFromTextToSectionRequest
+  ): Promise<UnifiedResult<AddBlockFromTextToSectionResult>> {
+    return callAndNormalize<AddBlockFromTextToSectionResult>(
+      apiClient.post(`/admin/papers/${paperId}/sections/${sectionId}/add-block-from-text`, request)
+    );
+  },
+
+  /**
+   * 向管理员论文添加新章节
+   */
+  addSection(
+    paperId: string,
+    sectionData: {
+      title: { en: string; zh: string };
+      content?: any[];
+    },
+    options?: {
+      parentSectionId?: string;
+      position?: number;
+    }
+  ): Promise<UnifiedResult<AddBlockToSectionResult>> {
+    return callAndNormalize<AddBlockToSectionResult>(
+      apiClient.post(`/admin/papers/${paperId}/add-section`, {
+        sectionData,
+        parentSectionId: options?.parentSectionId,
+        position: options?.position ?? -1
+      })
+    );
+  },
+
+  /**
+   * 更新管理员论文的指定section
+   */
+  updateSection(
+    paperId: string,
+    sectionId: string,
+    updateData: UpdateSectionRequest
+  ): Promise<UnifiedResult<UpdateSectionResult>> {
+    return callAndNormalize<UpdateSectionResult>(
+      apiClient.put(`/admin/papers/${paperId}/sections/${sectionId}`, updateData)
+    );
+  },
+
+  /**
+   * 删除管理员论文的指定section
+   */
+  deleteSection(
+    paperId: string,
+    sectionId: string
+  ): Promise<UnifiedResult<DeleteSectionResult>> {
+    return callAndNormalize<DeleteSectionResult>(
+      apiClient.delete(`/admin/papers/${paperId}/sections/${sectionId}`)
+    );
+  },
+
+  /**
+   * 更新管理员论文的指定section中的指定block
+   */
+  updateBlock(
+    paperId: string,
+    sectionId: string,
+    blockId: string,
+    updateData: UpdateBlockRequest
+  ): Promise<UnifiedResult<UpdateBlockResult>> {
+    return callAndNormalize<UpdateBlockResult>(
+      apiClient.put(`/admin/papers/${paperId}/sections/${sectionId}/blocks/${blockId}`, updateData)
+    );
+  },
+
+  /**
+   * 删除管理员论文的指定section中的指定block
+   */
+  deleteBlock(
+    paperId: string,
+    sectionId: string,
+    blockId: string
+  ): Promise<UnifiedResult<DeleteBlockResult>> {
+    return callAndNormalize<DeleteBlockResult>(
+      apiClient.delete(`/admin/papers/${paperId}/sections/${sectionId}/blocks/${blockId}`)
     );
   },
 };

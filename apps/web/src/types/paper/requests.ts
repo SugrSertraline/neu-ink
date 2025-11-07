@@ -161,15 +161,74 @@ export interface DeleteResult {
   deletedCount?: number;
 }
 
-// —— 请求：向section添加blocks ——
-export interface AddBlocksToSectionRequest {
+// —— 请求：向section添加blocks（从文本解析）——
+export interface AddBlockFromTextToSectionRequest {
   text: string;
   afterBlockId?: string;  // 可选：指定在哪个block后插入
 }
 
-// —— 响应：添加blocks结果 ——
-export interface AddBlocksToSectionResult {
+// —— 响应：添加block结果（从文本解析）——
+export interface AddBlockFromTextToSectionResult {
   paper: Paper;
-  addedBlocks: import('./content').BlockContent[];
+  addedBlock: import('./content').BlockContent;
   sectionId: string;
+}
+
+// —— 请求：直接向section添加block ——
+export interface AddBlockToSectionRequest {
+  blockData: {
+    type: string;
+    content?: any;
+    metadata?: any;
+    latex?: string;
+    code?: string;
+    language?: string;
+    url?: string;
+    alt?: string;
+    headers?: string[];
+    rows?: any[][];
+  };
+  afterBlockId?: string;  // 可选：指定在哪个block后插入
+}
+
+// —— 响应：直接添加block结果 ——
+export interface AddBlockToSectionResult {
+  paper: Paper;
+  addedBlock: import('./content').BlockContent;
+  sectionId: string;
+}
+
+// —— 请求：更新section ——
+export interface UpdateSectionRequest {
+  title?: { en: string; zh: string };
+  content?: any[];
+}
+
+// —— 响应：更新section结果 ——
+export interface UpdateSectionResult {
+  paper: Paper;
+  updatedSection: any;
+}
+
+// —— 响应：删除section结果 ——
+export interface DeleteSectionResult {
+  deletedSectionId: string;
+}
+
+// —— 请求：更新block ——
+export interface UpdateBlockRequest {
+  content?: string;
+  type?: string;
+  metadata?: any;
+}
+
+// —— 响应：更新block结果 ——
+export interface UpdateBlockResult {
+  paper: Paper;
+  updatedBlock: any;
+}
+
+// —— 响应：删除block结果 ——
+export interface DeleteBlockResult {
+  deletedBlockId: string;
 }

@@ -144,6 +144,53 @@ def create_paper_from_text():
         return internal_error_response(f"服务器错误: {exc}")
 
 
+@bp.route("/<paper_id>/add-section", methods=["POST"])
+@login_required
+@admin_required
+def add_section(paper_id):
+    """
+    管理员向指定论文添加新章节
+    
+    请求体示例:
+    {
+        "sectionData": {
+            "title": {"en": "New Section", "zh": "新章节"},
+            "content": []
+        },
+        "parentSectionId": "section_123",  // 可选：父章节ID
+        "position": -1  // 可选：插入位置，-1为末尾
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or not data.get("sectionData"):
+            return bad_request_response("章节数据不能为空")
+        
+        section_data = data.get("sectionData")
+        parent_section_id = data.get("parentSectionId")
+        position = data.get("position", -1)
+        
+        service = get_paper_service()
+        result = service.add_section(
+            paper_id=paper_id,
+            section_data=section_data,
+            user_id=g.current_user["user_id"],
+            is_admin=True,
+            parent_section_id=parent_section_id,
+            position=position
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
 @bp.route("/<paper_id>", methods=["PUT"])
 @login_required
 @admin_required
@@ -244,12 +291,65 @@ def get_admin_paper_detail(paper_id):
         return internal_error_response(f"服务器错误: {exc}")
 
 
-@bp.route("/<paper_id>/sections/<section_id>/add-blocks", methods=["POST"])
+@bp.route("/<paper_id>/sections/<section_id>/add-block", methods=["POST"])
 @login_required
 @admin_required
-def add_blocks_to_section(paper_id, section_id):
+def add_block_to_section(paper_id, section_id):
     """
-    管理员向指定论文的指定section中添加blocks（使用大模型解析文本）
+    管理员向指定论文的指定section直接添加一个block（不通过LLM解析）
+    
+    请求体示例:
+    {
+        "blockData": {
+            "type": "paragraph",
+            "content": {
+                "en": [{"type": "text", "content": "English content"}],
+                "zh": [{"type": "text", "content": "中文内容"}]
+            },
+            "metadata": {}
+        },
+        "afterBlockId": "block_123"  // 可选：指定在哪个block后插入
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or not data.get("blockData"):
+            return bad_request_response("block数据不能为空")
+        
+        block_data = data.get("blockData")
+        after_block_id = data.get("afterBlockId")
+        
+        # 验证block数据
+        if not block_data.get("type"):
+            return bad_request_response("block类型不能为空")
+        
+        service = get_paper_service()
+        result = service.add_block_directly(
+            paper_id=paper_id,
+            section_id=section_id,
+            block_data=block_data,
+            user_id=g.current_user["user_id"],
+            is_admin=True,
+            after_block_id=after_block_id
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>/sections/<section_id>/add-block-from-text", methods=["POST"])
+@login_required
+@admin_required
+def add_block_from_text_to_section(paper_id, section_id):
+    """
+    管理员向指定论文的指定section中添加block（使用大模型解析文本）
     
     请求体示例:
     {
@@ -266,7 +366,7 @@ def add_blocks_to_section(paper_id, section_id):
         after_block_id = data.get("afterBlockId")  # 获取插入位置
         
         service = get_paper_service()
-        result = service.add_blocks_to_section(
+        result = service.add_block_from_text(
             paper_id=paper_id,
             section_id=section_id,
             text=text,
@@ -285,4 +385,142 @@ def add_blocks_to_section(paper_id, section_id):
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
 
+
+@bp.route("/<paper_id>/sections/<section_id>", methods=["PUT"])
+@login_required
+@admin_required
+def update_section(paper_id, section_id):
+    """
+    管理员更新指定论文的指定section
+    
+    请求体示例:
+    {
+        "title": {"en": "Updated Section", "zh": "更新的章节"},
+        "content": [
+            {
+                "id": "block_123",
+                "type": "paragraph",
+                "content": "更新的段落内容"
+            }
+        ]
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return bad_request_response("更新数据不能为空")
+        
+        service = get_paper_service()
+        result = service.update_section(
+            paper_id=paper_id,
+            section_id=section_id,
+            update_data=data,
+            user_id=g.current_user["user_id"],
+            is_admin=True
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>/sections/<section_id>", methods=["DELETE"])
+@login_required
+@admin_required
+def delete_section(paper_id, section_id):
+    """
+    管理员删除指定论文的指定section
+    """
+    try:
+        service = get_paper_service()
+        result = service.delete_section(
+            paper_id=paper_id,
+            section_id=section_id,
+            user_id=g.current_user["user_id"],
+            is_admin=True
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>/sections/<section_id>/blocks/<block_id>", methods=["PUT"])
+@login_required
+@admin_required
+def update_block(paper_id, section_id, block_id):
+    """
+    管理员更新指定论文的指定section中的指定block
+    
+    请求体示例:
+    {
+        "content": "更新的block内容",
+        "type": "paragraph",
+        "metadata": {}
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return bad_request_response("更新数据不能为空")
+        
+        service = get_paper_service()
+        result = service.update_block(
+            paper_id=paper_id,
+            section_id=section_id,
+            block_id=block_id,
+            update_data=data,
+            user_id=g.current_user["user_id"],
+            is_admin=True
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>/sections/<section_id>/blocks/<block_id>", methods=["DELETE"])
+@login_required
+@admin_required
+def delete_block(paper_id, section_id, block_id):
+    """
+    管理员删除指定论文的指定section中的指定block
+    """
+    try:
+        service = get_paper_service()
+        result = service.delete_block(
+            paper_id=paper_id,
+            section_id=section_id,
+            block_id=block_id,
+            user_id=g.current_user["user_id"],
+            is_admin=True
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
 
