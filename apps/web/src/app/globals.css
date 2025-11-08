@@ -177,3 +177,18 @@
   animation: glow-press 280ms ease forwards;
 }
 
+/* 目录高亮效果 */
+.toc-highlighted {
+  position: relative;
+  background-color: rgba(59, 130, 246, 0.1);
+  border-left: 4px solid rgb(59, 130, 246);
+  padding-left: 12px;
+  border-radius: 0 4px 4px 0;
+  transition: all 0.3s ease;
+}
+
+.dark .toc-highlighted {
+  background-color: rgba(59, 130, 246, 0.2);
+  border-left-color: rgb(96, 165, 250);
+}
+

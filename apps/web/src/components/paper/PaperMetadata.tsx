@@ -31,6 +31,7 @@ interface PaperMetadataProps {
   lang?: 'en' | 'both';
   onEditRequest?: () => void;
   onAbstractKeywordsEditRequest?: () => void;
+  'data-metadata'?: string;
 }
 
 // 优化后的作者信息渲染，使用 Avatar 和 HoverCard
@@ -208,13 +209,14 @@ export default function PaperMetadata({
   lang = 'en',
   onEditRequest,
   onAbstractKeywordsEditRequest,
+  'data-metadata': dataMetadata,
 }: PaperMetadataProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
   const allowEdit = canEditContent && Boolean(onEditRequest);
   const allowAbstractKeywordsEdit = canEditContent && Boolean(onAbstractKeywordsEditRequest);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-8" data-metadata={dataMetadata}>
       <MetadataContextMenu onEdit={allowEdit ? onEditRequest : undefined}>
         <div data-metadata-region="true">
           <MetadataDisplay metadata={metadata} />

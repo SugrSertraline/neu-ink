@@ -295,15 +295,54 @@ export function usePaperSections(
     }
   }, [updateSectionTree, handleSectionUpdateWithAPI]);
 
-  // 保留原有函数，但标记为已弃用
+  // 修改为支持API调用的版本
   const handleSectionAddSubsection = useCallback(
-    (sectionId: string) => {
+    async (
+      sectionId: string,
+      paperId: string,
+      userPaperId: string | null,
+      isPersonalOwner: boolean,
+      onSaveToServer?: () => Promise<void>
+    ) => {
+      const newSection = createEmptySection();
+      
+      // 先本地更新UI
       updateSectionTree(sectionId, section => ({
         ...section,
-        subsections: [...(section.subsections ?? []), createEmptySection()],
+        subsections: [...(section.subsections ?? []), newSection],
       }));
+      
+      // 调用API保存
+      const sectionData = {
+        title: {
+          en: newSection.title.en || '',
+          zh: newSection.title.zh || ''
+        },
+        content: newSection.content || []
+      };
+
+      const result = await handleSectionAddWithAPI(
+        paperId,
+        userPaperId,
+        isPersonalOwner,
+        sectionData,
+        {
+          parentSectionId: sectionId,
+          position: -1 // 添加到末尾
+        }
+      );
+
+      // 如果API调用失败，可以考虑回滚本地更新
+      if (!result.success) {
+        console.error('Failed to add subsection:', result.error);
+        // 回滚本地更新
+        updateSectionTree(sectionId, section => ({
+          ...section,
+          subsections: (section.subsections ?? []).filter(sub => sub.id !== newSection.id)
+        }));
+      }
     },
-    [updateSectionTree]
+    [updateSectionTree, handleSectionAddWithAPI]
   );
 
   const handleSectionInsert = useCallback(
@@ -747,6 +786,98 @@ export function usePaperSections(
     [updateSectionTree]
   );
 
+  // 新增：通过文本添加blocks到section的函数
+  const handleAddBlocksFromText = useCallback(async (
+    sectionId: string,
+    text: string,
+    paperId: string,
+    userPaperId: string | null,
+    isPersonalOwner: boolean,
+    afterBlockId?: string
+  ) => {
+    try {
+      if (isPersonalOwner && userPaperId) {
+        const { userPaperService } = await import('@/lib/services/paper');
+        const result = await userPaperService.addBlockFromTextToSection(userPaperId, sectionId, {
+          text,
+          afterBlockId
+        });
+        
+        if (result.bizCode === 0) {
+          // 更新本地状态，添加返回的blocks
+          updateSectionTree(sectionId, section => {
+            const currentBlocks = section.content || [];
+            let insertIndex = currentBlocks.length; // 默认在末尾
+            
+            if (afterBlockId) {
+              for (let i = 0; i < currentBlocks.length; i++) {
+                if (currentBlocks[i].id === afterBlockId) {
+                  insertIndex = i + 1;
+                  break;
+                }
+              }
+            }
+            
+            const newBlocks = [...currentBlocks];
+            newBlocks.splice(insertIndex, 0, ...result.data.addedBlocks);
+            
+            return {
+              ...section,
+              content: newBlocks
+            };
+          });
+          
+          toast.success(`成功添加了${result.data.addedBlocks.length}个段落`);
+          return { success: true, addedBlocks: result.data.addedBlocks };
+        } else {
+          toast.error('添加失败', { description: result.bizMessage || '服务器错误' });
+          return { success: false, error: result.bizMessage || '添加段落失败' };
+        }
+      } else {
+        const { adminPaperService } = await import('@/lib/services/paper');
+        const result = await adminPaperService.addBlockFromTextToSection(paperId, sectionId, {
+          text,
+          afterBlockId
+        });
+        
+        if (result.bizCode === 0) {
+          // 更新本地状态，添加返回的blocks
+          updateSectionTree(sectionId, section => {
+            const currentBlocks = section.content || [];
+            let insertIndex = currentBlocks.length; // 默认在末尾
+            
+            if (afterBlockId) {
+              for (let i = 0; i < currentBlocks.length; i++) {
+                if (currentBlocks[i].id === afterBlockId) {
+                  insertIndex = i + 1;
+                  break;
+                }
+              }
+            }
+            
+            const newBlocks = [...currentBlocks];
+            newBlocks.splice(insertIndex, 0, ...result.data.addedBlocks);
+            
+            return {
+              ...section,
+              content: newBlocks
+            };
+          });
+          
+          toast.success(`成功添加了${result.data.addedBlocks.length}个段落`);
+          return { success: true, addedBlocks: result.data.addedBlocks };
+        } else {
+          toast.error('添加失败', { description: result.bizMessage || '服务器错误' });
+          return { success: false, error: result.bizMessage || '添加段落失败' };
+        }
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '添加段落时发生未知错误';
+      toast.error('添加失败', { description: message });
+      return { success: false, error: message };
+    }
+  }, [updateSectionTree]);
+
   return {
     updateSections,
     updateSectionTree,
@@ -760,5 +891,6 @@ export function usePaperSections(
     handleSectionAddWithAPI,
     handleSectionDeleteWithAPI,
     handleSectionUpdateWithAPI,
+    handleAddBlocksFromText,
   };
 }

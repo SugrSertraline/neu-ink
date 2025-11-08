@@ -572,16 +572,18 @@ class LLMUtils:
         safe_print(f"文本长度: {len(text)} 字符")
         
         if not self.glm_api_key or self.glm_api_key == "your_glm_api_key_here":
-            safe_print("LLM不可用，使用简单解析")
-            blocks = self._simple_text_to_blocks(text)
-            return self._simple_text_to_blocks(text)
+            error_msg = "LLM服务不可用：未配置GLM_API_KEY或使用了占位符值。请在.env文件中设置有效的GLM API密钥。"
+            safe_print(error_msg)
+            # 抛出异常而不是静默回退，让用户知道问题所在
+            raise RuntimeError(error_msg)
         
         try:
             return self._extract_blocks_with_llm(text, section_context)
         except Exception as e:
-            safe_print(f"LLM解析失败: {e}")
-            safe_print("回退到简单解析")
-            return self._simple_text_to_blocks(text)
+            error_msg = f"LLM解析失败: {e}。请检查API密钥是否有效，或稍后重试。"
+            safe_print(error_msg)
+            # 抛出异常而不是静默回退，让用户知道问题所在
+            raise RuntimeError(error_msg)
 
     def parse_text_to_blocks_and_save(
         self,
@@ -1030,18 +1032,21 @@ class LLMUtils:
     4. 处理行内元素，识别链接、行内公式
     5. 数学公式格式：行内公式识别$...$后转换存储格式，行间公式识别$$...$$或反斜杠方括号后使用反斜杠方括号格式
     6. 跳过参考文献，如果识别到References、参考文献等章节，可以忽略其内容
+    7. 一般来说输入都是英文，如果输入的英文，请你自动补全结构中zh的部分
 
     Block类型定义：
 
     1. heading 标题
-    必需字段：type为heading，level为1到6，content包含en或zh数组
+    必需字段：type为heading，content包含en或zh数组
+    识别标记：仅仅识别哪些简短的标题，例如#开头的标题
 
     2. paragraph 段落
     识别标记：普通文本段落
-    必需字段：type为paragraph，content包含en或zh数组
+    必需字段：type为paragraph，content包含en或zh数组，具体见inlineContent描述
 
     3. math 数学公式块
     识别标记：独立的双美元符号或反斜杠方括号
+    处理：需要移除其编号
     必需字段：type为math，latex为公式内容（使用反斜杠方括号格式包裹）
 
     4. code 代码块
@@ -1083,7 +1088,7 @@ class LLMUtils:
     可选title标题
 
     3. inline-math 行内公式
-    type为inline-math，latex为公式内容（不包含美元符号，必须使用latex字段不要使用content字段）
+    type为inline-math，latex为公式内容（不包含美元符号，必须使用latex字段不要使用content字段），注意识别，行内公式一般不换行，并且左右只有一个$付豪
 
     返回格式要求：
 
@@ -1121,6 +1126,7 @@ class LLMUtils:
             {
             "content": {
                 "en": [{"type": "text", "content": "First item"}]
+                "zh":[{"type":"text","content":"第一个元素"}]
             }
             },
             {

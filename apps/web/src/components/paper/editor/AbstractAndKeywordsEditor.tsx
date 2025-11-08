@@ -8,6 +8,12 @@ import {
   useCallback,
   useRef,
 } from 'react';
+import { FileText, Globe, Plus, X, Hash, CheckCircle, AlertCircle, Clock } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Badge } from '@/components/ui/badge';
+import { cn } from '@/lib/utils';
 
 interface AbstractAndKeywordsFormState {
   abstractEn: string;
@@ -206,7 +212,8 @@ export default function AbstractAndKeywordsEditor({
     
     if (isAutoSaving) {
       return (
-        <div className="text-sm text-blue-600 dark:text-blue-400">
+        <div className="flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400">
+          <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent" />
           正在自动保存...
         </div>
       );
@@ -214,7 +221,8 @@ export default function AbstractAndKeywordsEditor({
     
     if (autoSaveError) {
       return (
-        <div className="text-sm text-red-600 dark:text-red-400">
+        <div className="flex items-center gap-1.5 text-sm text-red-600 dark:text-red-400">
+          <AlertCircle className="h-3.5 w-3.5" />
           自动保存失败: {autoSaveError}
         </div>
       );
@@ -223,14 +231,16 @@ export default function AbstractAndKeywordsEditor({
     if (lastAutoSaveTime) {
       const timeStr = lastAutoSaveTime.toLocaleTimeString();
       return (
-        <div className="text-sm text-green-600 dark:text-green-400">
+        <div className="flex items-center gap-1.5 text-sm text-green-600 dark:text-green-400">
+          <CheckCircle className="h-3.5 w-3.5" />
           已自动保存于 {timeStr}
         </div>
       );
     }
     
     return (
-      <div className="text-sm text-gray-500 dark:text-slate-400">
+      <div className="flex items-center gap-1.5 text-sm text-gray-500 dark:text-slate-400">
+        <Clock className="h-3.5 w-3.5" />
         自动保存已启用
       </div>
     );
@@ -246,111 +256,193 @@ export default function AbstractAndKeywordsEditor({
       onSubmit={handleSubmit}
       className={formClassName}
     >
-      <div className="space-y-4">
-        <div>
-          <div className="flex items-center justify-between">
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-200">
+      <div className="space-y-6">
+        {/* 摘要部分 */}
+        <div className="space-y-4">
+          <div className="flex items-center gap-2 pb-2 border-b border-gray-200 dark:border-slate-700">
+            <FileText className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100">
               摘要 / Abstract
-            </label>
+            </h3>
           </div>
-          <div className="mt-2 space-y-3">
-            <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-slate-400">
-                English Abstract
-              </label>
-              <textarea
-                value={form.abstractEn}
-                onChange={event => handleBasicChange('abstractEn', event.target.value)}
-                rows={3}
-                className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"
-                placeholder="Enter English abstract..."
-              />
+          
+          <div className="grid gap-6 md:grid-cols-2">
+            {/* 英文摘要 */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Globe className="h-4 w-4 text-gray-500 dark:text-slate-400" />
+                <label className="text-sm font-medium text-gray-700 dark:text-slate-200">
+                  English Abstract
+                </label>
+              </div>
+              <div className="relative">
+                <Textarea
+                  value={form.abstractEn}
+                  onChange={event => handleBasicChange('abstractEn', event.target.value)}
+                  rows={6}
+                  className="resize-none pr-16"
+                  placeholder="Enter English abstract..."
+                />
+                <div className="absolute bottom-2 right-2 text-xs text-gray-500 dark:text-slate-400">
+                  {form.abstractEn.length} 字符
+                </div>
+              </div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-500 dark:text-slate-400">
-                中文摘要
-              </label>
-              <textarea
-                value={form.abstractZh}
-                onChange={event => handleBasicChange('abstractZh', event.target.value)}
-                rows={3}
-                className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"
-                placeholder="输入中文摘要..."
-              />
+            
+            {/* 中文摘要 */}
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <FileText className="h-4 w-4 text-gray-500 dark:text-slate-400" />
+                <label className="text-sm font-medium text-gray-700 dark:text-slate-200">
+                  中文摘要
+                </label>
+              </div>
+              <div className="relative">
+                <Textarea
+                  value={form.abstractZh}
+                  onChange={event => handleBasicChange('abstractZh', event.target.value)}
+                  rows={6}
+                  className="resize-none pr-16"
+                  placeholder="输入中文摘要..."
+                />
+                <div className="absolute bottom-2 right-2 text-xs text-gray-500 dark:text-slate-400">
+                  {form.abstractZh.length} 字符
+                </div>
+              </div>
             </div>
           </div>
         </div>
 
-        <div>
-          <div className="flex items-center justify-between">
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-200">
-              关键词 / Keywords
-            </label>
-            <button
+        {/* 关键词部分 */}
+        <div className="space-y-4">
+          <div className="flex items-center justify-between pb-2 border-b border-gray-200 dark:border-slate-700">
+            <div className="flex items-center gap-2">
+              <Hash className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-slate-100">
+                关键词 / Keywords
+              </h3>
+            </div>
+            <Button
               type="button"
+              variant="outline"
+              size="sm"
               onClick={handleAddKeyword}
-              className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+              className="gap-1"
             >
+              <Plus className="h-3.5 w-3.5" />
               添加关键词
-            </button>
+            </Button>
           </div>
+          
           {form.keywords.length > 0 ? (
-            <div className="mt-2 space-y-2">
+            <div className="space-y-3">
               {form.keywords.map((keyword, index) => (
                 <div key={`keyword-${index}`} className="flex items-center gap-2">
-                  <input
+                  <Input
                     value={keyword}
                     onChange={event => handleKeywordChange(index, event.target.value)}
-                    className="flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"
-                    placeholder="关键词内容"
+                    placeholder="输入关键词..."
+                    className="flex-1"
                   />
-                  <button
+                  <Button
                     type="button"
+                    variant="outline"
+                    size="icon-sm"
                     onClick={() => handleRemoveKeyword(index)}
-                    className="rounded px-2 py-1 text-xs text-red-600 hover:bg-red-50 dark:hover:bg-red-500/10"
+                    className="text-red-500 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-500/10"
                   >
-                    删除
-                  </button>
+                    <X className="h-3.5 w-3.5" />
+                  </Button>
                 </div>
               ))}
+              
+              {/* 关键词预览标签 */}
+              <div className="pt-2">
+                <p className="text-xs text-gray-500 dark:text-slate-400 mb-2">关键词预览:</p>
+                <div className="flex flex-wrap gap-2">
+                  {form.keywords
+                    .filter(keyword => keyword.trim().length > 0)
+                    .map((keyword, index) => (
+                      <Badge key={`preview-${index}`} variant="secondary" className="gap-1">
+                        <Hash className="h-3 w-3" />
+                        {keyword}
+                      </Badge>
+                    ))}
+                  {form.keywords.filter(keyword => keyword.trim().length > 0).length === 0 && (
+                    <span className="text-xs text-gray-400 dark:text-slate-500 italic">
+                      暂无有效关键词
+                    </span>
+                  )}
+                </div>
+              </div>
             </div>
           ) : (
-            <p className="mt-2 text-sm text-gray-500 dark:text-slate-400">暂无关键词</p>
+            <div className="flex flex-col items-center justify-center py-8 text-center">
+              <Hash className="h-10 w-10 text-gray-300 dark:text-slate-600 mb-2" />
+              <p className="text-sm text-gray-500 dark:text-slate-400 mb-2">暂无关键词</p>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={handleAddKeyword}
+                className="gap-1"
+              >
+                <Plus className="h-3.5 w-3.5" />
+                添加第一个关键词
+              </Button>
+            </div>
           )}
         </div>
       </div>
 
+      {/* 错误提示 */}
       {showErrors ? (
-        <div className="space-y-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-400/40 dark:bg-red-500/10 dark:text-red-100">
-          {validationErrors.length ? (
-            <ul className="list-disc space-y-1 pl-5">
-              {validationErrors.map(issue => (
-                <li key={issue}>{issue}</li>
-              ))}
-            </ul>
-          ) : null}
-          {submittingError ? <p>{submittingError}</p> : null}
+        <div className="flex items-start gap-2 rounded-md border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-400/40 dark:bg-red-500/10 dark:text-red-100">
+          <AlertCircle className="h-4 w-4 mt-0.5 flex-shrink-0" />
+          <div className="space-y-1">
+            {validationErrors.length ? (
+              <ul className="list-disc space-y-1 pl-5">
+                {validationErrors.map(issue => (
+                  <li key={issue}>{issue}</li>
+                ))}
+              </ul>
+            ) : null}
+            {submittingError ? <p>{submittingError}</p> : null}
+          </div>
         </div>
       ) : null}
 
-      <div className="flex items-center justify-between">
-        <AutoSaveIndicator />
+      {/* 底部操作区 */}
+      <div className="flex items-center justify-between pt-4 border-t border-gray-200 dark:border-slate-700">
+        <div className="flex items-center gap-2">
+          <AutoSaveIndicator />
+        </div>
         <div className="flex items-center gap-3">
-          <button
+          <Button
             type="button"
+            variant="outline"
             onClick={onCancel}
             disabled={isSubmitting}
-            className="rounded-md border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-600 dark:text-slate-300 dark:hover:bg-slate-800"
           >
             取消
-          </button>
-          <button
+          </Button>
+          <Button
             type="submit"
             disabled={isSubmitting}
-            className="rounded-md bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:cursor-not-allowed disabled:opacity-60"
+            className="gap-2"
           >
-            {isSubmitting ? '保存中...' : '保存摘要和关键词'}
-          </button>
+            {isSubmitting ? (
+              <>
+                <div className="h-4 w-4 animate-spin rounded-full border-2 border-current border-t-transparent" />
+                保存中...
+              </>
+            ) : (
+              <>
+                <CheckCircle className="h-4 w-4" />
+                保存摘要和关键词
+              </>
+            )}
+          </Button>
         </div>
       </div>
     </form>

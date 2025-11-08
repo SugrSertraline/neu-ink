@@ -13,7 +13,7 @@ import { createPortal } from 'react-dom';
 import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
 import type { BlockContent } from '@/types/paper';
 
-type MenuAction = () => void;
+type MenuAction = () => void | Promise<void>;
 
 type MenuEntry =
   | {
@@ -106,9 +106,9 @@ const Submenu: React.FC<SubmenuProps> = ({
             type="button"
             role="menuitem"
             className="w-full rounded px-3 py-1.5 text-left text-sm text-gray-700 hover:bg-gray-100 focus:bg-gray-100 focus:outline-none dark:text-gray-200 dark:hover:bg-slate-800"
-            onClick={() => {
+            onClick={async () => {
               onClose();
-              submenuItem.onSelect?.();
+              await submenuItem.onSelect?.();
             }}
           >
             {submenuItem.label}
@@ -314,7 +314,7 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
                         setOpenSubmenu(null);
                       }
                     }}
-                    onClick={() => {
+                    onClick={async () => {
                       if (entry.submenu) {
                         clearSubmenuCloseTimer();
                         setOpenSubmenu(
@@ -322,7 +322,7 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
                         );
                       } else {
                         closeMenu();
-                        entry.onSelect?.();
+                        await entry.onSelect?.();
                       }
                     }}
                   >

@@ -224,7 +224,7 @@ export default function BlockRenderer({
   const { hasUnsavedChanges, setHasUnsavedChanges, switchToEdit, clearEditing } = useEditingState();
   const inlineEditingEnabled = canEditContent && typeof onBlockUpdate === 'function';
 
-  const previewLang: 'en' | 'zh' = lang === 'both' ? 'en' : lang;
+  const previewLang: 'en' | 'zh' | 'both' = lang;
 
   const [showToolbar, setShowToolbar] = useState(false);
   const [toolbarPos, setToolbarPos] = useState({ x: 0, y: 0 });
@@ -428,7 +428,9 @@ export default function BlockRenderer({
       if (!inlineEditingEnabled || !onBlockUpdate || !selectedText) return;
 
       const currentBlock = block as ParagraphBlock | HeadingBlock;
-      const currentContent = currentBlock.content?.[previewLang];
+      // 确定要编辑的语言：如果是双语模式，默认编辑英文
+      const editLang: 'en' | 'zh' = previewLang === 'both' ? 'en' : previewLang;
+      const currentContent = currentBlock.content?.[editLang];
       if (!currentContent) return;
 
       let newContent = currentContent;
@@ -462,7 +464,7 @@ export default function BlockRenderer({
         ...currentBlock,
         content: {
           ...currentBlock.content,
-          [previewLang]: newContent,
+          [editLang]: newContent,
         } as typeof currentBlock.content,
       };
 
@@ -493,23 +495,59 @@ export default function BlockRenderer({
       <span className="text-blue-600 mr-2">{`${headingBlock.number}.`}</span>
     ) : null;
 
-    const enPart = (
-      <span className="mr-1 align-baseline">
-        <InlineRenderer nodes={enNodes} {...inlineRendererBaseProps} />
-      </span>
-    );
+    // 根据语言模式渲染不同内容
+    const renderContent = () => {
+      if (lang === 'both') {
+        // 双语模式：显示英文和中文
+        const enPart = (
+          <span className="mr-1 align-baseline">
+            <InlineRenderer nodes={enNodes} {...inlineRendererBaseProps} />
+          </span>
+        );
 
-    const slash = <span className="mx-1 text-gray-400">/</span>;
+        const slash = <span className="mx-1 text-gray-400">/</span>;
 
-    const zhPart = hasZh(zhNodes) ? (
-      <span className="rounded px-1 bg-gray-50 align-baseline">
-        <InlineRenderer nodes={zhNodes as InlineContent[]} {...inlineRendererBaseProps} />
-      </span>
-    ) : (
-      <span className="rounded px-1 bg-gray-100 text-gray-500 italic align-baseline">
-        该标题组件未配置中文
-      </span>
-    );
+        const zhPart = hasZh(zhNodes) ? (
+          <span className="align-baseline">
+            <InlineRenderer nodes={zhNodes as InlineContent[]} {...inlineRendererBaseProps} />
+          </span>
+        ) : (
+          <span className="text-gray-500 italic align-baseline">
+            该标题组件未配置中文
+          </span>
+        );
+
+        return (
+          <>
+            {enPart}
+            {slash}
+            {zhPart}
+          </>
+        );
+      } else if (lang === 'zh') {
+        // 中文模式：只显示中文
+        if (hasZh(zhNodes)) {
+          return (
+            <span className="align-baseline">
+              <InlineRenderer nodes={zhNodes as InlineContent[]} {...inlineRendererBaseProps} />
+            </span>
+          );
+        } else {
+          return (
+            <span className="text-gray-500 italic align-baseline">
+              该标题组件未配置中文
+            </span>
+          );
+        }
+      } else {
+        // 英文模式：只显示英文
+        return (
+          <span className="align-baseline">
+            <InlineRenderer nodes={enNodes} {...inlineRendererBaseProps} />
+          </span>
+        );
+      }
+    };
 
     const commonProps = {
       className: `${headingSizes[headingBlock.level]} font-bold text-gray-900 mb-2`,
@@ -518,9 +556,7 @@ export default function BlockRenderer({
       children: (
         <>
           {numberPart}
-          {enPart}
-          {slash}
-          {zhPart}
+          {renderContent()}
         </>
       ),
     };
@@ -557,27 +593,69 @@ export default function BlockRenderer({
             justify: 'text-justify',
           }[block.align || 'left'] ?? 'text-left';
 
-        const wantZhPlaceholder = previewLang === 'zh' && !hasZh(block.content?.zh);
-
-        return (
-          <p
-            className={`text-gray-700 leading-relaxed ${alignClass}`}
-            onMouseUp={inlineEditingEnabled && !isEditing ? handleTextSelection : undefined}
-            style={{ userSelect: 'text' }}
-          >
-            {previewLang === 'zh' ? (
-              wantZhPlaceholder ? (
-                zhPlaceholder(COMPONENT_LABEL_MAP['paragraph'])
+        // 根据语言模式渲染不同内容
+        if (lang === 'both') {
+          // 双语模式：显示英文和中文，使用 div 容器而不是 p 标签
+          const enContent = block.content?.en ?? [];
+          const zhContent = block.content?.zh;
+          
+          return (
+            <div
+              className={`text-gray-700 leading-relaxed space-y-2 ${alignClass}`}
+              onMouseUp={inlineEditingEnabled && !isEditing ? handleTextSelection : undefined}
+              style={{ userSelect: 'text' }}
+            >
+              <div>
+                <InlineRenderer nodes={enContent} {...inlineRendererBaseProps} />
+              </div>
+              {hasZh(zhContent) ? (
+                <div>
+                  <InlineRenderer nodes={zhContent as InlineContent[]} {...inlineRendererBaseProps} />
+                </div>
               ) : (
-                <span className="rounded px-1 bg-gray-50">
-                  <InlineRenderer nodes={block.content?.zh ?? []} {...inlineRendererBaseProps} />
+                <div className="text-gray-500 italic">
+                  该段落组件未配置中文
+                </div>
+              )}
+            </div>
+          );
+        } else if (lang === 'zh') {
+          // 中文模式：只显示中文
+          if (hasZh(block.content?.zh)) {
+            return (
+              <p
+                className={`text-gray-700 leading-relaxed ${alignClass}`}
+                onMouseUp={inlineEditingEnabled && !isEditing ? handleTextSelection : undefined}
+                style={{ userSelect: 'text' }}
+              >
+                <InlineRenderer nodes={block.content?.zh as InlineContent[]} {...inlineRendererBaseProps} />
+              </p>
+            );
+          } else {
+            return (
+              <p
+                className={`text-gray-700 leading-relaxed ${alignClass}`}
+                onMouseUp={inlineEditingEnabled && !isEditing ? handleTextSelection : undefined}
+                style={{ userSelect: 'text' }}
+              >
+                <span className="text-gray-500 italic">
+                  该段落组件未配置中文
                 </span>
-              )
-            ) : (
+              </p>
+            );
+          }
+        } else {
+          // 英文模式：只显示英文
+          return (
+            <p
+              className={`text-gray-700 leading-relaxed ${alignClass}`}
+              onMouseUp={inlineEditingEnabled && !isEditing ? handleTextSelection : undefined}
+              style={{ userSelect: 'text' }}
+            >
               <InlineRenderer nodes={block.content?.en ?? []} {...inlineRendererBaseProps} />
-            )}
-          </p>
-        );
+            </p>
+          );
+        }
       }
 
       case 'math':
@@ -595,8 +673,92 @@ export default function BlockRenderer({
         );
 
       case 'figure': {
-        const wantZhCaptionPlaceholder = previewLang === 'zh' && !hasZh(block.caption?.zh);
-        const wantZhDescPlaceholder = previewLang === 'zh' && !hasZh(block.description?.zh);
+        // 根据语言模式渲染不同内容
+        const renderCaption = () => {
+          if (lang === 'both') {
+            // 双语模式：显示英文和中文
+            const enCaption = block.caption?.en ?? [];
+            const zhCaption = block.caption?.zh;
+            
+            return (
+              <div className="space-y-1">
+                <div>
+                  <InlineRenderer nodes={enCaption} {...inlineRendererBaseProps} />
+                </div>
+                {hasZh(zhCaption) ? (
+                  <div>
+                    <InlineRenderer nodes={zhCaption as InlineContent[]} {...inlineRendererBaseProps} />
+                  </div>
+                ) : (
+                  <div className="text-gray-500 italic text-xs">
+                    该图片组件未配置中文
+                  </div>
+                )}
+              </div>
+            );
+          } else if (lang === 'zh') {
+            // 中文模式：只显示中文
+            if (hasZh(block.caption?.zh)) {
+              return (
+                <InlineRenderer nodes={block.caption?.zh as InlineContent[]} {...inlineRendererBaseProps} />
+              );
+            } else {
+              return (
+                <span className="text-gray-500 italic text-xs">
+                  该图片组件未配置中文
+                </span>
+              );
+            }
+          } else {
+            // 英文模式：只显示英文
+            return (
+              <InlineRenderer nodes={block.caption?.en ?? []} {...inlineRendererBaseProps} />
+            );
+          }
+        };
+
+        const renderDescription = () => {
+          if (lang === 'both') {
+            // 双语模式：显示英文和中文
+            const enDesc = block.description?.en ?? [];
+            const zhDesc = block.description?.zh;
+            
+            return (
+              <div className="space-y-1">
+                <div>
+                  <InlineRenderer nodes={enDesc} {...inlineRendererBaseProps} />
+                </div>
+                {hasZh(zhDesc) ? (
+                  <div>
+                    <InlineRenderer nodes={zhDesc as InlineContent[]} {...inlineRendererBaseProps} />
+                  </div>
+                ) : (
+                  <div className="text-gray-500 italic text-xs">
+                    该图片组件未配置中文
+                  </div>
+                )}
+              </div>
+            );
+          } else if (lang === 'zh') {
+            // 中文模式：只显示中文
+            if (hasZh(block.description?.zh)) {
+              return (
+                <InlineRenderer nodes={block.description?.zh as InlineContent[]} {...inlineRendererBaseProps} />
+              );
+            } else {
+              return (
+                <span className="text-gray-500 italic text-xs">
+                  该图片组件未配置中文
+                </span>
+              );
+            }
+          } else {
+            // 英文模式：只显示英文
+            return (
+              <InlineRenderer nodes={block.description?.en ?? []} {...inlineRendererBaseProps} />
+            );
+          }
+        };
 
         return (
           <figure className="my-6">
@@ -635,32 +797,12 @@ export default function BlockRenderer({
                   Figure {block.number}.
                 </span>
               )}
-              {previewLang === 'zh' ? (
-                wantZhCaptionPlaceholder ? (
-                  zhPlaceholder(COMPONENT_LABEL_MAP.figureCaption)
-                ) : (
-                  <span className="rounded px-1 bg-gray-50">
-                    <InlineRenderer nodes={block.caption?.zh ?? []} {...inlineRendererBaseProps} />
-                  </span>
-                )
-              ) : (
-                <InlineRenderer nodes={block.caption?.en ?? []} {...inlineRendererBaseProps} />
-              )}
+              {renderCaption()}
             </figcaption>
 
             {(block.description?.en || block.description?.zh) && (
               <div className="mt-2 px-4 text-center text-xs text-gray-500">
-                {previewLang === 'zh' ? (
-                  wantZhDescPlaceholder ? (
-                    zhPlaceholder(COMPONENT_LABEL_MAP.figureDesc)
-                  ) : (
-                    <span className="rounded px-1 bg-gray-50">
-                      <InlineRenderer nodes={block.description?.zh ?? []} {...inlineRendererBaseProps} />
-                    </span>
-                  )
-                ) : (
-                  <InlineRenderer nodes={block.description?.en ?? []} {...inlineRendererBaseProps} />
-                )}
+                {renderDescription()}
               </div>
             )}
           </figure>
@@ -668,8 +810,149 @@ export default function BlockRenderer({
       }
 
       case 'table': {
-        const wantZhCaptionPlaceholder = previewLang === 'zh' && !hasZh(block.caption?.zh);
-        const wantZhDescPlaceholder = previewLang === 'zh' && !hasZh(block.description?.zh);
+        // 根据语言模式渲染不同内容
+        const renderCaption = () => {
+          if (lang === 'both') {
+            // 双语模式：显示英文和中文
+            const enCaption = block.caption?.en ?? [];
+            const zhCaption = block.caption?.zh;
+            
+            return (
+              <div className="space-y-1">
+                <div>
+                  <InlineRenderer nodes={enCaption} {...inlineRendererBaseProps} />
+                </div>
+                {hasZh(zhCaption) ? (
+                  <div>
+                    <InlineRenderer nodes={zhCaption as InlineContent[]} {...inlineRendererBaseProps} />
+                  </div>
+                ) : (
+                  <div className="text-gray-500 italic text-xs">
+                    该表格组件未配置中文
+                  </div>
+                )}
+              </div>
+            );
+          } else if (lang === 'zh') {
+            // 中文模式：只显示中文
+            if (hasZh(block.caption?.zh)) {
+              return (
+                <InlineRenderer nodes={block.caption?.zh as InlineContent[]} {...inlineRendererBaseProps} />
+              );
+            } else {
+              return (
+                <span className="text-gray-500 italic text-xs">
+                  该表格组件未配置中文
+                </span>
+              );
+            }
+          } else {
+            // 英文模式：只显示英文
+            return (
+              <InlineRenderer nodes={block.caption?.en ?? []} {...inlineRendererBaseProps} />
+            );
+          }
+        };
+
+        const renderDescription = () => {
+          if (lang === 'both') {
+            // 双语模式：显示英文和中文
+            const enDesc = block.description?.en ?? [];
+            const zhDesc = block.description?.zh;
+            
+            return (
+              <div className="space-y-1">
+                <div>
+                  <InlineRenderer nodes={enDesc} {...inlineRendererBaseProps} />
+                </div>
+                {hasZh(zhDesc) ? (
+                  <div>
+                    <InlineRenderer nodes={zhDesc as InlineContent[]} {...inlineRendererBaseProps} />
+                  </div>
+                ) : (
+                  <div className="text-gray-500 italic text-xs">
+                    该表格组件未配置中文
+                  </div>
+                )}
+              </div>
+            );
+          } else if (lang === 'zh') {
+            // 中文模式：只显示中文
+            if (hasZh(block.description?.zh)) {
+              return (
+                <InlineRenderer nodes={block.description?.zh as InlineContent[]} {...inlineRendererBaseProps} />
+              );
+            } else {
+              return (
+                <span className="text-gray-500 italic text-xs">
+                  该表格组件未配置中文
+                </span>
+              );
+            }
+          } else {
+            // 英文模式：只显示英文
+            return (
+              <InlineRenderer nodes={block.description?.en ?? []} {...inlineRendererBaseProps} />
+            );
+          }
+        };
+
+        // 表格单元格渲染函数
+        const renderCellValue = (value: any) => {
+          if (lang === 'both') {
+            // 双语模式：显示英文和中文
+            if (hasLocalizedContent(value)) {
+              const lv = value as LocalizedInlineValue;
+              const enContent = lv.en ?? [];
+              const zhContent = lv.zh;
+              
+              return (
+                <div className="space-y-1">
+                  <div>
+                    <InlineRenderer nodes={enContent as InlineContent[]} {...inlineRendererBaseProps} />
+                  </div>
+                  {hasZh(zhContent) ? (
+                    <div>
+                      <InlineRenderer nodes={zhContent as InlineContent[]} {...inlineRendererBaseProps} />
+                    </div>
+                  ) : (
+                    <div className="text-gray-500 italic text-xs">
+                      未配置中文
+                    </div>
+                  )}
+                </div>
+              );
+            } else if (Array.isArray(value)) {
+              return <InlineRenderer nodes={value} {...inlineRendererBaseProps} />;
+            } else {
+              return value;
+            }
+          } else if (lang === 'zh') {
+            // 中文模式：只显示中文
+            if (hasLocalizedContent(value)) {
+              const lv = value as LocalizedInlineValue;
+              if (hasZh(lv.zh)) {
+                return <InlineRenderer nodes={lv.zh as InlineContent[]} {...inlineRendererBaseProps} />;
+              } else {
+                return <span className="text-gray-500 italic text-xs">未配置中文</span>;
+              }
+            } else if (Array.isArray(value)) {
+              return <InlineRenderer nodes={value} {...inlineRendererBaseProps} />;
+            } else {
+              return value;
+            }
+          } else {
+            // 英文模式：只显示英文
+            if (hasLocalizedContent(value)) {
+              const lv = value as LocalizedInlineValue;
+              return <InlineRenderer nodes={lv.en as InlineContent[]} {...inlineRendererBaseProps} />;
+            } else if (Array.isArray(value)) {
+              return <InlineRenderer nodes={value} {...inlineRendererBaseProps} />;
+            } else {
+              return value;
+            }
+          }
+        };
 
         return (
           <div className="my-6 overflow-x-auto">
@@ -680,17 +963,7 @@ export default function BlockRenderer({
                     Table {block.number}.
                   </span>
                 )}
-                {previewLang === 'zh' ? (
-                  wantZhCaptionPlaceholder ? (
-                    zhPlaceholder(COMPONENT_LABEL_MAP.tableCaption)
-                  ) : (
-                    <span className="rounded px-1 bg-gray-50">
-                      <InlineRenderer nodes={block.caption?.zh ?? []} {...inlineRendererBaseProps} />
-                    </span>
-                  )
-                ) : (
-                  <InlineRenderer nodes={block.caption?.en ?? []} {...inlineRendererBaseProps} />
-                )}
+                {renderCaption()}
               </div>
             )}
 
@@ -704,10 +977,7 @@ export default function BlockRenderer({
                         className="border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-900"
                         style={{ textAlign: block.align?.[i] || 'left' }}
                       >
-                        {renderInlineValue(header, previewLang, inlineRendererBaseProps, {
-                          componentLabel: COMPONENT_LABEL_MAP.tableHeader,
-                          wrapZhBg: true,
-                        })}
+                        {renderCellValue(header)}
                       </th>
                     ))}
                   </tr>
@@ -722,10 +992,7 @@ export default function BlockRenderer({
                         className="border border-gray-300 px-3 py-2 text-sm text-gray-700"
                         style={{ textAlign: block.align?.[c] || 'left' }}
                       >
-                        {renderInlineValue(cell, previewLang, inlineRendererBaseProps, {
-                          componentLabel: COMPONENT_LABEL_MAP.tableCell,
-                          wrapZhBg: true,
-                        })}
+                        {renderCellValue(cell)}
                       </td>
                     ))}
                   </tr>
@@ -735,17 +1002,7 @@ export default function BlockRenderer({
 
             {(block.description?.en || block.description?.zh) && (
               <div className="mt-2 text-center text-xs text-gray-500">
-                {previewLang === 'zh' ? (
-                  wantZhDescPlaceholder ? (
-                    zhPlaceholder(COMPONENT_LABEL_MAP.tableDesc)
-                  ) : (
-                    <span className="rounded px-1 bg-gray-50">
-                      <InlineRenderer nodes={block.description?.zh ?? []} {...inlineRendererBaseProps} />
-                    </span>
-                  )
-                ) : (
-                  <InlineRenderer nodes={block.description?.en ?? []} {...inlineRendererBaseProps} />
-                )}
+                {renderDescription()}
               </div>
             )}
           </div>
@@ -753,22 +1010,55 @@ export default function BlockRenderer({
       }
 
       case 'code': {
-        const wantZhCaptionPlaceholder = previewLang === 'zh' && !hasZh(block.caption?.zh);
+        // 根据语言模式渲染不同内容
+        const renderCaption = () => {
+          if (lang === 'both') {
+            // 双语模式：显示英文和中文
+            const enCaption = block.caption?.en ?? [];
+            const zhCaption = block.caption?.zh;
+            
+            return (
+              <div className="space-y-1">
+                <div>
+                  <InlineRenderer nodes={enCaption} {...inlineRendererBaseProps} />
+                </div>
+                {hasZh(zhCaption) ? (
+                  <div>
+                    <InlineRenderer nodes={zhCaption as InlineContent[]} {...inlineRendererBaseProps} />
+                  </div>
+                ) : (
+                  <div className="text-gray-500 italic text-xs">
+                    该代码组件未配置中文
+                  </div>
+                )}
+              </div>
+            );
+          } else if (lang === 'zh') {
+            // 中文模式：只显示中文
+            if (hasZh(block.caption?.zh)) {
+              return (
+                <InlineRenderer nodes={block.caption?.zh as InlineContent[]} {...inlineRendererBaseProps} />
+              );
+            } else {
+              return (
+                <span className="text-gray-500 italic text-xs">
+                  该代码组件未配置中文
+                </span>
+              );
+            }
+          } else {
+            // 英文模式：只显示英文
+            return (
+              <InlineRenderer nodes={block.caption?.en ?? []} {...inlineRendererBaseProps} />
+            );
+          }
+        };
+
         return (
           <div className="my-4">
             {(block.caption?.en || block.caption?.zh) && (
               <div className="mb-2 text-xs text-gray-500">
-                {previewLang === 'zh' ? (
-                  wantZhCaptionPlaceholder ? (
-                    zhPlaceholder(COMPONENT_LABEL_MAP.codeCaption)
-                  ) : (
-                    <span className="rounded px-1 bg-gray-50">
-                      <InlineRenderer nodes={block.caption?.zh ?? []} {...inlineRendererBaseProps} />
-                    </span>
-                  )
-                ) : (
-                  <InlineRenderer nodes={block.caption?.en ?? []} {...inlineRendererBaseProps} />
-                )}
+                {renderCaption()}
               </div>
             )}
             <pre className="relative overflow-auto rounded-lg bg-gray-900 p-4 text-sm text-gray-100 shadow-md">
@@ -787,21 +1077,53 @@ export default function BlockRenderer({
         return (
           <ol start={block.start ?? 1} className="my-3 list-decimal space-y-1.5 pl-6">
             {(block.items || []).map((item, i) => {
-              const wantZh = previewLang === 'zh';
-              const zhMissing = wantZh && !hasZh(item.content?.zh);
+              // 根据语言模式渲染不同内容
+              const renderContent = () => {
+                if (lang === 'both') {
+                  // 双语模式：显示英文和中文
+                  const enContent = item.content?.en ?? [];
+                  const zhContent = item.content?.zh;
+                  
+                  return (
+                    <div className="space-y-1">
+                      <div>
+                        <InlineRenderer nodes={enContent} {...inlineRendererBaseProps} />
+                      </div>
+                      {hasZh(zhContent) ? (
+                        <div>
+                          <InlineRenderer nodes={zhContent as InlineContent[]} {...inlineRendererBaseProps} />
+                        </div>
+                      ) : (
+                        <div className="text-gray-500 italic text-xs">
+                          该列表项未配置中文
+                        </div>
+                      )}
+                    </div>
+                  );
+                } else if (lang === 'zh') {
+                  // 中文模式：只显示中文
+                  if (hasZh(item.content?.zh)) {
+                    return (
+                      <InlineRenderer nodes={item.content?.zh as InlineContent[]} {...inlineRendererBaseProps} />
+                    );
+                  } else {
+                    return (
+                      <span className="text-gray-500 italic text-xs">
+                        该列表项未配置中文
+                      </span>
+                    );
+                  }
+                } else {
+                  // 英文模式：只显示英文
+                  return (
+                    <InlineRenderer nodes={item.content?.en ?? []} {...inlineRendererBaseProps} />
+                  );
+                }
+              };
+
               return (
                 <li key={i} className="leading-relaxed text-gray-700">
-                  {wantZh ? (
-                    zhMissing ? (
-                      zhPlaceholder(COMPONENT_LABEL_MAP.listItem)
-                    ) : (
-                      <span className="rounded px-1 bg-gray-50">
-                        <InlineRenderer nodes={item.content?.zh ?? []} {...inlineRendererBaseProps} />
-                      </span>
-                    )
-                  ) : (
-                    <InlineRenderer nodes={item.content?.en ?? []} {...inlineRendererBaseProps} />
-                  )}
+                  {renderContent()}
                 </li>
               );
             })}
@@ -812,21 +1134,53 @@ export default function BlockRenderer({
         return (
           <ul className="my-3 list-disc space-y-1.5 pl-6">
             {(block.items || []).map((item, i) => {
-              const wantZh = previewLang === 'zh';
-              const zhMissing = wantZh && !hasZh(item.content?.zh);
+              // 根据语言模式渲染不同内容
+              const renderContent = () => {
+                if (lang === 'both') {
+                  // 双语模式：显示英文和中文
+                  const enContent = item.content?.en ?? [];
+                  const zhContent = item.content?.zh;
+                  
+                  return (
+                    <div className="space-y-1">
+                      <div>
+                        <InlineRenderer nodes={enContent} {...inlineRendererBaseProps} />
+                      </div>
+                      {hasZh(zhContent) ? (
+                        <div>
+                          <InlineRenderer nodes={zhContent as InlineContent[]} {...inlineRendererBaseProps} />
+                        </div>
+                      ) : (
+                        <div className="text-gray-500 italic text-xs">
+                          该列表项未配置中文
+                        </div>
+                      )}
+                    </div>
+                  );
+                } else if (lang === 'zh') {
+                  // 中文模式：只显示中文
+                  if (hasZh(item.content?.zh)) {
+                    return (
+                      <InlineRenderer nodes={item.content?.zh as InlineContent[]} {...inlineRendererBaseProps} />
+                    );
+                  } else {
+                    return (
+                      <span className="text-gray-500 italic text-xs">
+                        该列表项未配置中文
+                      </span>
+                    );
+                  }
+                } else {
+                  // 英文模式：只显示英文
+                  return (
+                    <InlineRenderer nodes={item.content?.en ?? []} {...inlineRendererBaseProps} />
+                  );
+                }
+              };
+
               return (
                 <li key={i} className="leading-relaxed text-gray-700">
-                  {wantZh ? (
-                    zhMissing ? (
-                      zhPlaceholder(COMPONENT_LABEL_MAP.listItem)
-                    ) : (
-                      <span className="rounded px-1 bg-gray-50">
-                        <InlineRenderer nodes={item.content?.zh ?? []} {...inlineRendererBaseProps} />
-                      </span>
-                    )
-                  ) : (
-                    <InlineRenderer nodes={item.content?.en ?? []} {...inlineRendererBaseProps} />
-                  )}
+                  {renderContent()}
                 </li>
               );
             })}
@@ -834,20 +1188,57 @@ export default function BlockRenderer({
         );
 
       case 'quote': {
-        const wantZhPlaceholder = previewLang === 'zh' && !hasZh(block.content?.zh);
-        return (
-          <blockquote className="my-4 rounded-r-lg border-l-4 border-blue-500 bg-blue-50 py-2 pl-4 italic text-gray-600">
-            {previewLang === 'zh' ? (
-              wantZhPlaceholder ? (
-                zhPlaceholder(COMPONENT_LABEL_MAP.quote)
-              ) : (
-                <span className="rounded px-1 bg-gray-50 not-italic">
-                  <InlineRenderer nodes={block.content?.zh ?? []} {...inlineRendererBaseProps} />
+        // 根据语言模式渲染不同内容
+        const renderContent = () => {
+          if (lang === 'both') {
+            // 双语模式：显示英文和中文
+            const enContent = block.content?.en ?? [];
+            const zhContent = block.content?.zh;
+            
+            return (
+              <div className="space-y-2">
+                <div className="italic">
+                  <InlineRenderer nodes={enContent} {...inlineRendererBaseProps} />
+                </div>
+                {hasZh(zhContent) ? (
+                  <div className="italic">
+                    <InlineRenderer nodes={zhContent as InlineContent[]} {...inlineRendererBaseProps} />
+                  </div>
+                ) : (
+                  <div className="text-gray-500 italic text-xs">
+                    该引用组件未配置中文
+                  </div>
+                )}
+              </div>
+            );
+          } else if (lang === 'zh') {
+            // 中文模式：只显示中文
+            if (hasZh(block.content?.zh)) {
+              return (
+                <div className="italic">
+                  <InlineRenderer nodes={block.content?.zh as InlineContent[]} {...inlineRendererBaseProps} />
+                </div>
+              );
+            } else {
+              return (
+                <span className="text-gray-500 italic text-xs">
+                  该引用组件未配置中文
                 </span>
-              )
-            ) : (
-              <InlineRenderer nodes={block.content?.en ?? []} {...inlineRendererBaseProps} />
-            )}
+              );
+            }
+          } else {
+            // 英文模式：只显示英文
+            return (
+              <div className="italic">
+                <InlineRenderer nodes={block.content?.en ?? []} {...inlineRendererBaseProps} />
+              </div>
+            );
+          }
+        };
+
+        return (
+          <blockquote className="my-4 rounded-r-lg border-l-4 border-blue-500 bg-blue-50 py-2 pl-4 text-gray-600">
+            {renderContent()}
             {block.author && (
               <div className="mt-2 text-right text-sm font-medium not-italic text-gray-500">
                 — {block.author}
@@ -931,13 +1322,13 @@ export default function BlockRenderer({
         ) : (
           <>
             {renderContent()}
+            {/* 笔记指示器 - 仅在个人论文库访问时显示，放在左上角外侧，小绿点带呼吸灯效果 */}
+            {isPersonalOwner && notesCount > 0 && (
+              <div className="absolute -left-1 -top-1 pointer-events-none z-10">
+                <div className="w-3 h-3 bg-green-500 rounded-full shadow-lg shadow-green-500/50 animate-pulse"></div>
+              </div>
+            )}
             <div className="pointer-events-none absolute right-3 top-3 opacity-0 transition group-hover:opacity-100 flex items-center gap-2">
-              {/* 笔记数量badge - 仅在个人论文库访问时显示 */}
-              {isPersonalOwner && notesCount > 0 && (
-                <Badge variant="secondary" className="pointer-events-auto">
-                  {notesCount}
-                </Badge>
-              )}
               {inlineEditingEnabled && (
                 <button
                   type="button"

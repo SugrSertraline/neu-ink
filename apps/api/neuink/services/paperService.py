@@ -968,11 +968,23 @@ class PaperService:
                 section_context += f", Section内容: {target_section['content'][:200]}..."
 
             # 使用LLM解析文本为blocks
-            llm_utils = get_llm_utils()
-            new_blocks = llm_utils.parse_text_to_blocks(text, section_context)
+            try:
+                llm_utils = get_llm_utils()
+                new_blocks = llm_utils.parse_text_to_blocks(text, section_context)
+            except Exception as llm_exc:
+                # 捕获LLM解析异常并返回明确的错误信息
+                error_msg = str(llm_exc)
+                if "GLM_API_KEY" in error_msg:
+                    return self._wrap_error("LLM服务未正确配置：缺少有效的API密钥。请联系管理员配置GLM_API_KEY。")
+                elif "timeout" in error_msg.lower() or "超时" in error_msg:
+                    return self._wrap_error("文本解析超时：文本内容可能过多或服务器响应较慢，请减少文本量或稍后重试。")
+                elif "network" in error_msg.lower() or "网络" in error_msg:
+                    return self._wrap_error("网络连接错误：无法连接到LLM服务，请检查网络连接后重试。")
+                else:
+                    return self._wrap_error(f"文本解析失败：{error_msg}")
 
             if not new_blocks:
-                return self._wrap_error("文本解析失败，无法生成有效的blocks")
+                return self._wrap_error("文本解析失败，无法生成有效的blocks。请检查文本内容是否合适。")
 
             # 将新blocks添加到section中
             if "content" not in target_section:
@@ -996,11 +1008,9 @@ class PaperService:
             # 更新论文
             update_data = {"sections": sections}
             if self.paper_model.update(paper_id, update_data):
-                updated_paper = self.paper_model.find_by_id(paper_id)
                 return self._wrap_success(
                     f"成功向section添加了{len(new_blocks)}个blocks",
                     {
-                        "paper": updated_paper,
                         "addedBlocks": new_blocks,
                         "sectionId": section_id
                     }
@@ -1009,7 +1019,10 @@ class PaperService:
                 return self._wrap_error("更新论文失败")
 
         except Exception as exc:
-            return self._wrap_error(f"从文本添加block到section失败: {exc}")
+            # 记录完整的异常信息以便调试
+            import traceback
+            error_details = f"从文本添加block到section失败: {exc}\n详细错误: {traceback.format_exc()}"
+            return self._wrap_error(error_details)
 
     def _insert_section_into_subsections(
         self,

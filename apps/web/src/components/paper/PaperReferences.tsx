@@ -25,6 +25,7 @@ interface PaperReferencesProps {
   onReferenceCopyUrl?: (url: string, reference: Reference) => void;
   onReferenceOpenLink?: (url: string, reference: Reference) => void;
   onReferenceAdd?: () => void;
+  'data-references'?: string;
 }
 
 const joinMeta = (...parts: (string | undefined | null)[]) =>
@@ -63,6 +64,7 @@ export default function PaperReferences({
   onReferenceCopyUrl,
   onReferenceOpenLink,
   onReferenceAdd,
+  'data-references': dataReferences,
 }: PaperReferencesProps) {
   const handleMouseEnter = useCallback(
     (id: string) => onHighlightChange?.([id]),
@@ -212,7 +214,7 @@ export default function PaperReferences({
   };
 
   const section = (
-    <section aria-labelledby="paper-references-heading" className="mt-10">
+    <section aria-labelledby="paper-references-heading" className="mt-10" data-references={dataReferences}>
       <header className="mb-3">
         <h2
           id="paper-references-heading"

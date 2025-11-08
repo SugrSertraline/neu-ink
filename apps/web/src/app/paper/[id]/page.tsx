@@ -30,6 +30,7 @@ import PaperMetadata from '@/components/paper/PaperMetadata';
 import PaperContent from '@/components/paper/PaperContent';
 import PaperReferences from '@/components/paper/PaperReferences';
 import PersonalNotePanel from '@/components/paper/PersonalNotePanel';
+import PaperTableOfContents from '@/components/paper/PaperTableOfContents';
 
 import type {
   Paper,
@@ -350,7 +351,7 @@ export default function PaperPage() {
   const { user, isAdmin } = useAuth();
 
   const paperId = Array.isArray(params?.id) ? params.id[0] : (params?.id as string);
-
+  const pageContainerRef = useRef<HTMLDivElement>(null);
   const tabData = useMemo(() => {
     const tabKey = `paper:${paperId}`;
     const tab = tabs.find(t => t.id === tabKey);
@@ -496,6 +497,7 @@ export default function PaperPage() {
     handleSectionDelete,
     handleSectionAddBlock,
     updateSections,
+    handleAddBlocksFromText,
   } = usePaperSections(setEditableDraft, setHasUnsavedChanges);
 
   const {
@@ -677,16 +679,50 @@ export default function PaperPage() {
     const scroller = getScrollParent(target);
     // 使用 block 的 scroll-margin-top 进行补偿，不再手算 header
     if (scroller === window) {
-      target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else {
-      // 只滚这个容器
+      // 只滚这个容器，并使目标元素居中显示
       const parent = scroller as HTMLElement;
       const parentRect = parent.getBoundingClientRect();
       const rect = target.getBoundingClientRect();
-      const top = parent.scrollTop + (rect.top - parentRect.top);
-      parent.scrollTo({ top, behavior: 'smooth' });
+      const targetCenter = parent.scrollTop + (rect.top - parentRect.top) + (rect.height / 2) - (parentRect.height / 2);
+      parent.scrollTo({ top: targetCenter, behavior: 'smooth' });
     }
   };
+
+  // 处理目录导航
+  const handleTOCNavigate = useCallback((elementId: string) => {
+    let targetElement: HTMLElement | null = null;
+    
+    // 根据不同的ID类型查找对应的元素
+    switch (elementId) {
+      case 'metadata':
+        targetElement = document.querySelector('[data-metadata="true"]') as HTMLElement;
+        break;
+      case 'abstract':
+        targetElement = document.querySelector('[data-abstract="true"]') as HTMLElement;
+        break;
+      case 'references':
+        targetElement = document.querySelector('[data-references="true"]') as HTMLElement;
+        break;
+      default:
+        // 对于章节和块，直接使用ID查找
+        targetElement = document.getElementById(elementId) as HTMLElement;
+        break;
+    }
+    
+    if (targetElement) {
+      // 添加高亮效果
+      targetElement.classList.add('toc-highlighted');
+      
+      // 3秒后移除高亮效果
+      setTimeout(() => {
+        targetElement.classList.remove('toc-highlighted');
+      }, 3000);
+      
+      scrollToTarget(targetElement);
+    }
+  }, []);
 
   const handleSearchNavigate = useCallback(
     (direction: 'next' | 'prev') => {
@@ -900,79 +936,43 @@ const handleSaveToServer = useCallback(
 
   const handleParseTextAdd = useCallback(
     async (sectionId: string, text: string, afterBlockId?: string) => {
+      console.log('[handleParseTextAdd] 开始处理文本解析请求', { sectionId, textLength: text.length, afterBlockId });
+      
       try {
-        const service = isPersonalOwner ? userPaperService : adminPaperService;
         const id = isPersonalOwner ? resolvedUserPaperId : paperId;
-
+        
         if (!id) {
+          console.error('[handleParseTextAdd] 无法确定论文标识', { isPersonalOwner, resolvedUserPaperId, paperId });
           toast.error('无法确定论文标识');
           return { success: false, error: '无法确定论文标识' };
         }
 
-        // 统一的请求数据和处理逻辑
-        const requestData = { text, afterBlockId };
+        // 使用我们新添加的handleAddBlocksFromText函数
+        const result = await handleAddBlocksFromText(sectionId, text, paperId, resolvedUserPaperId, isPersonalOwner, afterBlockId);
         
-        // 统一调用API
-        const result = await service.addBlockFromTextToSection(id, sectionId, requestData);
-        
-        if (result.bizCode === 0) {
-          // 更新本地编辑副本
-          const addedBlock = result.data?.addedBlock;
-          if (addedBlock) {
-            setEditableDraft(prev => {
-              if (!prev) return prev;
-              const nextDraft = { ...prev };
-              // 找到对应的section并添加新的block
-              const updateSection = (sections: any[]): any[] => {
-                return sections.map(section => {
-                  if (section.id === sectionId) {
-                    // 获取当前section的所有blocks
-                    const currentBlocks = section.content || [];
-                    let insertIndex = currentBlocks.length; // 默认插在末尾
-                    
-                    // 如果指定了afterBlockId，插入到指定位置
-                    if (afterBlockId) {
-                      insertIndex = currentBlocks.findIndex((block: any) => block.id === afterBlockId);
-                      if (insertIndex >= 0) {
-                        insertIndex += 1; // 插入到指定block后面
-                      }
-                    }
-                    
-                    const newBlocks = [...currentBlocks];
-                    newBlocks.splice(insertIndex, 0, addedBlock);
-                    
-                    return {
-                      ...section,
-                      content: newBlocks
-                    };
-                  }
-                  if (section.subsections) {
-                    return {
-                      ...section,
-                      subsections: updateSection(section.subsections)
-                    };
-                  }
-                  return section;
-                });
-              };
-              nextDraft.sections = updateSection(nextDraft.sections);
-              return nextDraft;
-            });
-          }
-          setHasUnsavedChanges(true);
-          toast.success(`成功添加 1 个内容块`);
-          return { success: true, blocks: [result.data?.addedBlock] };
+        if (result.success) {
+          return { success: true, addedBlocks: result.addedBlocks };
         } else {
-          toast.error('添加失败', { description: result.bizMessage || '服务器错误' });
-          return { success: false, error: result.bizMessage || '服务器错误' };
+          return { success: false, error: result.error };
         }
       } catch (err) {
-        const message = err instanceof Error ? err.message : '添加过程中发生未知错误';
+        console.error('[handleParseTextAdd] 请求异常', err);
+        let message = err instanceof Error ? err.message : '添加过程中发生未知错误';
+        
+        // 检查是否是网络错误或超时
+        if (err instanceof Error) {
+          if (err.message.includes('timeout') || err.message.includes('Timeout')) {
+            message = '请求超时，可能是文本内容过多或服务器响应较慢，请稍后重试';
+          } else if (err.message.includes('Network') || err.message.includes('fetch')) {
+            message = '网络连接错误，请检查网络连接后重试';
+          }
+        }
+        
         toast.error('添加失败', { description: message });
         return { success: false, error: message };
       }
     },
-    [isPersonalOwner, resolvedUserPaperId, paperId, setHasUnsavedChanges]
+    [isPersonalOwner, resolvedUserPaperId, paperId, handleAddBlocksFromText]
   );
 
   const handleToggleVisibility = useCallback(async () => {
@@ -1087,8 +1087,7 @@ const handleSaveToServer = useCallback(
           />
         </div>
 
-        <div style={{ paddingBottom: 32 }}>
-          {/* 外层壳：根据是否显示 notes 调整最大宽度，整体 mx-auto 居中 */}
+        <div ref={pageContainerRef} style={{ paddingBottom: 32 }}>
           <div
             ref={wrapperRef}
             className="mx-auto px-4 lg:px-8"
@@ -1115,6 +1114,7 @@ const handleSaveToServer = useCallback(
                     lang={lang}
                     onEditRequest={handleMetadataEditStart}
                     onAbstractKeywordsEditRequest={handleAbstractKeywordsEditStart}
+                    data-metadata="true"
                   />
 
                   <PaperContent
@@ -1133,7 +1133,10 @@ const handleSaveToServer = useCallback(
                       const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
                       return handleSectionTitleUpdate(sectionId, title, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
                     }}
-                    onSectionAddSubsection={handleSectionAddSubsection}
+                    onSectionAddSubsection={(sectionId) => {
+                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                      return handleSectionAddSubsection(sectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
+                    }}
                     onSectionInsert={(targetSectionId, position, parentSectionId) => {
                       const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
                       return handleSectionInsert(targetSectionId, position, parentSectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
@@ -1193,6 +1196,7 @@ const handleSaveToServer = useCallback(
                     onReferenceMoveUp={canEditContent ? handleReferenceMoveUp : undefined}
                     onReferenceMoveDown={canEditContent ? handleReferenceMoveDown : undefined}
                     onReferenceAdd={canEditContent ? handleReferenceAdd : undefined}
+                    data-references="true"
                   />
 
                   {(displayReferences?.length ?? 0) === 0 && <div className="h-4" />}
@@ -1315,6 +1319,13 @@ const handleSaveToServer = useCallback(
     paperId={paperId}
   />
 )}
+
+{/* 悬浮目录 */}
+<PaperTableOfContents
+  paperContent={displayContent}
+  containerRef={pageContainerRef}
+  onNavigate={handleTOCNavigate}
+/>
 </div>
 </PaperEditPermissionsContext.Provider>
 );

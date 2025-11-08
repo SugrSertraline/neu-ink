@@ -37,7 +37,7 @@ interface PaperContentProps {
   setSearchResults: (results: string[]) => void;
   setCurrentSearchIndex: (index: number) => void;
   onSectionTitleUpdate?: (sectionId: string, title: Section['title']) => void;
-  onSectionAddSubsection?: (sectionId: string) => void;
+  onSectionAddSubsection?: (sectionId: string) => Promise<void> | void;
   onSectionInsert?: (
     targetSectionId: string | null,
     position: 'above' | 'below',
@@ -489,7 +489,7 @@ export default function PaperContent({
               ) : (
                 <BlockRenderer
                   block={block}
-                  lang={lang === 'both' ? 'zh' : 'en'}
+                  lang={lang}
                   searchQuery={searchQuery}
                   isActive={isActive}
                   onMouseEnter={() => setActiveBlockId(block.id)}

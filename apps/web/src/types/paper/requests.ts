@@ -169,8 +169,7 @@ export interface AddBlockFromTextToSectionRequest {
 
 // —— 响应：添加block结果（从文本解析）——
 export interface AddBlockFromTextToSectionResult {
-  paper: Paper;
-  addedBlock: import('./content').BlockContent;
+  addedBlocks: import('./content').BlockContent[];
   sectionId: string;
 }
 

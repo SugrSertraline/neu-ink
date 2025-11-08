@@ -207,6 +207,11 @@ export default function TabBar({
       const tabToClose = tabs.find(tab => tab.id === tabId);
       if (!tabToClose) return;
 
+      // 保存当前滚动位置
+      const scrollY = window.scrollY;
+      const mainElement = document.querySelector('main');
+      const mainScrollTop = mainElement ? mainElement.scrollTop : 0;
+
       if (tabId === activeTabId) {
         const currentIndex = visibleTabs.findIndex(tab => tab.id === tabId);
         let targetTab: (typeof visibleTabs)[number] | null = null;
@@ -233,6 +238,15 @@ export default function TabBar({
               } else {
                 await router.push(targetHref);
               }
+              
+              // 恢复滚动位置
+              requestAnimationFrame(() => {
+                if (mainElement) {
+                  mainElement.scrollTop = mainScrollTop;
+                } else {
+                  window.scrollTo(0, scrollY);
+                }
+              });
             } catch (error) {
               console.error('Navigation error:', error);
               setLoading(false, null);
@@ -242,6 +256,17 @@ export default function TabBar({
       }
 
       removeTab(tabId);
+      
+      // 如果不是关闭当前活动标签页，也要恢复滚动位置以防万一
+      if (tabId !== activeTabId) {
+        requestAnimationFrame(() => {
+          if (mainElement) {
+            mainElement.scrollTop = mainScrollTop;
+          } else {
+            window.scrollTo(0, scrollY);
+          }
+        });
+      }
     },
     [
       activeTabId,

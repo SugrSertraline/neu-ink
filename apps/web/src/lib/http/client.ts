@@ -12,7 +12,7 @@ export class ApiClient {
   private baseURL: string;
   private apiPrefix: string;
   private token: string | null = null;
-  private defaultTimeoutMs = 120_000;
+  private defaultTimeoutMs = 300_000; // 增加到5分钟，以适应LLM解析的延迟
 
   constructor(baseURL: string, apiPrefix: string = '') {
     this.baseURL = baseURL.replace(/\/+$/, '');
