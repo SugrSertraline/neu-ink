@@ -1,6 +1,7 @@
 from typing import Dict, Any, Optional, List
 from neuink.services.db import get_user_col
 from neuink.utils.common import generate_id, get_current_time
+from neuink.utils.password_utils import hash_password, verify_password, migrate_plain_password
 from neuink.config.constants import ADMIN_USERNAME
 
 ROLE_ADMIN = "admin"
@@ -27,11 +28,15 @@ class UserModel:
         if username == ADMIN_USERNAME:
             role = ROLE_ADMIN
 
+        # 加密密码
+        hashed_password, salt = hash_password(password)
+
         current_time = get_current_time()
         user_data = {
             "id": generate_id(),
             "username": username,
-            "password": password,
+            "password": hashed_password,
+            "salt": salt,  # <-- 新增盐值字段
             "nickname": nickname,
             "role": role,  # <-- 新增字段
             "createdAt": current_time,
@@ -53,20 +58,41 @@ class UserModel:
 
     def verify_credentials(self, username: str, password: str) -> Optional[Dict[str, Any]]:
         """验证凭据 - 数据库查询操作"""
-        # 注意：生产环境不应打印明文密码，这里仅保持现状
         print("正在数据库中查询:")
         print(f"   用户名: '{username}'")
-        print(f"   密码: '{password}'")
+        print(f"   密码: [已隐藏]")
 
-        result = self.collection.find_one(
-            {"username": username, "password": password},
+        # 首先根据用户名查找用户
+        user = self.collection.find_one(
+            {"username": username},
             {"_id": 0}
         )
 
-        print(f"查询结果: {result is not None}")
-        if result:
-            print(f"找到用户: {result.get('username')}")
-        return result
+        if not user:
+            print("查询结果: 用户不存在")
+            return None
+
+        # 检查用户是否有盐值字段（判断是否为旧格式）
+        if "salt" not in user:
+            print("检测到旧格式密码，使用明文比较")
+            # 旧格式：直接比较明文密码
+            if user.get("password") == password:
+                print("查询结果: 明文密码验证成功")
+                return user
+            else:
+                print("查询结果: 明文密码验证失败")
+                return None
+
+        # 新格式：使用加密验证
+        stored_password = user.get("password")
+        salt = user.get("salt")
+        
+        if verify_password(password, stored_password, salt):
+            print("查询结果: 加密密码验证成功")
+            return user
+        else:
+            print("查询结果: 加密密码验证失败")
+            return None
 
     def update_user(self, user_id: str, update_data: Dict[str, Any]) -> bool:
         """更新用户"""
@@ -102,7 +128,9 @@ class UserModel:
 
     def update_password(self, user_id: str, new_password: str) -> bool:
         """更新用户密码"""
-        return self.update_user(user_id, {"password": new_password})
+        # 加密新密码
+        hashed_password, salt = hash_password(new_password)
+        return self.update_user(user_id, {"password": hashed_password, "salt": salt})
 
     def search_users(self, keyword: str, skip: int = 0, limit: int = 10) -> List[Dict[str, Any]]:
         """
@@ -115,6 +143,13 @@ class UserModel:
             ]
         }
         cursor = self.collection.find(query, {"_id": 0}).skip(skip).limit(limit)
+        return list(cursor)
+
+    def get_all_users(self, skip: int = 0, limit: int = 10) -> List[Dict[str, Any]]:
+        """
+        获取所有用户列表（分页）
+        """
+        cursor = self.collection.find({}, {"_id": 0}).skip(skip).limit(limit)
         return list(cursor)
 
     def set_role(self, user_id: str, role: str) -> bool:
@@ -142,6 +177,16 @@ class UserModel:
             if admin_user.get("role") != ROLE_ADMIN:
                 self.set_role(admin_user["id"], ROLE_ADMIN)
                 admin_user = self.find_by_username(ADMIN_USERNAME)
+            
+            # 检查是否需要迁移旧密码格式
+            if "salt" not in admin_user:
+                print("检测到管理员用户使用旧密码格式，正在迁移...")
+                old_password = admin_user.get("password")
+                hashed_password, salt = hash_password(old_password)
+                self.update_user(admin_user["id"], {"password": hashed_password, "salt": salt})
+                admin_user = self.find_by_username(ADMIN_USERNAME)
+                print("管理员用户密码迁移完成")
+                
         return admin_user
 
 user_model = None

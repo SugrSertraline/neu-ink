@@ -41,7 +41,6 @@ type PublicLibraryFilters = {
 
 type AdminLibraryFilters = PublicLibraryFilters & {
   isPublic?: boolean;
-  parseStatus?: ParseStatus['status'];
   createdBy?: string;
 };
 
@@ -120,7 +119,6 @@ export function usePublicLibraryController() {
   const [searchTerm, setSearchTerm] = useState('');
   const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
 
-  const [filterStatus, setFilterStatus] = useState('all');
   const [filterPriority, setFilterPriority] = useState('all');
   const [filterType, setFilterType] = useState('all');
   const [filterSciQuartile, setFilterSciQuartile] = useState('all');
@@ -149,7 +147,6 @@ export function usePublicLibraryController() {
     setCurrentPage(1);
   }, [
     debouncedSearchTerm,
-    filterStatus,
     filterPriority,
     filterType,
     filterSciQuartile,
@@ -158,12 +155,6 @@ export function usePublicLibraryController() {
     filterYear,
   ]);
 
-  const parseStatusFilter = useMemo<ParseStatus['status'] | undefined>(() => {
-    if (PARSE_STATUS_SET.has(filterStatus as ParseStatus['status'])) {
-      return filterStatus as ParseStatus['status'];
-    }
-    return undefined;
-  }, [filterStatus]);
   function isPaperEntity(candidate: unknown): candidate is Paper {
     if (!candidate || typeof candidate !== 'object') return false;
     const paper = candidate as Paper;
@@ -179,17 +170,13 @@ export function usePublicLibraryController() {
     (items: PaperListItem[]): PaperListItem[] => {
       let result = items;
 
-      if (parseStatusFilter) {
-        result = result.filter(item => item.parseStatus?.status === parseStatusFilter);
-      }
-
       if (filterPriority !== 'all') {
         result = result.filter(item => matchesImpactPriority(item.impactFactor, filterPriority));
       }
 
       return result;
     },
-    [filterPriority, parseStatusFilter],
+    [filterPriority],
   );
 
   const loadPapers = useCallback(async () => {
@@ -204,7 +191,8 @@ export function usePublicLibraryController() {
       const baseFilters: PublicLibraryFilters = {
         page: currentPage,
         pageSize,
-        limit: pageSize,
+        sortBy: "createdAt",
+        sortOrder: "desc",
         search: debouncedSearchTerm || undefined,
         articleType: filterType !== 'all' ? filterType : undefined,
         year: yearFilter,
@@ -215,7 +203,6 @@ export function usePublicLibraryController() {
 
       const adminFilters: AdminLibraryFilters = {
         ...baseFilters,
-        ...(parseStatusFilter ? { parseStatus: parseStatusFilter } : {}),
       };
 
       const response = isAdmin
@@ -266,7 +253,6 @@ export function usePublicLibraryController() {
     filterYear,
     isAdmin,
     pageSize,
-    parseStatusFilter,
     publicPaperService,
   ]);
 
@@ -400,7 +386,6 @@ export function usePublicLibraryController() {
   const resetFilters = useCallback(() => {
     setSearchTerm('');
     setDebouncedSearchTerm('');
-    setFilterStatus('all');
     setFilterPriority('all');
     setFilterType('all');
     setFilterSciQuartile('all');
@@ -427,8 +412,6 @@ export function usePublicLibraryController() {
     // 过滤器状态
     searchTerm,
     setSearchTerm,
-    filterStatus,
-    setFilterStatus,
     filterPriority,
     setFilterPriority,
     filterType,

@@ -135,7 +135,7 @@ class UserService:
         
         return self.user_model.delete_user(user_id)
     
-    def change_password(self, user_id: str, old_password: str, 
+    def change_password(self, user_id: str, old_password: str,
                        new_password: str) -> bool:
         """修改密码业务逻辑"""
         # 获取用户
@@ -143,9 +143,16 @@ class UserService:
         if not user:
             raise ValueError("用户不存在")
         
-        # 验证旧密码
-        if user["password"] != old_password:
-            raise ValueError("旧密码错误")
+        # 验证旧密码 - 支持新旧格式
+        if "salt" not in user:
+            # 旧格式：直接比较明文
+            if user["password"] != old_password:
+                raise ValueError("旧密码错误")
+        else:
+            # 新格式：使用加密验证
+            from neuink.utils.password_utils import verify_password
+            if not verify_password(old_password, user["password"], user["salt"]):
+                raise ValueError("旧密码错误")
         
         # 密码强度验证
         if len(new_password) < 6:

@@ -25,6 +25,7 @@ import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsC
 import { useEditingState } from '@/stores/useEditingState';
 import BlockEditor from './editor/BlockEditor';
 import { toast } from 'sonner';
+import { Badge } from '@/components/ui/badge';
 
 /** ===================== 工具与类型 ===================== */
 
@@ -52,6 +53,9 @@ interface BlockRendererProps {
   allSections?: Section[];
   /** 保存到服务器的回调 */
   onSaveToServer?: () => Promise<void>;
+  /** 笔记相关 */
+  notesCount?: number;
+  isPersonalOwner?: boolean;
 }
 
 type InlineRendererBaseProps = Omit<ComponentProps<typeof InlineRenderer>, 'nodes'>;
@@ -213,6 +217,8 @@ export default function BlockRenderer({
   onAddBlockAfter,
   allSections = [],
   onSaveToServer,
+  notesCount = 0,
+  isPersonalOwner = false,
 }: BlockRendererProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
   const { hasUnsavedChanges, setHasUnsavedChanges, switchToEdit, clearEditing } = useEditingState();
@@ -332,6 +338,12 @@ export default function BlockRenderer({
   }, [block, setHasUnsavedChanges, clearEditing]);
 
   const handleSaveEdit = useCallback(async () => {
+    console.log('[BlockRenderer] handleSaveEdit called:', {
+      blockId: block.id,
+      hasOnBlockUpdate: !!onBlockUpdate,
+      hasOnSaveToServer: !!onSaveToServer
+    });
+    
     if (!onBlockUpdate) {
       setDraftBlock(cloneBlock(block));
       setIsEditing(false);
@@ -341,7 +353,10 @@ export default function BlockRenderer({
 
     // 如果内容有变化，先更新本地
     if (JSON.stringify(draftBlock) !== JSON.stringify(block)) {
+      console.log('[BlockRenderer] Content changed, calling onBlockUpdate');
       onBlockUpdate(draftBlock);
+    } else {
+      console.log('[BlockRenderer] No content changes detected');
     }
 
     setDraftBlock(cloneBlock(draftBlock));
@@ -351,16 +366,20 @@ export default function BlockRenderer({
 
     // 然后保存到服务器
     if (onSaveToServer) {
+      console.log('[BlockRenderer] Calling onSaveToServer');
       setIsSaving(true);
       try {
         await onSaveToServer();
+        console.log('[BlockRenderer] onSaveToServer completed successfully');
         // toast.success 已经在 onSaveToServer 中处理
       } catch (err) {
         // 错误处理已经在 onSaveToServer 中处理
-        console.error('Save to server failed:', err);
+        console.error('[BlockRenderer] Save to server failed:', err);
       } finally {
         setIsSaving(false);
       }
+    } else {
+      console.log('[BlockRenderer] No onSaveToServer callback provided');
     }
   }, [draftBlock, block, onBlockUpdate, setHasUnsavedChanges, clearEditing, onSaveToServer]);
 
@@ -912,8 +931,14 @@ export default function BlockRenderer({
         ) : (
           <>
             {renderContent()}
-            {inlineEditingEnabled && (
-              <div className="pointer-events-none absolute right-3 top-3 opacity-0 transition group-hover:opacity-100">
+            <div className="pointer-events-none absolute right-3 top-3 opacity-0 transition group-hover:opacity-100 flex items-center gap-2">
+              {/* 笔记数量badge - 仅在个人论文库访问时显示 */}
+              {isPersonalOwner && notesCount > 0 && (
+                <Badge variant="secondary" className="pointer-events-auto">
+                  {notesCount}
+                </Badge>
+              )}
+              {inlineEditingEnabled && (
                 <button
                   type="button"
                   onClick={(event) => {
@@ -925,8 +950,8 @@ export default function BlockRenderer({
                 >
                   编辑
                 </button>
-              </div>
-            )}
+              )}
+            </div>
           </>
         )}
       </div>

@@ -11,7 +11,8 @@ type ReferenceEditorOverlayProps = {
   onChange: (next: Reference) => void;
   onCancel: () => void;
   onSave: () => void;
-  container?: HTMLElement | null; 
+  container?: HTMLElement | null;
+  isOpen: boolean;
 };
 
 export default function ReferenceEditorOverlay({
@@ -21,11 +22,12 @@ export default function ReferenceEditorOverlay({
   onCancel,
   onSave,
   container,
+  isOpen,
 }: ReferenceEditorOverlayProps) {
    const portalTarget =
     container ??
     (typeof window !== 'undefined' ? document.body : null);
-  if (!portalTarget) return null;
+  if (!portalTarget || !isOpen) return null;
 
   useEffect(() => {
   if (typeof window === 'undefined') return;
@@ -112,7 +114,7 @@ export default function ReferenceEditorOverlay({
 
   return createPortal(
     <div
-      className={`${positionCls} inset-0 z-[9999] flex items-start justify-end bg-slate-900/40 px-4 py-6 backdrop-blur-sm overscroll-contain`}
+      className={`${positionCls} inset-0 z-9999 flex items-start justify-end bg-slate-900/40 px-4 py-6 backdrop-blur-sm overscroll-contain`}
       onClick={onCancel}
     >
       <div

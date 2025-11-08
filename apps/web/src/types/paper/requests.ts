@@ -232,3 +232,13 @@ export interface UpdateBlockResult {
 export interface DeleteBlockResult {
   deletedBlockId: string;
 }
+
+// —— 请求：更新论文可见状态 ——
+export interface UpdatePaperVisibilityRequest {
+  isPublic: boolean;
+}
+
+// —— 响应：更新论文可见状态结果 ——
+export interface UpdatePaperVisibilityResult {
+  paper: Paper;
+}

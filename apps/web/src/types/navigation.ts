@@ -1,7 +1,7 @@
 import { LucideIcon } from 'lucide-react';
 import { User } from './user';
 
-export type TabType = 'library' | 'paper' | 'settings' | 'public-library';
+export type TabType = 'library' | 'paper' | 'settings' | 'public-library' | 'users';
 
 export interface NavItem {
   id: string;

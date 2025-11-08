@@ -268,6 +268,58 @@ class PaperService:
 
         return self._wrap_error("论文删除失败")
 
+    def update_paper_visibility(
+        self,
+        paper_id: str,
+        is_public: bool,
+        user_id: str,
+    ) -> Dict[str, Any]:
+        """
+        管理员修改论文的可见状态
+        
+        Args:
+            paper_id: 论文ID
+            is_public: 是否公开 (True: 公开, False: 私有)
+            user_id: 操作用户ID
+            
+        Returns:
+            操作结果
+        """
+        try:
+            # 检查论文是否存在
+            paper = self.paper_model.find_by_id(paper_id)
+            if not paper:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+            
+            # 记录修改前的状态
+            previous_visibility = paper.get("isPublic", False)
+            
+            # 如果状态没有变化，直接返回
+            if previous_visibility == is_public:
+                return self._wrap_success("论文可见状态未变化", {
+                    "paperId": paper_id,
+                    "previousVisibility": previous_visibility,
+                    "currentVisibility": is_public,
+                    "changed": False
+                })
+            
+            # 更新论文可见状态
+            update_data = {"isPublic": is_public}
+            if self.paper_model.update(paper_id, update_data):
+                updated_paper = self.paper_model.find_by_id(paper_id)
+                return self._wrap_success("论文可见状态更新成功", {
+                    "paperId": paper_id,
+                    "previousVisibility": previous_visibility,
+                    "currentVisibility": is_public,
+                    "changed": True,
+                    "paper": updated_paper
+                })
+            else:
+                return self._wrap_error("更新论文可见状态失败")
+                
+        except Exception as exc:
+            return self._wrap_error(f"更新论文可见状态失败: {exc}")
+
     def add_blocks_to_section(
         self,
         paper_id: str,
@@ -915,17 +967,14 @@ class PaperService:
             if target_section.get('content'):
                 section_context += f", Section内容: {target_section['content'][:200]}..."
 
-            # 使用LLM解析文本为block
+            # 使用LLM解析文本为blocks
             llm_utils = get_llm_utils()
             new_blocks = llm_utils.parse_text_to_blocks(text, section_context)
 
             if not new_blocks:
-                return self._wrap_error("文本解析失败，无法生成有效的block")
+                return self._wrap_error("文本解析失败，无法生成有效的blocks")
 
-            # 取第一个block（因为现在只添加一个block）
-            new_block = new_blocks[0]
-
-            # 将新block添加到section中
+            # 将新blocks添加到section中
             if "content" not in target_section:
                 target_section["content"] = []
             
@@ -939,8 +988,8 @@ class PaperService:
                         insert_index = i + 1  # 插入到指定block后面
                         break
             
-            # 插入新block
-            current_blocks.insert(insert_index, new_block)
+            # 插入新blocks - 使用切片插入所有blocks
+            current_blocks[insert_index:insert_index] = new_blocks
             target_section["content"] = current_blocks
             sections[section_index] = target_section
 
@@ -949,10 +998,10 @@ class PaperService:
             if self.paper_model.update(paper_id, update_data):
                 updated_paper = self.paper_model.find_by_id(paper_id)
                 return self._wrap_success(
-                    f"成功向section添加了1个block",
+                    f"成功向section添加了{len(new_blocks)}个blocks",
                     {
                         "paper": updated_paper,
-                        "addedBlock": new_block,
+                        "addedBlocks": new_blocks,
                         "sectionId": section_id
                     }
                 )

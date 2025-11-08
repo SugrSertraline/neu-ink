@@ -100,12 +100,23 @@ export default function PaperReferences({
 
   const renderContent = () => {
     if (!references?.length) {
+      if (!isEditable) {
+        return (
+          <div className="rounded-md border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500 dark:border-slate-700 dark:text-slate-400">
+            当前没有参考文献。
+          </div>
+        );
+      }
+      
       return (
-        <div className="rounded-md border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500 dark:border-slate-700 dark:text-slate-400">
-          {isEditable
-            ? '当前没有参考文献，请在下方的编辑列表中新增，或右键此区域快速添加。'
-            : '当前没有参考文献。'}
-        </div>
+        <RootReferenceContextMenu onAddReference={onReferenceAdd}>
+          <div
+            data-reference-region="true"
+            className="rounded-md border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500 dark:border-slate-700 dark:text-slate-400 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors"
+          >
+            当前没有参考文献，请右键此区域快速添加。
+          </div>
+        </RootReferenceContextMenu>
       );
     }
 

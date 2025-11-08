@@ -227,29 +227,44 @@ export function usePaperBlocks(
     isPersonalOwner: boolean
   ) => {
     try {
+      console.log('[usePaperBlocks] handleBlockUpdateWithAPI called:', {
+        sectionId,
+        blockId,
+        isPersonalOwner,
+        userPaperId,
+        paperId
+      });
+      
       if (isPersonalOwner && userPaperId) {
+        console.log('[usePaperBlocks] Using userPaperService for personal paper');
         const { userPaperService } = await import('@/lib/services/paper');
         const result = await userPaperService.updateBlock(userPaperId, sectionId, blockId, updateData);
         
         if (result.bizCode === 0) {
+          console.log('[usePaperBlocks] userPaperService.updateBlock success');
           return { success: true };
         } else {
+          console.error('[usePaperBlocks] userPaperService.updateBlock failed:', result.bizMessage);
           toast.error('更新失败', { description: result.bizMessage || '服务器错误' });
           return { success: false, error: result.bizMessage || '更新内容块失败' };
         }
       } else {
+        console.log('[usePaperBlocks] Using adminPaperService for admin paper');
         const { adminPaperService } = await import('@/lib/services/paper');
         const result = await adminPaperService.updateBlock(paperId, sectionId, blockId, updateData);
         
         if (result.bizCode === 0) {
+          console.log('[usePaperBlocks] adminPaperService.updateBlock success');
           return { success: true };
         } else {
+          console.error('[usePaperBlocks] adminPaperService.updateBlock failed:', result.bizMessage);
           toast.error('更新失败', { description: result.bizMessage || '服务器错误' });
           return { success: false, error: result.bizMessage || '更新内容块失败' };
         }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '更新内容块时发生未知错误';
+      console.error('[usePaperBlocks] handleBlockUpdateWithAPI exception:', error);
       toast.error('更新失败', { description: message });
       return { success: false, error: message };
     }
@@ -309,6 +324,14 @@ export function usePaperBlocks(
       onSaveToServer?: () => Promise<void>
     ) => {
       try {
+        console.log('[usePaperBlocks] handleBlockUpdate called:', {
+          blockId,
+          sectionId,
+          paperId,
+          userPaperId,
+          isPersonalOwner
+        });
+        
         // 先本地更新
         updateBlockTree(blockId, () => ({ block: nextBlock }));
         
@@ -377,6 +400,8 @@ export function usePaperBlocks(
         
         if (!result.success) {
           console.error('Failed to update block:', result.error);
+        } else {
+          console.log('[usePaperBlocks] Block updated successfully');
         }
       } catch (error) {
         console.error('Failed to update block:', error);

@@ -64,6 +64,9 @@ interface PaperContentProps {
   }>;
   onStartTextParse?: (sectionId: string) => void;
   onSaveToServer?: () => Promise<void>;
+  /** 笔记相关 */
+  notesByBlock?: Record<string, any[]>;
+  isPersonalOwner?: boolean;
 }
 
 type ContentBlock = HeadingBlock | ParagraphBlock | QuoteBlock;
@@ -102,6 +105,8 @@ export default function PaperContent({
   onBlockAddComponent,
   onParseTextAdd,
   onSaveToServer,
+  notesByBlock = {},
+  isPersonalOwner = false,
 }: PaperContentProps) {
   const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
@@ -495,6 +500,8 @@ export default function PaperContent({
                   references={references}
                   onBlockUpdate={updatedBlock => onBlockUpdate?.(block.id, updatedBlock)}
                   onSaveToServer={onSaveToServer}
+                  notesCount={notesByBlock[block.id]?.length || 0}
+                  isPersonalOwner={isPersonalOwner}
                 />
               );
 
@@ -672,6 +679,8 @@ export default function PaperContent({
     onBlockClick,
     contentRef,
     onSaveToServer,
+    notesByBlock,
+    isPersonalOwner,
   ]);
 
   const emptyState = canEditContent && onSectionInsert ? (

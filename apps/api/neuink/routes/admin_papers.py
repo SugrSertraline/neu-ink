@@ -99,6 +99,9 @@ def create_paper():
         if not data.get("metadata", {}).get("title"):
             return bad_request_response("论文标题不能为空")
 
+        # 确保管理员创建的论文是公开的
+        data["isPublic"] = True
+
         service = get_paper_service()
         result = service.create_paper(data, g.current_user["user_id"])
 
@@ -496,6 +499,44 @@ def update_block(paper_id, section_id, block_id):
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
 
+
+@bp.route("/<paper_id>/visibility", methods=["PUT"])
+@login_required
+@admin_required
+def update_paper_visibility(paper_id):
+    """
+    管理员修改论文的可见状态
+    
+    请求体示例:
+    {
+        "isPublic": true  // true: 设为公开, false: 设为私有
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or "isPublic" not in data:
+            return bad_request_response("isPublic字段不能为空")
+        
+        is_public = data["isPublic"]
+        if not isinstance(is_public, bool):
+            return bad_request_response("isPublic字段必须是布尔值")
+        
+        service = get_paper_service()
+        result = service.update_paper_visibility(
+            paper_id=paper_id,
+            is_public=is_public,
+            user_id=g.current_user["user_id"]
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
 
 @bp.route("/<paper_id>/sections/<section_id>/blocks/<block_id>", methods=["DELETE"])
 @login_required

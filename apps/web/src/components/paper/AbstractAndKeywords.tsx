@@ -3,6 +3,8 @@
 import { FileText, Tag } from 'lucide-react';
 import type { Paper } from '@/types/paper';
 import clsx from 'clsx';
+import { AbstractAndKeywordsContextMenu } from './PaperContextMenus';
+import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
 
 type DisplayLang = 'en' | 'both';
 
@@ -11,6 +13,7 @@ interface AbstractAndKeywordsProps {
   keywords?: Paper['keywords'];
   className?: string;
   lang?: DisplayLang;
+  onEditRequest?: () => void;
 }
 
 export default function AbstractAndKeywords({
@@ -18,7 +21,10 @@ export default function AbstractAndKeywords({
   keywords,
   className,
   lang = 'both',
+  onEditRequest,
 }: AbstractAndKeywordsProps) {
+  const { canEditContent } = usePaperEditPermissionsContext();
+  const allowEdit = canEditContent && Boolean(onEditRequest);
   const hasEN = !!abstract?.en?.trim();
   const hasZH = !!abstract?.zh?.trim();
   const kwList = (keywords ?? []).filter(Boolean).map(String);
@@ -33,12 +39,14 @@ export default function AbstractAndKeywords({
   if (!shouldRenderAbstract && !hasKeywords) return null;
 
   return (
-    <section
-      className={clsx(
-        'rounded-lg border border-gray-200 bg-white p-6 shadow-md dark:border-slate-700 dark:bg-slate-900',
-        className,
-      )}
-    >
+    <AbstractAndKeywordsContextMenu onEdit={allowEdit ? onEditRequest : undefined}>
+      <section
+        data-metadata-region="true"
+        className={clsx(
+          'rounded-lg border border-gray-200 bg-white p-6 shadow-md dark:border-slate-700 dark:bg-slate-900',
+          className,
+        )}
+      >
       {/* Abstract */}
       {shouldRenderAbstract && (
         <div className={clsx(hasKeywords && 'mb-6')}>
@@ -113,6 +121,7 @@ export default function AbstractAndKeywords({
           </div>
         </div>
       )}
-    </section>
+      </section>
+    </AbstractAndKeywordsContextMenu>
   );
 }

@@ -310,6 +310,7 @@ class UserPaperService:
         从公共论文中提取需要复制的数据
         """
         return {
+            "id": public_paper.get("id"),  # 添加论文ID
             "metadata": public_paper.get("metadata", {}),
             "abstract": public_paper.get("abstract"),
             "keywords": public_paper.get("keywords", []),

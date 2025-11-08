@@ -229,9 +229,12 @@ def sanitize_user_data(user_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     safe_data = user_data.copy()
     
-    # 移除密码字段
+    # 移除敏感字段
     if "password" in safe_data:
         del safe_data["password"]
+    
+    if "salt" in safe_data:
+        del safe_data["salt"]
     
     # 确保时间字段为字符串格式
     if "createdAt" in safe_data and isinstance(safe_data["createdAt"], datetime):

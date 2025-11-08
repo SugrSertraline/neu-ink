@@ -28,7 +28,8 @@ export function usePaperReferences(
         const current = prev.references ?? [];
         const { refs: next, touched } = updater(current);
         if (!touched) return prev;
-        setHasUnsavedChanges(true);
+        // 使用 setTimeout 来避免在渲染过程中调用 setState
+        setTimeout(() => setHasUnsavedChanges(true), 0);
         return { ...prev, references: next };
       });
     },

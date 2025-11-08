@@ -230,10 +230,15 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
       const target = event.target as HTMLElement;
 
       const isValidTarget = () => {
+        // 优先检查 metadata 区域，这样即使点击其中的按钮等元素也能触发菜单
+        if (target.closest('[data-metadata-region]')) return true;
         if (target.closest('h1, h2, h3, h4, h5, h6')) return true;
         if (target.closest('[data-block-id]')) return true;
-        if (target.closest('button, input, textarea, select, a')) return true;
-        if (target.closest('[contenteditable="true"]')) return true;
+        if (target.closest('[data-reference-id]')) return true;
+        if (target.closest('[data-reference-region]')) return true;
+        // 对于这些交互元素，不应该触发右键菜单
+        if (target.closest('button, input, textarea, select, a')) return false;
+        if (target.closest('[contenteditable="true"]')) return false;
         if (target.closest('img, figure, pre, code')) return true;
         return false;
       };
@@ -757,4 +762,30 @@ export function RootReferenceContextMenu({
       {children}
     </ContextMenuWrapper>
   );
+}
+
+interface AbstractAndKeywordsContextMenuProps {
+  children: React.ReactNode;
+  onEdit?: MenuAction;
+}
+
+export function AbstractAndKeywordsContextMenu({
+  children,
+  onEdit,
+}: AbstractAndKeywordsContextMenuProps) {
+  const { canEditContent } = usePaperEditPermissionsContext();
+
+  const entries = useMemo(() => {
+    const list: MenuEntry[] = [];
+    if (onEdit) {
+      list.push({ kind: 'item', label: '编辑摘要和关键词', onSelect: onEdit });
+    }
+    return list;
+  }, [onEdit]);
+
+  if (!canEditContent || !entries.length) {
+    return <>{children}</>;
+  }
+
+  return <ContextMenuWrapper entries={entries}>{children}</ContextMenuWrapper>;
 }

@@ -23,7 +23,7 @@ export function usePaperSections(
     });
 
     if (didTouch) {
-      setHasUnsavedChanges(false);
+      setHasUnsavedChanges(true);
     }
   },
   [setEditableDraft, setHasUnsavedChanges]
@@ -71,29 +71,43 @@ export function usePaperSections(
     isPersonalOwner: boolean
   ) => {
     try {
+      console.log('[usePaperSections] handleSectionUpdateWithAPI called:', {
+        sectionId,
+        isPersonalOwner,
+        userPaperId,
+        paperId
+      });
+      
       if (isPersonalOwner && userPaperId) {
+        console.log('[usePaperSections] Using userPaperService for personal paper section');
         const { userPaperService } = await import('@/lib/services/paper');
         const result = await userPaperService.updateSection(userPaperId, sectionId, updateData);
         
         if (result.bizCode === 0) {
+          console.log('[usePaperSections] userPaperService.updateSection success');
           return { success: true };
         } else {
+          console.error('[usePaperSections] userPaperService.updateSection failed:', result.bizMessage);
           toast.error('更新失败', { description: result.bizMessage || '服务器错误' });
           return { success: false, error: result.bizMessage || '更新章节失败' };
         }
       } else {
+        console.log('[usePaperSections] Using adminPaperService for admin paper section');
         const { adminPaperService } = await import('@/lib/services/paper');
         const result = await adminPaperService.updateSection(paperId, sectionId, updateData);
         
         if (result.bizCode === 0) {
+          console.log('[usePaperSections] adminPaperService.updateSection success');
           return { success: true };
         } else {
+          console.error('[usePaperSections] adminPaperService.updateSection failed:', result.bizMessage);
           toast.error('更新失败', { description: result.bizMessage || '服务器错误' });
           return { success: false, error: result.bizMessage || '更新章节失败' };
         }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '更新章节时发生未知错误';
+      console.error('[usePaperSections] handleSectionUpdateWithAPI exception:', error);
       toast.error('更新失败', { description: message });
       return { success: false, error: message };
     }
@@ -241,6 +255,13 @@ export function usePaperSections(
     onSaveToServer?: () => Promise<void>
   ) => {
     try {
+      console.log('[usePaperSections] handleSectionTitleUpdate called:', {
+        sectionId,
+        isPersonalOwner,
+        userPaperId,
+        paperId
+      });
+      
       // 先本地更新UI
       updateSectionTree(sectionId, section => ({
         ...section,
@@ -266,6 +287,8 @@ export function usePaperSections(
       // 不再调用 handleSaveToServer，因为 handleSectionUpdateWithAPI 已经更新了数据库
       if (!result.success) {
         console.error('Failed to update section title:', result.error);
+      } else {
+        console.log('[usePaperSections] Section title updated successfully');
       }
     } catch (error) {
       console.error('Failed to update section title:', error);
@@ -467,14 +490,259 @@ export function usePaperSections(
   );
 
   const handleSectionAddBlock = useCallback(
-    (sectionId: string, blockType: BlockContent['type'], lang: 'en' | 'both') => {
+    async (
+      sectionId: string,
+      blockType: BlockContent['type'],
+      lang: 'en' | 'both',
+      paperId?: string,
+      userPaperId?: string | null,
+      isPersonalOwner?: boolean,
+      onSaveToServer?: () => Promise<void>
+    ) => {
+      let newBlockId: string | null = null;
+      
+      // 先本地更新UI
       updateSectionTree(sectionId, section => {
         const newBlock = createBlock(blockType, lang);
+        newBlockId = newBlock.id;
         return {
           ...section,
           content: [...(section.content ?? []), newBlock],
         };
       });
+      
+      // 然后调用API保存
+      if (newBlockId && paperId && userPaperId !== undefined && isPersonalOwner !== undefined) {
+        try {
+          if (isPersonalOwner && userPaperId) {
+            // 个人论文
+            const { userPaperService } = await import('@/lib/services/paper');
+            const newBlock = createBlock(blockType, lang);
+            
+            // 构建blockData，确保所有必要字段都存在
+            const blockData: any = {
+              type: newBlock.type,
+            };
+            
+            if ('content' in newBlock && newBlock.content !== undefined) {
+              blockData.content = newBlock.content;
+            }
+            
+            if ('metadata' in newBlock && newBlock.metadata !== undefined) {
+              blockData.metadata = newBlock.metadata;
+            }
+            
+            if ('latex' in newBlock && newBlock.latex !== undefined) {
+              blockData.latex = newBlock.latex;
+            }
+            
+            if ('code' in newBlock && newBlock.code !== undefined) {
+              blockData.code = newBlock.code;
+              if ('language' in newBlock && newBlock.language !== undefined) {
+                blockData.language = newBlock.language;
+              }
+            }
+            
+            if ('url' in newBlock && newBlock.url !== undefined) {
+              blockData.url = newBlock.url;
+              if ('alt' in newBlock && newBlock.alt !== undefined) {
+                blockData.alt = newBlock.alt;
+              }
+            }
+            
+            if ('headers' in newBlock && newBlock.headers !== undefined) {
+              blockData.headers = newBlock.headers;
+            }
+            
+            if ('rows' in newBlock && newBlock.rows !== undefined) {
+              blockData.rows = newBlock.rows;
+            }
+            
+            if ('items' in newBlock && newBlock.items !== undefined) {
+              blockData.items = newBlock.items;
+            }
+            
+            if ('author' in newBlock && newBlock.author !== undefined) {
+              blockData.author = newBlock.author;
+            }
+            
+            if ('level' in newBlock && newBlock.level !== undefined) {
+              blockData.level = newBlock.level;
+            }
+            
+            if ('align' in newBlock && newBlock.align !== undefined) {
+              blockData.align = newBlock.align;
+            }
+            
+            if ('number' in newBlock && newBlock.number !== undefined) {
+              blockData.number = newBlock.number;
+            }
+            
+            if ('start' in newBlock && newBlock.start !== undefined) {
+              blockData.start = newBlock.start;
+            }
+            
+            if ('caption' in newBlock && newBlock.caption !== undefined) {
+              blockData.caption = newBlock.caption;
+            }
+            
+            if ('description' in newBlock && newBlock.description !== undefined) {
+              blockData.description = newBlock.description;
+            }
+            
+            if ('src' in newBlock && newBlock.src !== undefined) {
+              blockData.src = newBlock.src;
+            }
+            
+            if ('width' in newBlock && newBlock.width !== undefined) {
+              blockData.width = newBlock.width;
+            }
+            
+            if ('height' in newBlock && newBlock.height !== undefined) {
+              blockData.height = newBlock.height;
+            }
+            
+            if ('showLineNumbers' in newBlock && newBlock.showLineNumbers !== undefined) {
+              blockData.showLineNumbers = newBlock.showLineNumbers;
+            }
+            
+            const result = await userPaperService.addBlockToSection(userPaperId, sectionId, {
+              blockData
+            });
+            
+            if (result.bizCode === 0) {
+              toast.success('段落添加成功');
+              setHasUnsavedChanges(false);
+            } else {
+              const errorMsg = result.bizMessage || '服务器错误';
+              toast.error('添加失败', { description: errorMsg });
+              // 如果API调用失败，回滚本地更新
+              updateSectionTree(sectionId, section => ({
+                ...section,
+                content: (section.content ?? []).filter(block => block.id !== newBlockId)
+              }));
+            }
+          } else {
+            // 管理员论文
+            const { adminPaperService } = await import('@/lib/services/paper');
+            const newBlock = createBlock(blockType, lang);
+            
+            // 构建blockData，确保所有必要字段都存在
+            const blockData: any = {
+              type: newBlock.type,
+            };
+            
+            if ('content' in newBlock && newBlock.content !== undefined) {
+              blockData.content = newBlock.content;
+            }
+            
+            if ('metadata' in newBlock && newBlock.metadata !== undefined) {
+              blockData.metadata = newBlock.metadata;
+            }
+            
+            if ('latex' in newBlock && newBlock.latex !== undefined) {
+              blockData.latex = newBlock.latex;
+            }
+            
+            if ('code' in newBlock && newBlock.code !== undefined) {
+              blockData.code = newBlock.code;
+              if ('language' in newBlock && newBlock.language !== undefined) {
+                blockData.language = newBlock.language;
+              }
+            }
+            
+            if ('url' in newBlock && newBlock.url !== undefined) {
+              blockData.url = newBlock.url;
+              if ('alt' in newBlock && newBlock.alt !== undefined) {
+                blockData.alt = newBlock.alt;
+              }
+            }
+            
+            if ('headers' in newBlock && newBlock.headers !== undefined) {
+              blockData.headers = newBlock.headers;
+            }
+            
+            if ('rows' in newBlock && newBlock.rows !== undefined) {
+              blockData.rows = newBlock.rows;
+            }
+            
+            if ('items' in newBlock && newBlock.items !== undefined) {
+              blockData.items = newBlock.items;
+            }
+            
+            if ('author' in newBlock && newBlock.author !== undefined) {
+              blockData.author = newBlock.author;
+            }
+            
+            if ('level' in newBlock && newBlock.level !== undefined) {
+              blockData.level = newBlock.level;
+            }
+            
+            if ('align' in newBlock && newBlock.align !== undefined) {
+              blockData.align = newBlock.align;
+            }
+            
+            if ('number' in newBlock && newBlock.number !== undefined) {
+              blockData.number = newBlock.number;
+            }
+            
+            if ('start' in newBlock && newBlock.start !== undefined) {
+              blockData.start = newBlock.start;
+            }
+            
+            if ('caption' in newBlock && newBlock.caption !== undefined) {
+              blockData.caption = newBlock.caption;
+            }
+            
+            if ('description' in newBlock && newBlock.description !== undefined) {
+              blockData.description = newBlock.description;
+            }
+            
+            if ('src' in newBlock && newBlock.src !== undefined) {
+              blockData.src = newBlock.src;
+            }
+            
+            if ('width' in newBlock && newBlock.width !== undefined) {
+              blockData.width = newBlock.width;
+            }
+            
+            if ('height' in newBlock && newBlock.height !== undefined) {
+              blockData.height = newBlock.height;
+            }
+            
+            if ('showLineNumbers' in newBlock && newBlock.showLineNumbers !== undefined) {
+              blockData.showLineNumbers = newBlock.showLineNumbers;
+            }
+            
+            const result = await adminPaperService.addBlockToSection(paperId, sectionId, {
+              blockData
+            });
+            
+            if (result.bizCode === 0) {
+              toast.success('段落添加成功');
+              setHasUnsavedChanges(false);
+            } else {
+              const errorMsg = result.bizMessage || '服务器错误';
+              toast.error('添加失败', { description: errorMsg });
+              // 如果API调用失败，回滚本地更新
+              updateSectionTree(sectionId, section => ({
+                ...section,
+                content: (section.content ?? []).filter(block => block.id !== newBlockId)
+              }));
+            }
+          }
+        } catch (error) {
+          const message = error instanceof Error ? error.message : '添加段落时发生未知错误';
+          toast.error('添加失败', { description: message });
+          // 如果API调用失败，回滚本地更新
+          if (newBlockId) {
+            updateSectionTree(sectionId, section => ({
+              ...section,
+              content: (section.content ?? []).filter(block => block.id !== newBlockId)
+            }));
+          }
+        }
+      }
     },
     [updateSectionTree]
   );

@@ -18,8 +18,6 @@ import { cn } from '@/lib/utils';
 interface LibraryFiltersProps {
   searchTerm: string;
   onSearchChange: (value: string) => void;
-  filterStatus: string;
-  onStatusChange: (value: string) => void;
   filterPriority: string;
   onPriorityChange: (value: string) => void;
   filterType: string;
@@ -36,16 +34,8 @@ interface LibraryFiltersProps {
   onYearChange: (value: string) => void;
   availableYears: (number | undefined)[];
   onResetFilters: () => void;
-  canFilterStatus?: boolean;
 }
 
-const STATUS_OPTIONS = [
-  { value: 'all', label: '全部状态' },
-  { value: 'pending', label: '待解析' },
-  { value: 'parsing', label: '解析中' },
-  { value: 'completed', label: '已完成' },
-  { value: 'failed', label: '解析失败' },
-];
 
 const PRIORITY_OPTIONS = [
   { value: 'all', label: '全部优先级' },
@@ -86,8 +76,6 @@ const glowButtonGhost =
 export default function LibraryFilters({
   searchTerm,
   onSearchChange,
-  filterStatus,
-  onStatusChange,
   filterPriority,
   onPriorityChange,
   filterType,
@@ -104,7 +92,6 @@ export default function LibraryFilters({
   onYearChange,
   availableYears,
   onResetFilters,
-  canFilterStatus = false,
 }: LibraryFiltersProps) {
   const hasActiveAdvancedFilters =
     filterSciQuartile !== 'all' ||
@@ -114,7 +101,6 @@ export default function LibraryFilters({
 
   const hasActiveFilters =
     searchTerm !== '' ||
-    (canFilterStatus && filterStatus !== 'all') ||
     filterPriority !== 'all' ||
     filterType !== 'all' ||
     hasActiveAdvancedFilters;
@@ -138,21 +124,6 @@ export default function LibraryFilters({
         </div>
 
         <div className="flex min-w-0 flex-wrap gap-2" data-glow="true">
-          {canFilterStatus && (
-            <Select value={filterStatus} onValueChange={onStatusChange}>
-              <SelectTrigger className={glowTrigger}>
-                <SelectValue placeholder="选择状态" />
-              </SelectTrigger>
-              <SelectContent className={glowContent} position="popper">
-                {STATUS_OPTIONS.map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    {option.label}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          )}
-
           <Select value={filterPriority} onValueChange={onPriorityChange}>
             <SelectTrigger className={glowTrigger}>
               <SelectValue placeholder="选择优先级" />
@@ -272,12 +243,6 @@ export default function LibraryFilters({
         <div className="flex flex-wrap gap-2">
           {searchTerm && (
             <GlowBadge onClear={() => onSearchChange('')}>搜索: {searchTerm}</GlowBadge>
-          )}
-          {canFilterStatus && filterStatus !== 'all' && (
-            <GlowBadge onClear={() => onStatusChange('all')}>
-              状态:{' '}
-              {STATUS_OPTIONS.find(item => item.value === filterStatus)?.label ?? filterStatus}
-            </GlowBadge>
           )}
           {filterPriority !== 'all' && (
             <GlowBadge onClear={() => onPriorityChange('all')}>

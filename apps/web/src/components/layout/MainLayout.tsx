@@ -3,7 +3,7 @@
 
 import React, { useCallback, useEffect } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { BookOpen, Library, Settings, CheckSquare } from 'lucide-react';
+import { BookOpen, Library, Settings, CheckSquare, Users } from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useTabStore } from '@/stores/useTabStore';
@@ -102,6 +102,18 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
       disabled: true,
     },
     {
+      id: 'users',
+      type: 'users',
+      label: '用户管理',
+      icon: Users,
+      path: '/users',
+      requiresAuth: true,
+      activeColor: 'purple',
+      closable: true,
+      showInSidebar: isAdmin, // 只有管理员可见
+      isPermanentTab: false,
+    },
+    {
       id: 'settings',
       type: 'settings',
       label: '设置',
@@ -118,9 +130,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
   const visibleNavItems = React.useMemo(() => {
     return navigationConfig.filter(item => {
       if (!isAuthenticated && item.requiresAuth) return false;
+      
+      // 用户管理页面只有管理员可见
+      if (item.id === 'users' && !isAdmin) return false;
+      
       return true;
     });
-  }, [isAuthenticated]);
+  }, [isAuthenticated, isAdmin]);
 
   const handleNavigate = useCallback(
     async (item: NavItem) => {

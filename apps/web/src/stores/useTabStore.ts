@@ -14,7 +14,8 @@ export type TabType =
   | 'library'
   | 'paper'
   | 'settings'
-  | 'public-library';
+  | 'public-library'
+  | 'users';
 
 export interface Tab {
   id: string;

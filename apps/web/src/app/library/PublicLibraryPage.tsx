@@ -70,8 +70,6 @@ export default function PublicLibraryPage() {
     setViewMode,
     searchTerm,
     setSearchTerm,
-    filterStatus,
-    setFilterStatus,
     filterPriority,
     setFilterPriority,
     filterType,
@@ -189,8 +187,6 @@ export default function PublicLibraryPage() {
           <LibraryFilters
             searchTerm={searchTerm}
             onSearchChange={setSearchTerm}
-            filterStatus={filterStatus}
-            onStatusChange={setFilterStatus}
             filterPriority={filterPriority}
             onPriorityChange={setFilterPriority}
             filterType={filterType}
@@ -207,7 +203,6 @@ export default function PublicLibraryPage() {
             onYearChange={setFilterYear}
             availableYears={availableYears}
             onResetFilters={resetFilters}
-            canFilterStatus={isAdmin}
           />
         </div>
       </div>

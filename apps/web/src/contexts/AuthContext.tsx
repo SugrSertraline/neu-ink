@@ -37,10 +37,16 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const PUBLIC_PATHS = ['/', '/login', '/register'];
+const PUBLIC_PATHS = ['/', '/login', '/register', '/library'];
 
 function isPublicPath(pathname: string): boolean {
-  return PUBLIC_PATHS.some(path => pathname === path || pathname.startsWith(path));
+  return PUBLIC_PATHS.some(path => {
+    if (path === '/library') {
+      // 特殊处理 /library 路径，确保 /library 及其子路径都被视为公共路径
+      return pathname === path || pathname.startsWith(path + '/');
+    }
+    return pathname === path || pathname.startsWith(path);
+  });
 }
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {

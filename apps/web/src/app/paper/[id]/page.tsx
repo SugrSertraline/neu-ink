@@ -47,6 +47,7 @@ import {
   NOTES_PANEL_GAP,
 } from '@/types/paper/constants';
 import MetadataEditorOverlay from './MetadataEditorOverlay';
+import AbstractAndKeywordsEditorOverlay from './AbstractAndKeywordsEditorOverlay';
 
 type Lang = 'en' | 'both';
 const HEADER_STICKY_OFFSET = 8;
@@ -396,8 +397,14 @@ export default function PaperPage() {
 
   const canEditContent = permissions.canEditContent;
   const canToggleVisibility = permissions.canToggleVisibility;
-  const isPublicVisible = paper?.isPublic ?? false;
+  const [isPublicVisible, setIsPublicVisible] = useState(paper?.isPublic ?? false);
   const isPersonalOwner = effectiveSource === 'personal-owner';
+  
+  useEffect(() => {
+    if (paper) {
+      setIsPublicVisible(paper.isPublic);
+    }
+  }, [paper?.isPublic]);
 
   const { setHasUnsavedChanges, switchToEdit, clearEditing } = useEditingState();
 
@@ -417,6 +424,13 @@ export default function PaperPage() {
   );
   const [metadataEditorError, setMetadataEditorError] = useState<string | null>(null);
   const [isMetadataSubmitting, setIsMetadataSubmitting] = useState(false);
+  const [isAbstractKeywordsEditorOpen, setIsAbstractKeywordsEditorOpen] = useState(false);
+  const [abstractKeywordsEditorInitial, setAbstractKeywordsEditorInitial] = useState<{
+    abstract?: { en?: string; zh?: string };
+    keywords?: string[];
+  } | null>(null);
+  const [abstractKeywordsEditorError, setAbstractKeywordsEditorError] = useState<string | null>(null);
+  const [isAbstractKeywordsSubmitting, setIsAbstractKeywordsSubmitting] = useState(false);
   const [isHeaderAffixed, setIsHeaderAffixed] = useState(false);
 
   const contentRef = useRef<HTMLDivElement>(null);
@@ -514,6 +528,23 @@ export default function PaperPage() {
     setMetadataEditorError(null);
     setIsMetadataEditorOpen(true);
   }, [metadata, switchToEdit]);
+
+  const handleAbstractKeywordsEditStart = useCallback(() => {
+    if (!displayContent) return;
+    const switched = switchToEdit('abstractKeywords', {
+      beforeSwitch: () => {
+        setAbstractKeywordsEditorError(null);
+      },
+      onRequestSave: () => { },
+    });
+    if (!switched) return;
+    setAbstractKeywordsEditorInitial({
+      abstract: displayContent.abstract,
+      keywords: displayContent.keywords,
+    });
+    setAbstractKeywordsEditorError(null);
+    setIsAbstractKeywordsEditorOpen(true);
+  }, [displayContent, switchToEdit]);
 
   const findBlockSection = useCallback(
     (blockId: string) => {
@@ -700,28 +731,40 @@ const handleSaveToServer = useCallback(
     if (!payload) return;
 
     try {
+      console.log('[PaperPage] handleSaveToServer called:', {
+        isPersonalOwner,
+        resolvedUserPaperId,
+        paperId
+      });
+      
       const service = isPersonalOwner ? userPaperService : adminPaperService;
       const id = isPersonalOwner ? resolvedUserPaperId : paperId;
 
       if (!id) {
+        console.error('[PaperPage] No valid ID for saving:', { isPersonalOwner, resolvedUserPaperId, paperId });
         toast.error('保存失败', { description: '无法确定要保存的论文标识' });
         return;
       }
 
+      console.log('[PaperPage] Saving to server with ID:', id, 'isPersonalOwner:', isPersonalOwner);
+      
       const result = isPersonalOwner
         ? await userPaperService.updateUserPaper(id, { paperData: payload })
         : await adminPaperService.updatePaper(id, payload);
 
       if (result.bizCode === 0) {
+        console.log('[PaperPage] Save to server successful');
         setHasUnsavedChanges(false);
         toast.success('保存成功', { description: '最新变更已同步到服务器。' });
       } else {
+        console.error('[PaperPage] Save to server failed:', result.bizMessage);
         toast.error('保存失败', {
           description: result.bizMessage ?? '服务器未返回详细信息，请稍后重试。',
         });
       }
     } catch (err) {
       const message = err instanceof Error ? err.message : '保存过程中发生未知错误，请稍后再试。';
+      console.error('[PaperPage] Save to server exception:', err);
       toast.error('保存出错', { description: message });
     }
   },
@@ -764,6 +807,46 @@ const handleSaveToServer = useCallback(
     setMetadataEditorError(null);
     setIsMetadataEditorOpen(false);
     setMetadataEditorInitial(null);
+    clearEditing();
+  }, [clearEditing]);
+
+  const handleAbstractKeywordsOverlaySubmit = useCallback(
+    async (abstract?: { en?: string; zh?: string }, keywords?: string[]) => {
+      setIsAbstractKeywordsSubmitting(true);
+      setAbstractKeywordsEditorError(null);
+      try {
+        const base = (editableDraft ?? paper)!; // paper 已加载时不为空
+        const nextDraft: PaperContentModel = {
+          ...base,
+          abstract: abstract ?? base.abstract,
+          keywords: keywords ?? base.keywords,
+        };
+
+        // 先更新本地 UI
+        setEditableDraft(nextDraft);
+
+        // 直接用 nextDraft 保存到后端（不会用到闭包里的旧值）
+        await handleSaveToServer(nextDraft);
+
+        // 成功后关闭弹层 & 收尾
+        setIsAbstractKeywordsEditorOpen(false);
+        setAbstractKeywordsEditorInitial(null);
+        clearEditing();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '保存失败，请稍后重试';
+        setAbstractKeywordsEditorError(message);
+        toast.error('摘要和关键词保存失败', { description: message });
+      } finally {
+        setIsAbstractKeywordsSubmitting(false);
+      }
+    },
+    [editableDraft, paper, handleSaveToServer, clearEditing]
+  );
+
+  const handleAbstractKeywordsOverlayCancel = useCallback(() => {
+    setAbstractKeywordsEditorError(null);
+    setIsAbstractKeywordsEditorOpen(false);
+    setAbstractKeywordsEditorInitial(null);
     clearEditing();
   }, [clearEditing]);
 
@@ -826,116 +909,62 @@ const handleSaveToServer = useCallback(
           return { success: false, error: '无法确定论文标识' };
         }
 
-        // 根据用户类型调用不同的服务
+        // 统一的请求数据和处理逻辑
         const requestData = { text, afterBlockId };
         
-        if (isPersonalOwner && resolvedUserPaperId) {
-          // 个人论文库：使用 userPaperId 作为 entry_id
-          const result = await service.addBlockFromTextToSection(resolvedUserPaperId, sectionId, requestData);
-          if (result.bizCode === 0) {
-            // 更新本地编辑副本
-            const addedBlock = result.data?.addedBlock;
-            if (addedBlock) {
-              setEditableDraft(prev => {
-                if (!prev) return prev;
-                const nextDraft = { ...prev };
-                // 找到对应的section并添加新的block
-                const updateSection = (sections: any[]): any[] => {
-                  return sections.map(section => {
-                    if (section.id === sectionId) {
-                      // 获取当前section的所有blocks
-                      const currentBlocks = section.content || [];
-                      let insertIndex = currentBlocks.length; // 默认插在末尾
-                      
-                      // 如果指定了afterBlockId，插入到指定位置
-                      if (afterBlockId) {
-                        insertIndex = currentBlocks.findIndex((block: any) => block.id === afterBlockId);
-                        if (insertIndex >= 0) {
-                          insertIndex += 1; // 插入到指定block后面
-                        }
+        // 统一调用API
+        const result = await service.addBlockFromTextToSection(id, sectionId, requestData);
+        
+        if (result.bizCode === 0) {
+          // 更新本地编辑副本
+          const addedBlock = result.data?.addedBlock;
+          if (addedBlock) {
+            setEditableDraft(prev => {
+              if (!prev) return prev;
+              const nextDraft = { ...prev };
+              // 找到对应的section并添加新的block
+              const updateSection = (sections: any[]): any[] => {
+                return sections.map(section => {
+                  if (section.id === sectionId) {
+                    // 获取当前section的所有blocks
+                    const currentBlocks = section.content || [];
+                    let insertIndex = currentBlocks.length; // 默认插在末尾
+                    
+                    // 如果指定了afterBlockId，插入到指定位置
+                    if (afterBlockId) {
+                      insertIndex = currentBlocks.findIndex((block: any) => block.id === afterBlockId);
+                      if (insertIndex >= 0) {
+                        insertIndex += 1; // 插入到指定block后面
                       }
-                      
-                      const newBlocks = [...currentBlocks];
-                      newBlocks.splice(insertIndex, 0, addedBlock);
-                      
-                      return {
-                        ...section,
-                        content: newBlocks
-                      };
                     }
-                    if (section.subsections) {
-                      return {
-                        ...section,
-                        subsections: updateSection(section.subsections)
-                      };
-                    }
-                    return section;
-                  });
-                };
-                nextDraft.sections = updateSection(nextDraft.sections);
-                return nextDraft;
-              });
-            }
-            setHasUnsavedChanges(true);
-            toast.success(`成功添加 1 个内容块`);
-            return { success: true, blocks: [result.data?.addedBlock] };
-          } else {
-            toast.error('添加失败', { description: result.bizMessage || '服务器错误' });
-            return { success: false, error: result.bizMessage || '服务器错误' };
+                    
+                    const newBlocks = [...currentBlocks];
+                    newBlocks.splice(insertIndex, 0, addedBlock);
+                    
+                    return {
+                      ...section,
+                      content: newBlocks
+                    };
+                  }
+                  if (section.subsections) {
+                    return {
+                      ...section,
+                      subsections: updateSection(section.subsections)
+                    };
+                  }
+                  return section;
+                });
+              };
+              nextDraft.sections = updateSection(nextDraft.sections);
+              return nextDraft;
+            });
           }
+          setHasUnsavedChanges(true);
+          toast.success(`成功添加 1 个内容块`);
+          return { success: true, blocks: [result.data?.addedBlock] };
         } else {
-          // 管理员论文：直接使用 paperId
-          const result = await service.addBlockFromTextToSection(paperId, sectionId, requestData);
-          if (result.bizCode === 0) {
-            // 更新本地编辑副本
-            const addedBlock = result.data?.addedBlock;
-            if (addedBlock) {
-              setEditableDraft(prev => {
-                if (!prev) return prev;
-                const nextDraft = { ...prev };
-                const updateSection = (sections: any[]): any[] => {
-                  return sections.map(section => {
-                    if (section.id === sectionId) {
-                      // 获取当前section的所有blocks
-                      const currentBlocks = section.content || [];
-                      let insertIndex = currentBlocks.length; // 默认插在末尾
-                      
-                      // 如果指定了afterBlockId，插入到指定位置
-                      if (afterBlockId) {
-                        insertIndex = currentBlocks.findIndex((block: any) => block.id === afterBlockId);
-                        if (insertIndex >= 0) {
-                          insertIndex += 1; // 插入到指定block后面
-                        }
-                      }
-                      
-                      const newBlocks = [...currentBlocks];
-                      newBlocks.splice(insertIndex, 0, addedBlock);
-                      
-                      return {
-                        ...section,
-                        content: newBlocks
-                      };
-                    }
-                    if (section.subsections) {
-                      return {
-                        ...section,
-                        subsections: updateSection(section.subsections)
-                      };
-                    }
-                    return section;
-                  });
-                };
-                nextDraft.sections = updateSection(nextDraft.sections);
-                return nextDraft;
-              });
-            }
-            setHasUnsavedChanges(true);
-            toast.success(`成功添加 1 个内容块`);
-            return { success: true, blocks: [result.data?.addedBlock] };
-          } else {
-            toast.error('添加失败', { description: result.bizMessage || '服务器错误' });
-            return { success: false, error: result.bizMessage || '服务器错误' };
-          }
+          toast.error('添加失败', { description: result.bizMessage || '服务器错误' });
+          return { success: false, error: result.bizMessage || '服务器错误' };
         }
       } catch (err) {
         const message = err instanceof Error ? err.message : '添加过程中发生未知错误';
@@ -949,7 +978,7 @@ const handleSaveToServer = useCallback(
   const handleToggleVisibility = useCallback(async () => {
     try {
       const newVisibility = !isPublicVisible;
-      const result = await adminPaperService.updatePaper(paperId, {
+      const result = await adminPaperService.updatePaperVisibility(paperId, {
         isPublic: newVisibility,
       });
 
@@ -962,8 +991,19 @@ const handleSaveToServer = useCallback(
               : '论文已从公共库中隐藏',
           }
         );
-        // 重新加载页面数据以反映更改
-        window.location.reload();
+        // 更新本地状态以反映更改，避免重新加载页面
+        if (paper) {
+          setEditableDraft(prev => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              isPublic: newVisibility,
+            };
+          });
+        }
+        // 更新本地的 isPublicVisible 状态
+        setIsPublicVisible(newVisibility);
+        setHasUnsavedChanges(false);
       } else {
         toast.error('切换可见性失败', {
           description: result.bizMessage ?? '请稍后重试',
@@ -975,7 +1015,7 @@ const handleSaveToServer = useCallback(
         description: message,
       });
     }
-  }, [isPublicVisible, paperId]);
+  }, [isPublicVisible, paperId, paper, setEditableDraft, setHasUnsavedChanges]);
 
   const headerActions = useMemo(() => {
     const isPublicAdmin = effectiveSource === 'public-admin';
@@ -1074,6 +1114,7 @@ const handleSaveToServer = useCallback(
                     keywords={displayContent.keywords}
                     lang={lang}
                     onEditRequest={handleMetadataEditStart}
+                    onAbstractKeywordsEditRequest={handleAbstractKeywordsEditStart}
                   />
 
                   <PaperContent
@@ -1089,11 +1130,8 @@ const handleSaveToServer = useCallback(
                     setCurrentSearchIndex={setCurrentSearchIndex}
                     onBlockClick={handleBlockSelect}
                     onSectionTitleUpdate={(sectionId, title) => {
-                      if (!isPersonalOwner && !resolvedUserPaperId) {
-                        handleSectionTitleUpdate(sectionId, title, paperId, null, isPersonalOwner, handleSaveToServer);
-                      } else {
-                        handleSectionTitleUpdate(sectionId, title, paperId, resolvedUserPaperId, isPersonalOwner, handleSaveToServer);
-                      }
+                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                      return handleSectionTitleUpdate(sectionId, title, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
                     }}
                     onSectionAddSubsection={handleSectionAddSubsection}
                     onSectionInsert={(targetSectionId, position, parentSectionId) => {
@@ -1105,12 +1143,16 @@ const handleSaveToServer = useCallback(
                       const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
                       return handleSectionDelete(sectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
                     }}
-                    onSectionAddBlock={(sectionId, type) => handleSectionAddBlock(sectionId, type, lang)}
+                    onSectionAddBlock={(sectionId, type) => {
+                      return handleSectionAddBlock(sectionId, type, lang, paperId, resolvedUserPaperId, isPersonalOwner, handleSaveToServer);
+                    }}
                     onBlockUpdate={(blockId, block) => {
                       const blockInfo = findBlockSection(blockId);
                       if (!blockInfo) return;
                       
+                      // 确保个人论文库总是使用 resolvedUserPaperId
                       const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                      console.log('[PaperPage] onBlockUpdate:', { blockId, isPersonalOwner, userPaperId, paperId });
                       return handleBlockUpdate(blockId, block, blockInfo.section.id, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
                     }}
                     onBlockDuplicate={handleBlockDuplicate}
@@ -1127,6 +1169,8 @@ const handleSaveToServer = useCallback(
                     onBlockAddComponent={handleBlockAddComponent}
                     onParseTextAdd={canEditContent ? handleParseTextAdd : undefined}
                     onSaveToServer={handleSaveToServer}
+                    notesByBlock={notesByBlock}
+                    isPersonalOwner={isPersonalOwner}
                   />
 
                   <PaperReferences
@@ -1258,7 +1302,20 @@ const handleSaveToServer = useCallback(
 
   />
 )}
-      </div>
-    </PaperEditPermissionsContext.Provider>
-  );
+
+{canEditContent && isAbstractKeywordsEditorOpen && abstractKeywordsEditorInitial && (
+  <AbstractAndKeywordsEditorOverlay
+    abstract={abstractKeywordsEditorInitial.abstract}
+    keywords={abstractKeywordsEditorInitial.keywords}
+    onCancel={handleAbstractKeywordsOverlayCancel}
+    onSubmit={handleAbstractKeywordsOverlaySubmit}
+    isSubmitting={isAbstractKeywordsSubmitting}
+    externalError={abstractKeywordsEditorError}
+    userPaperId={resolvedUserPaperId ?? undefined}
+    paperId={paperId}
+  />
+)}
+</div>
+</PaperEditPermissionsContext.Provider>
+);
 }

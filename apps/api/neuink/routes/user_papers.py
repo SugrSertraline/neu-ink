@@ -11,7 +11,7 @@ from ..utils.common import (
     bad_request_response,
     internal_error_response,
 )
-from ..config.constants import BusinessCode
+from ..config.constants import BusinessCode, ResponseCode
 
 bp = Blueprint("user_papers", __name__)
 
@@ -279,7 +279,18 @@ def add_section_to_user_paper(entry_id):
         )
         
         if user_paper_result["code"] != BusinessCode.SUCCESS:
-            return bad_request_response(user_paper_result["message"])
+            # 区分不同类型的错误
+            if user_paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+                return bad_request_response(user_paper_result["message"])
+            elif user_paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+                from flask import jsonify
+                return jsonify({
+                    "code": ResponseCode.FORBIDDEN,
+                    "message": user_paper_result["message"],
+                    "data": None
+                }), ResponseCode.FORBIDDEN
+            else:
+                return bad_request_response(user_paper_result["message"])
         
         user_paper = user_paper_result["data"]
         paper_data = user_paper.get("paperData")
@@ -566,7 +577,18 @@ def add_block_to_user_paper_section(entry_id, section_id):
         )
         
         if user_paper_result["code"] != BusinessCode.SUCCESS:
-            return bad_request_response(user_paper_result["message"])
+            # 区分不同类型的错误
+            if user_paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+                return bad_request_response(user_paper_result["message"])
+            elif user_paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+                from flask import jsonify
+                return jsonify({
+                    "code": ResponseCode.FORBIDDEN,
+                    "message": user_paper_result["message"],
+                    "data": None
+                }), ResponseCode.FORBIDDEN
+            else:
+                return bad_request_response(user_paper_result["message"])
         
         user_paper = user_paper_result["data"]
         paper_data = user_paper.get("paperData")
@@ -644,7 +666,18 @@ def add_block_from_text_to_user_paper_section(entry_id, section_id):
         )
         
         if user_paper_result["code"] != BusinessCode.SUCCESS:
-            return bad_request_response(user_paper_result["message"])
+            # 区分不同类型的错误
+            if user_paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+                return bad_request_response(user_paper_result["message"])
+            elif user_paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+                from flask import jsonify
+                return jsonify({
+                    "code": ResponseCode.FORBIDDEN,
+                    "message": user_paper_result["message"],
+                    "data": None
+                }), ResponseCode.FORBIDDEN
+            else:
+                return bad_request_response(user_paper_result["message"])
         
         user_paper = user_paper_result["data"]
         paper_data = user_paper.get("paperData")
@@ -725,7 +758,18 @@ def update_section_in_user_paper(entry_id, section_id):
         )
         
         if user_paper_result["code"] != BusinessCode.SUCCESS:
-            return bad_request_response(user_paper_result["message"])
+            # 区分不同类型的错误
+            if user_paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+                return bad_request_response(user_paper_result["message"])
+            elif user_paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+                from flask import jsonify
+                return jsonify({
+                    "code": ResponseCode.FORBIDDEN,
+                    "message": user_paper_result["message"],
+                    "data": None
+                }), ResponseCode.FORBIDDEN
+            else:
+                return bad_request_response(user_paper_result["message"])
         
         user_paper = user_paper_result["data"]
         paper_data = user_paper.get("paperData")
@@ -789,7 +833,18 @@ def delete_section_in_user_paper(entry_id, section_id):
         )
         
         if user_paper_result["code"] != BusinessCode.SUCCESS:
-            return bad_request_response(user_paper_result["message"])
+            # 区分不同类型的错误
+            if user_paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+                return bad_request_response(user_paper_result["message"])
+            elif user_paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+                from flask import jsonify
+                return jsonify({
+                    "code": ResponseCode.FORBIDDEN,
+                    "message": user_paper_result["message"],
+                    "data": None
+                }), ResponseCode.FORBIDDEN
+            else:
+                return bad_request_response(user_paper_result["message"])
         
         user_paper = user_paper_result["data"]
         paper_data = user_paper.get("paperData")
@@ -862,7 +917,18 @@ def update_block_in_user_paper(entry_id, section_id, block_id):
         )
         
         if user_paper_result["code"] != BusinessCode.SUCCESS:
-            return bad_request_response(user_paper_result["message"])
+            # 区分不同类型的错误
+            if user_paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+                return bad_request_response(user_paper_result["message"])
+            elif user_paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+                from flask import jsonify
+                return jsonify({
+                    "code": ResponseCode.FORBIDDEN,
+                    "message": user_paper_result["message"],
+                    "data": None
+                }), ResponseCode.FORBIDDEN
+            else:
+                return bad_request_response(user_paper_result["message"])
         
         user_paper = user_paper_result["data"]
         paper_data = user_paper.get("paperData")
@@ -927,7 +993,18 @@ def delete_block_in_user_paper(entry_id, section_id, block_id):
         )
         
         if user_paper_result["code"] != BusinessCode.SUCCESS:
-            return bad_request_response(user_paper_result["message"])
+            # 区分不同类型的错误
+            if user_paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+                return bad_request_response(user_paper_result["message"])
+            elif user_paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+                from flask import jsonify
+                return jsonify({
+                    "code": ResponseCode.FORBIDDEN,
+                    "message": user_paper_result["message"],
+                    "data": None
+                }), ResponseCode.FORBIDDEN
+            else:
+                return bad_request_response(user_paper_result["message"])
         
         user_paper = user_paper_result["data"]
         paper_data = user_paper.get("paperData")
@@ -1023,7 +1100,18 @@ def add_block_directly_to_user_paper_section(entry_id, section_id):
         )
         
         if user_paper_result["code"] != BusinessCode.SUCCESS:
-            return bad_request_response(user_paper_result["message"])
+            # 区分不同类型的错误
+            if user_paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+                return bad_request_response(user_paper_result["message"])
+            elif user_paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+                from flask import jsonify
+                return jsonify({
+                    "code": ResponseCode.FORBIDDEN,
+                    "message": user_paper_result["message"],
+                    "data": None
+                }), ResponseCode.FORBIDDEN
+            else:
+                return bad_request_response(user_paper_result["message"])
         
         user_paper = user_paper_result["data"]
         paper_data = user_paper.get("paperData")
@@ -1127,7 +1215,7 @@ def get_test_prompts():
             "text_length_limit": 40000,
             "api_endpoint": llm_utils.glm_base_url,
             "api_key_status": "已配置" if llm_utils.glm_api_key and llm_utils.glm_api_key != 'your_glm_api_key_here' else "未配置或为占位符",
-            "max_tokens": 8000,
+            "max_tokens": 100000,
             "temperature": 0.2
         }, "成功获取提示词信息")
         
@@ -1209,7 +1297,23 @@ def test_parse_text():
         print("=" * 80)
         
         # 执行解析
+        print("🚀 开始执行解析...")
         parsed_blocks = llm_utils.parse_text_to_blocks(text, section_context)
+        print(f"✅ 解析完成，共生成 {len(parsed_blocks)} 个blocks")
+        
+        # 打印blocks的详细信息
+        if parsed_blocks:
+            print("\n📋 Blocks详情:")
+            for i, block in enumerate(parsed_blocks[:5]):  # 只打印前5个
+                print(f"  {i+1}. 类型: {block.get('type', 'unknown')}")
+                print(f"     ID: {block.get('id', 'no-id')}")
+                if 'content' in block:
+                    content = block['content']
+                    if isinstance(content, dict):
+                        print(f"     内容: en={len(content.get('en', []))}项, zh={len(content.get('zh', []))}项")
+                    else:
+                        print(f"     内容: {type(content).__name__}")
+                print()
         
         return success_response({
             "original_text": text,
@@ -1217,7 +1321,7 @@ def test_parse_text():
             "parsed_blocks": parsed_blocks,
             "blocks_count": len(parsed_blocks),
             "text_limit": 40000,
-            "truncated": len(text) > 40000
+            "truncated": len(text) > 40000,
         }, f"测试完成，解析出 {len(parsed_blocks)} 个blocks")
         
     except Exception as exc:

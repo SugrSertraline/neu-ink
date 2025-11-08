@@ -200,3 +200,67 @@ def change_role(user_id: str):
         return bad_request_response(str(e))
     except Exception as e:
         return internal_error_response(f"角色更新失败: {str(e)}")
+
+
+@bp.route("/", methods=["GET"])
+@admin_required
+def get_users():
+    """获取用户列表（仅管理员）"""
+    try:
+        user_service = get_user_service()
+        
+        # 获取查询参数
+        page = int(request.args.get("page", 1))
+        limit = int(request.args.get("limit", 10))
+        keyword = request.args.get("keyword", "").strip()
+        
+        # 调用服务层获取用户列表
+        result = user_service.get_users_paginated(page, limit, keyword if keyword else None)
+        
+        return success_response(result, "获取用户列表成功")
+        
+    except ValueError as e:
+        return bad_request_response(f"参数错误: {str(e)}")
+    except Exception as e:
+        return internal_error_response(f"获取用户列表失败: {str(e)}")
+
+
+@bp.route("/<user_id>", methods=["GET"])
+@admin_required
+def get_user(user_id):
+    """获取单个用户详情（仅管理员）"""
+    try:
+        user_service = get_user_service()
+        user = user_service.get_user_by_id(user_id)
+        return success_response(user, "获取用户详情成功")
+        
+    except ValueError as e:
+        return not_found_response(str(e))
+    except Exception as e:
+        return internal_error_response(f"获取用户详情失败: {str(e)}")
+
+
+@bp.route("/<user_id>", methods=["PUT"])
+@admin_required
+def update_user(user_id):
+    """更新用户信息（仅管理员）"""
+    try:
+        user_service = get_user_service()
+        data = request.get_json()
+        if not data:
+            return bad_request_response("请求数据格式错误")
+        
+        # 过滤允许更新的字段
+        allowed_fields = ["username", "nickname"]
+        update_data = {k: v for k, v in data.items() if k in allowed_fields}
+        
+        if not update_data:
+            return bad_request_response("没有可更新的字段")
+        
+        updated_user = user_service.update_user(user_id, update_data)
+        return success_response(updated_user, "用户信息更新成功")
+        
+    except ValueError as e:
+        return bad_request_response(str(e))
+    except Exception as e:
+        return internal_error_response(f"更新用户信息失败: {str(e)}")

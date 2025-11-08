@@ -24,6 +24,8 @@ import {
   PaperListData,
   PublicPaperFilters,
   UpdateNoteRequest,
+  UpdatePaperVisibilityRequest,
+  UpdatePaperVisibilityResult,
   UpdateReadingProgressRequest,
   UpdateUserPaperRequest,
   UserPaper,
@@ -370,9 +372,8 @@ export const adminPaperService = {
    * 获取管理员论文列表
    */
   getAdminPapers(
-    filters: PublicPaperFilters & { 
-      isPublic?: boolean; 
-      parseStatus?: string; 
+    filters: PublicPaperFilters & {
+      isPublic?: boolean;
       createdBy?: string;
     } = {}
   ): Promise<UnifiedResult<PaperListData>> {
@@ -541,6 +542,18 @@ export const adminPaperService = {
   ): Promise<UnifiedResult<DeleteBlockResult>> {
     return callAndNormalize<DeleteBlockResult>(
       apiClient.delete(`/admin/papers/${paperId}/sections/${sectionId}/blocks/${blockId}`)
+    );
+  },
+
+  /**
+   * 修改论文可见状态
+   */
+  updatePaperVisibility(
+    paperId: string,
+    request: UpdatePaperVisibilityRequest
+  ): Promise<UnifiedResult<UpdatePaperVisibilityResult>> {
+    return callAndNormalize<UpdatePaperVisibilityResult>(
+      apiClient.put(`/admin/papers/${paperId}/visibility`, request)
     );
   },
 };

@@ -22,24 +22,49 @@ if sys.platform.startswith('win'):
     if hasattr(sys, 'setdefaultencoding'):
         sys.setdefaultencoding('utf-8')
         
+import logging
+
+# 配置日志系统
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('neuink_llm.log', encoding='utf-8'),
+        logging.StreamHandler()  # 同时输出到控制台
+    ]
+)
+
+logger = logging.getLogger(__name__)
+
 # 安全的日志打印函数
 def safe_print(*args, **kwargs):
-    """安全的打印函数，避免编码错误"""
+    """安全的打印函数，避免编码错误，同时输出到日志文件和控制台"""
     try:
-        print(*args, **kwargs)
-    except UnicodeEncodeError:
-        # 如果仍有编码错误，尝试用ASCII编码
+        # 构建消息字符串
+        message = ' '.join(str(arg) for arg in args)
+        
+        # 输出到日志文件（UTF-8编码）
+        logger.info(message)
+        
+        # 尝试输出到控制台
         try:
-            print(*[str(arg).encode('ascii', errors='ignore').decode('ascii') for arg in args], **kwargs)
+            print(message, **kwargs)
+        except UnicodeEncodeError:
+            # Windows控制台编码错误处理
+            try:
+                # 尝试使用Windows控制台兼容的编码
+                print(message.encode('gbk', errors='replace').decode('gbk'), **kwargs)
+            except:
+                # 最后的兜底方案：移除非ASCII字符
+                safe_message = ''.join(char if ord(char) < 128 else '?' for char in message)
+                print(safe_message, **kwargs)
+                
+    except Exception as e:
+        # 如果所有方法都失败，至少记录到日志文件
+        try:
+            logger.error(f"safe_print failed: {e}")
         except:
-            # 如果还是失败，跳过这些参数
-            safe_args = []
-            for arg in args:
-                try:
-                    safe_args.append(str(arg).encode('ascii', errors='ignore').decode('ascii'))
-                except:
-                    safe_args.append("[encoding_error]")
-            print(*safe_args, **kwargs)
+            pass  # 避免递归错误
 
 class LLMModel(Enum):
     """支持的大模型枚举"""
@@ -57,15 +82,15 @@ class LLMUtils:
         """初始化配置"""
         self.glm_api_key = os.getenv('GLM_API_KEY')
         self.glm_base_url = "https://open.bigmodel.cn/api/paas/v4/chat/completions"
-        print(f"GLM API Key 状态: {'[已配置]' if self.glm_api_key and self.glm_api_key != 'your_glm_api_key_here' else '[未配置或为占位符]'}")
-        print(f"[API端点]: {self.glm_base_url}")
+        safe_print(f"GLM API Key 状态: {'[已配置]' if self.glm_api_key and self.glm_api_key != 'your_glm_api_key_here' else '[未配置或为占位符]'}")
+        safe_print(f"[API端点]: {self.glm_base_url}")
         
     def call_llm(
         self,
         messages: List[Dict[str, str]],
         model: LLMModel = LLMModel.GLM_4_6,
-        temperature: float = 1.0,
-        max_tokens: int = 65536,
+        temperature: float = 0.1,
+        max_tokens: int = 100000,
         stream: bool = False,
         **kwargs
     ) -> Optional[Dict[str, Any]]:
@@ -207,10 +232,10 @@ class LLMUtils:
         """
         仅使用 LLM 提取论文信息；任何错误都直接抛出异常，不做兜底解析。
         """
-        print("=" * 60)
-        print("开始解析论文文本（严格模式：无兜底）")
-        print(f"文本长度: {len(text)} 字符")
-        print("=" * 60)
+        safe_print("=" * 60)
+        safe_print("开始解析论文文本（严格模式：无兜底）")
+        safe_print(f"文本长度: {len(text)} 字符")
+        safe_print("=" * 60)
 
         # 1) 必须有可用的 API Key
         if not self.glm_api_key or self.glm_api_key == "your_glm_api_key_here":
@@ -262,7 +287,7 @@ class LLMUtils:
             response = self.call_llm(messages, temperature=0.6)  # 使用0.6的温度，与示例一致
             
             if not response or 'choices' not in response:
-                print("GLM 响应格式错误")
+                safe_print("GLM 响应格式错误")
                 return None
                 
             content = response['choices'][0]['message']['content']
@@ -283,12 +308,12 @@ class LLMUtils:
                 return parsed_data
                 
             except json.JSONDecodeError as e:
-                print(f"GLM 返回的内容不是有效的JSON格式: {e}")
-                print(f"原始内容: {content}")
+                safe_print(f"GLM 返回的内容不是有效的JSON格式: {e}")
+                safe_print(f"原始内容: {content}")
                 return None
                 
         except Exception as e:
-            print(f"提取论文元数据时出错: {e}")
+            safe_print(f"提取论文元数据时出错: {e}")
             return None
     
     def _extract_with_simple_parsing(self, text: str) -> Dict[str, Any]:
@@ -548,6 +573,7 @@ class LLMUtils:
         
         if not self.glm_api_key or self.glm_api_key == "your_glm_api_key_here":
             safe_print("LLM不可用，使用简单解析")
+            blocks = self._simple_text_to_blocks(text)
             return self._simple_text_to_blocks(text)
         
         try:
@@ -728,14 +754,13 @@ class LLMUtils:
 **InlineContent类型：**
 - text: 普通文本，可包含样式
 - link: 链接
-- inline-math: 行内数学公式
-- citation: 引用
+- inline-math: 行内数学公式 (必须使用latex字段存储公式内容，不要使用content字段)
 
 **翻译要求：**
 - 如果原始内容是中文，zh数组放原文，en数组放准确英文翻译
 - 如果原始内容是英文，en数组放原文，zh数组放准确中文翻译
 - 保持学术术语的准确性和专业性
-- 保持数学公式、代码、引用等特殊内容的格式
+- 保持数学公式、代码等特殊内容的格式
 
 **重要提醒：**
 - 每个block的content.en和content.zh都必须是数组，不能为空
@@ -749,7 +774,7 @@ class LLMUtils:
 - Maintain mathematical formulas, code, and technical terms exactly as they appear
 - For Chinese to English: Use formal academic English appropriate for research papers
 - For English to Chinese: Use standard academic Chinese terminology
-- Keep citations, references, and special formatting intact
+- Keep references, and special formatting intact
 - Output ONLY the translated text without any additional explanation or formatting markers"""
 
         chinese_char = re.compile(r"[\u4e00-\u9fff]")
@@ -788,7 +813,7 @@ class LLMUtils:
             ]
             
             safe_print("📤 发送解析请求到LLM...")
-            response = self.call_llm(messages, temperature=0.2, max_tokens=8000)
+            response = self.call_llm(messages, temperature=0.2, max_tokens=100000)
             
             if not response or "choices" not in response:
                 safe_print("❌ LLM响应格式错误")
@@ -867,7 +892,7 @@ class LLMUtils:
             
             try:
                 safe_print(f"🔄 翻译内容 ({source_lang} -> {target_lang}): {plain_text[:50]}...")
-                resp = self.call_llm(messages, temperature=0.1, max_tokens=2000)
+                resp = self.call_llm(messages, temperature=0.1, max_tokens=100000)
                 
                 if resp and "choices" in resp:
                     translated = resp["choices"][0]["message"]["content"].strip()
@@ -879,6 +904,35 @@ class LLMUtils:
             except Exception as exc:
                 safe_print(f"❌ 翻译失败 ({source_lang}->{target_lang}): {exc}")
                 return [dict(item) for item in source_items]
+
+        def _fix_inline_math_in_paragraph(block):
+            """修复paragraph中inline-math的字段问题，将content字段改为latex字段"""
+            if block.get("type") != "paragraph":
+                return block
+                
+            content = block.get("content", {})
+            if not isinstance(content, dict):
+                return block
+                
+            # 修复英文内容
+            en_content = content.get("en", [])
+            if isinstance(en_content, list):
+                for item in en_content:
+                    if isinstance(item, dict) and item.get("type") == "inline-math":
+                        if "content" in item and "latex" not in item:
+                            item["latex"] = item.pop("content")
+                            safe_print(f"🔧 修复inline-math: content -> latex")
+                            
+            # 修复中文内容
+            zh_content = content.get("zh", [])
+            if isinstance(zh_content, list):
+                for item in zh_content:
+                    if isinstance(item, dict) and item.get("type") == "inline-math":
+                        if "content" in item and "latex" not in item:
+                            item["latex"] = item.pop("content")
+                            safe_print(f"🔧 修复inline-math: content -> latex")
+                            
+            return block
 
         def _ensure_bilingual_content(block):
             """确保block的content包含双语言内容"""
@@ -908,6 +962,7 @@ class LLMUtils:
         try:
             safe_print("🔄 开始LLM解析流程")
             blocks = _parse_markdown()
+            
         except Exception as exc:
             safe_print(f"❌ LLM解析失败: {exc}")
             safe_print("🔙 回退到简单解析")
@@ -927,6 +982,10 @@ class LLMUtils:
                     safe_print(f"⏭️  跳过无效block: {block}")
                     continue
 
+                # 修复inline-math的字段问题
+                if block.get("type") == "paragraph":
+                    block = _fix_inline_math_in_paragraph(block)
+                
                 # 确保content是字典
                 if "content" not in block or not isinstance(block["content"], dict):
                     block["content"] = {"en": [], "zh": []}
@@ -936,7 +995,7 @@ class LLMUtils:
                 
                 # 添加必要字段
                 block["id"] = generate_id()
-                block["createdAt"] = get_current_time()
+                block["createdAt"] = get_current_time().isoformat()  # 转换为ISO格式字符串
                 
                 validated_blocks.append(block)
                 safe_print(f"✅ 验证block {i+1}: {block.get('type')}")
@@ -948,160 +1007,287 @@ class LLMUtils:
         safe_print(f"🎉 完成验证，生成{len(validated_blocks)}个有效blocks")
         return validated_blocks
 
+    
+
     def _simple_text_to_blocks(self, text: str) -> List[Dict[str, Any]]:
-        """简单的文本解析为blocks的方法"""
+        """使用大语言模型解析文本为blocks的方法"""
+        from ..utils.common import generate_id, get_current_time
+        import json
+        
+        safe_print("🔄 开始LLM文本解析")
+        safe_print(f"文本长度: {len(text)} 字符")
+        
+        # 初始化LLM工具
+        llm_utils = LLMUtils()
+        
+        # 构建系统提示词
+        system_prompt = """你是一个专业的学术文档结构化解析专家。你的任务是将输入的文本解析为结构化的JSON格式的blocks数组。
+
+    核心原则：
+    1. 绝对不要修改原文内容，保持所有文本的原样，包括标点符号、空格、换行
+    2. 准确识别语言，自动检测中文(zh)或英文(en)，对于每个文本内容，将其放在对应语言字段中
+    3. 智能识别结构，正确识别标题、段落、列表、公式、代码块等不同类型
+    4. 处理行内元素，识别链接、行内公式
+    5. 数学公式格式：行内公式识别$...$后转换存储格式，行间公式识别$$...$$或反斜杠方括号后使用反斜杠方括号格式
+    6. 跳过参考文献，如果识别到References、参考文献等章节，可以忽略其内容
+
+    Block类型定义：
+
+    1. heading 标题
+    必需字段：type为heading，level为1到6，content包含en或zh数组
+
+    2. paragraph 段落
+    识别标记：普通文本段落
+    必需字段：type为paragraph，content包含en或zh数组
+
+    3. math 数学公式块
+    识别标记：独立的双美元符号或反斜杠方括号
+    必需字段：type为math，latex为公式内容（使用反斜杠方括号格式包裹）
+
+    4. code 代码块
+    识别标记：三个反引号或缩进的代码
+    必需字段：type为code，code为代码内容
+
+    5. ordered-list 有序列表
+    识别标记：数字加点开头如1. 2. 3.
+    必需字段：type为ordered-list，items数组，每项包含content对象
+
+    6. unordered-list 无序列表
+    识别标记：减号、星号、加号开头
+    必需字段：type为unordered-list，items数组，每项包含content对象
+
+    7. quote 引用块
+    识别标记：大于号开头
+    必需字段：type为quote，content包含en或zh数组
+
+    8. table 表格
+    识别标记：markdown表格格式
+    必需字段：type为table，rows为二维数组
+
+    9. divider 分隔线
+    识别标记：三个减号或三个星号
+    必需字段：type为divider
+
+    10. figure 图片
+    识别标记：感叹号加方括号加圆括号
+    必需字段：type为figure，src为图片URL
+
+    InlineContent类型定义：
+
+    1. text 普通文本
+    type为text，content为文本内容
+    可选style对象包含bold粗体、italic斜体、code代码、underline下划线、strikethrough删除线
+
+    2. link 链接
+    type为link，url为链接地址，children为子元素数组
+    可选title标题
+
+    3. inline-math 行内公式
+    type为inline-math，latex为公式内容（不包含美元符号，必须使用latex字段不要使用content字段）
+
+    返回格式要求：
+
+    必须返回一个JSON对象，包含blocks数组字段。
+
+    示例结构：
+    {
+    "blocks": [
+        {
+        "type": "heading",
+        "level": 1,
+        "content": {
+            "en": [{"type": "text", "content": "Introduction"}]
+        }
+        },
+        {
+        "type": "paragraph",
+        "content": {
+            "en": [
+            {"type": "text", "content": "This is "},
+            {"type": "text", "content": "bold text", "style": {"bold": true}},
+            {"type": "text", "content": " with "},
+            {"type": "inline-math", "latex": "x^2"},
+            {"type": "text", "content": "."}
+            ]
+        }
+        },
+        {
+        "type": "math",
+        "latex": "E = mc^2"
+        },
+        {
+        "type": "unordered-list",
+        "items": [
+            {
+            "content": {
+                "en": [{"type": "text", "content": "First item"}]
+            }
+            },
+            {
+            "content": {
+                "en": [{"type": "text", "content": "Second item"}]
+            }
+            }
+        ]
+        }
+    ]
+    }
+
+    特殊处理规则：
+
+    1. 数学公式识别
+    行内：单美元符号包裹转为inline-math类型，必须使用latex字段存储公式内容，不要使用content字段
+    行间：双美元符号或反斜杠方括号转为math block类型
+
+    2. 文本样式识别
+    双星号或双下划线为粗体
+
+    3. 列表处理
+    不支持嵌套列表，将嵌套项展平处理
+
+    4. 混合语言处理
+    如果段落包含中英文混合，检测主要语言并放入对应字段
+
+    5. 空白保留
+    段落间空行作为段落分隔，不需创建空白block
+
+    6. 错误处理
+    无法识别的结构优先解析为paragraph类型
+
+    现在请将输入的文本解析为blocks数组。记住：不要修改任何原文内容，只需识别结构并转换为JSON格式。"""
+
+        try:
+            # 准备消息
+            messages = [
+                {
+                    "role": "system",
+                    "content": system_prompt
+                },
+                {
+                    "role": "user",
+                    "content": f"请解析以下文本：\n\n{text}"
+                }
+            ]
+            
+            # 调用LLM
+            safe_print("📡 正在调用GLM API...")
+            result = llm_utils.call_llm(
+                messages=messages,
+                model=LLMModel.GLM_4_6,
+                temperature=0.1,
+                max_tokens=100000
+            )
+            
+            if not result:
+                safe_print("❌ LLM调用失败，使用降级方案")
+                return self._fallback_simple_parse(text)
+            
+            # 提取响应内容
+            if 'choices' not in result or not result['choices']:
+                safe_print("❌ LLM响应格式错误，使用降级方案")
+                return self._fallback_simple_parse(text)
+            
+            content = result['choices'][0]['message']['content']
+            safe_print(f"📥 收到响应，长度: {len(content)} 字符")
+            safe_print(f"响应内容预览: {content[:500]}...")
+            
+            # 解析JSON
+            try:
+                # 尝试直接解析
+                parsed_result = json.loads(content)
+            except json.JSONDecodeError:
+                # 如果失败，尝试提取JSON部分
+                safe_print("⚠️ 直接解析失败，尝试提取JSON部分")
+                import re
+                json_match = re.search(r'\{[\s\S]*\}', content)
+                if json_match:
+                    parsed_result = json.loads(json_match.group())
+                else:
+                    safe_print("❌ 无法提取JSON，使用降级方案")
+                    return self._fallback_simple_parse(text)
+            
+            # 获取blocks数组
+            blocks = parsed_result.get("blocks", [])
+            
+            if not blocks:
+                safe_print("⚠️ 未找到blocks数组，使用降级方案")
+                return self._fallback_simple_parse(text)
+            
+            # 为每个block添加id和createdAt
+            for block in blocks:
+                if 'id' not in block:
+                    block['id'] = generate_id()
+                if 'createdAt' not in block:
+                    block['createdAt'] = get_current_time().isoformat()  # 转换为ISO格式字符串
+            
+            safe_print(f"🎉 LLM解析完成，生成 {len(blocks)} 个blocks")
+            
+            # 打印前几个block的类型
+            if blocks:
+                safe_print("📋 前5个blocks类型：")
+                for i, block in enumerate(blocks[:5]):
+                    safe_print(f"  {i+1}. {block.get('type', 'unknown')}")
+            
+            return blocks
+            
+        except Exception as e:
+            safe_print(f"❌ LLM解析过程出错: {str(e)}")
+            import traceback
+            safe_print(f"错误详情: {traceback.format_exc()}")
+            return self._fallback_simple_parse(text)
+
+
+    def _fallback_simple_parse(self, text: str) -> List[Dict[str, Any]]:
+        """降级方案：简单解析"""
         from ..utils.common import generate_id, get_current_time
         import re
         
-        safe_print("🔄 开始简单文本解析")
-        safe_print(f"文本长度: {len(text)} 字符")
+        safe_print("⚠️ 使用降级解析方案")
         
         blocks = []
-        lines = text.split('\n')
-        
-        # 预处理：合并连续的段落
-        paragraphs = []
-        current_para = []
-        
-        for line in lines:
-            line = line.strip()
-            if not line:
-                if current_para:
-                    paragraphs.append('\n'.join(current_para))
-                    current_para = []
-                continue
-            
-            # 如果是标题行，单独成段
-            if line.startswith('#') or (len(line) < 100 and line.isupper()):
-                if current_para:
-                    paragraphs.append('\n'.join(current_para))
-                    current_para = []
-                paragraphs.append(line)
-            else:
-                current_para.append(line)
-        
-        # 添加最后一段
-        if current_para:
-            paragraphs.append('\n'.join(current_para))
-        
-        # 过滤空段落
-        paragraphs = [p.strip() for p in paragraphs if p.strip()]
-        safe_print(f"📊 识别到 {len(paragraphs)} 个段落")
-        
         chinese_char = re.compile(r"[\u4e00-\u9fff]")
         
-        for i, paragraph in enumerate(paragraphs):
-            try:
-                # 基本的类型判断
-                block_type = "paragraph"
-                extra_props = {}
-                content_text = paragraph
-                
-                # 检查是否是标题
-                if paragraph.startswith('#'):
-                    block_type = "heading"
-                    level = len(paragraph) - len(paragraph.lstrip('#'))
-                    extra_props['level'] = min(level, 6)
-                    content_text = paragraph.lstrip('#').strip()
-                elif len(paragraph) < 100 and paragraph.isupper() and not re.search(r'[\.\!\?]', paragraph):
-                    block_type = "heading"
-                    extra_props['level'] = 2
-                
-                # 检查是否是列表
-                elif any(paragraph.startswith(marker) for marker in ['- ', '* ', '+ ', '1. ', '2. ']):
-                    block_type = "unordered-list"
-                    items = []
-                    for line in paragraph.split('\n'):
-                        line = line.strip()
-                        if line and line[0] in '-*+123456789':
-                            # 移除列表标记符
-                            clean_line = re.sub(r'^[\s\-*+\d\.]+', '', line).strip()
-                            if clean_line:
-                                # 检测语言并创建双语言内容
-                                source_lang = "zh" if chinese_char.search(clean_line) else "en"
-                                if source_lang == "zh":
-                                    items.append({
-                                        "content": {
-                                            "zh": [{"type": "text", "text": clean_line}],
-                                            "en": [{"type": "text", "text": clean_line}]  # 简单复制，等待后续翻译
-                                        }
-                                    })
-                                else:
-                                    items.append({
-                                        "content": {
-                                            "en": [{"type": "text", "text": clean_line}],
-                                            "zh": [{"type": "text", "text": clean_line}]  # 简单复制，等待后续翻译
-                                        }
-                                    })
-                    extra_props['items'] = items
-                
-                # 检查是否包含公式
-                elif '$' in paragraph or '$$' in paragraph or '\\' in paragraph:
-                    block_type = "math"
-                    # 提取LaTeX公式
-                    latex_matches = re.findall(r'\$\$?(.*?)\$?\$', paragraph, re.DOTALL)
-                    if latex_matches:
-                        extra_props['latex'] = latex_matches[0].strip()
-                
-                # 创建block
-                if block_type != "unordered-list":  # 列表已经处理了content
-                    # 检测文本语言
-                    source_lang = "zh" if chinese_char.search(content_text) else "en"
-                    
-                    if source_lang == "zh":
-                        content = {
-                            "zh": [{"type": "text", "text": content_text}],
-                            "en": [{"type": "text", "text": content_text}]  # 简单复制，等待后续翻译
-                        }
-                    else:
-                        content = {
-                            "en": [{"type": "text", "text": content_text}],
-                            "zh": [{"type": "text", "text": content_text}]  # 简单复制，等待后续翻译
-                        }
-                else:
-                    content = {"en": [], "zh": []}  # 列表的content为空，items包含实际内容
-                
-                block = {
-                    'id': generate_id(),
-                    'type': block_type,
-                    'content': content,
-                    'createdAt': get_current_time(),
-                    **extra_props
-                }
-                
-                # 对于特殊类型添加额外属性
-                if block_type == "heading" and not extra_props.get('level'):
-                    extra_props['level'] = 2
-                
-                blocks.append(block)
-                safe_print(f"📝 生成block {i+1}: {block_type}")
-                
-            except Exception as e:
-                safe_print(f"❌ 处理段落失败: {e}")
-                # 创建一个基本的paragraph block
-                source_lang = "zh" if chinese_char.search(paragraph) else "en"
-                if source_lang == "zh":
-                    content = {
-                        "zh": [{"type": "text", "text": paragraph}],
-                        "en": [{"type": "text", "text": paragraph}]
-                    }
-                else:
-                    content = {
-                        "en": [{"type": "text", "text": paragraph}],
-                        "zh": [{"type": "text", "text": paragraph}]
-                    }
-                
-                block = {
-                    'id': generate_id(),
-                    'type': "paragraph",
-                    'content': content,
-                    'createdAt': get_current_time()
-                }
-                blocks.append(block)
+        # 按双换行符分割段落
+        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
         
-        safe_print(f"🎉 简单解析完成，生成 {len(blocks)} 个blocks")
+        safe_print(f"📊 识别到 {len(paragraphs)} 个段落")
+        
+        for i, paragraph in enumerate(paragraphs):
+            # 检测语言
+            is_chinese = bool(chinese_char.search(paragraph))
+            lang_key = "zh" if is_chinese else "en"
+            
+            # 检查是否是标题
+            if paragraph.startswith('#'):
+                level = len(paragraph) - len(paragraph.lstrip('#'))
+                level = min(level, 6)
+                content_text = paragraph.lstrip('#').strip()
+                
+                block = {
+                    'id': generate_id(),
+                    'type': 'heading',
+                    'level': level,
+                    'content': {
+                        lang_key: [{"type": "text", "content": content_text}]
+                    },
+                    'createdAt': get_current_time().isoformat()  # 转换为ISO格式字符串
+                }
+            else:
+                # 创建基本的paragraph block
+                block = {
+                    'id': generate_id(),
+                    'type': 'paragraph',
+                    'content': {
+                        lang_key: [{"type": "text", "content": paragraph}]
+                    },
+                    'createdAt': get_current_time().isoformat()  # 转换为ISO格式字符串
+                }
+            
+            blocks.append(block)
+            safe_print(f"📝 生成block {i+1}: {block['type']}")
+        
+        safe_print(f"✅ 降级解析完成，生成 {len(blocks)} 个blocks")
         return blocks
-
 
 # 全局实例
 _llm_utils: Optional[LLMUtils] = None

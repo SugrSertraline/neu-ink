@@ -44,11 +44,14 @@ export function normalize<T = any>(res: ApiResponse<T | BusinessResponse<T>>): U
 }
 
 export function shouldResetAuth(topCode: number, bizCode?: number, errMsg?: string) {
+  // 只有明确的认证错误才重置认证状态
   if (topCode === ResponseCode.UNAUTHORIZED) return true;
   if (bizCode === BusinessCode.TOKEN_INVALID || bizCode === BusinessCode.TOKEN_EXPIRED) return true;
 
+  // 检查错误消息，但更加严格，避免误判
   if (errMsg) {
     const s = `${errMsg}`.toLowerCase();
+    // 只检查明确的认证相关错误
     if (
       s.includes('401') ||
       s.includes('unauthorized') ||
@@ -59,6 +62,19 @@ export function shouldResetAuth(topCode: number, bizCode?: number, errMsg?: stri
           s.includes('无效')))
     ) {
       return true;
+    }
+    
+    // 排除明确的业务错误，这些不应该导致登出
+    if (
+      s.includes('无效的论文ID') ||
+      s.includes('论文不存在') ||
+      s.includes('章节数据不能为空') ||
+      s.includes('block数据不能为空') ||
+      s.includes('文本内容不能为空') ||
+      s.includes('更新数据不能为空') ||
+      s.includes('参数错误')
+    ) {
+      return false;
     }
   }
   return false;

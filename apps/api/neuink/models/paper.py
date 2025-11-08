@@ -83,7 +83,6 @@ class PaperModel:
         """
         filters = filters.copy() if filters else {}
         base_query = self._build_public_filters(filters)
-
         projection = self._public_summary_projection(include_score=bool(search))
 
         if search:
@@ -104,7 +103,6 @@ class PaperModel:
                 .limit(limit)
             )
             total = self.collection.count_documents(base_query)
-
         papers = list(cursor)
         for paper in papers:
             paper.pop("score", None)

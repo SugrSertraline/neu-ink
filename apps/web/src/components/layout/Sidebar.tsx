@@ -2,7 +2,7 @@
 'use client';
 
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Users } from 'lucide-react';
 import { useRouter } from 'next/navigation';
 import { NavItem } from '@/types/navigation';
 import { User } from '@/types/user';

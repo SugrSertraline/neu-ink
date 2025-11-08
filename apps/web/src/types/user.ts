@@ -29,3 +29,36 @@ export interface LoginResponse {
   token: string;
   user: User;
 }
+
+// 用户管理相关类型定义
+export interface CreateUserDto {
+  username: string;
+  password: string;
+  nickname: string;
+  role?: Role;
+}
+
+export interface UpdateUserDto {
+  username?: string;
+  nickname?: string;
+}
+
+export interface UserListResponse {
+  users: User[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    pages: number;
+  };
+}
+
+export interface UserListRequest {
+  page?: number;
+  limit?: number;
+  keyword?: string;
+}
+
+export interface ChangeRoleRequest {
+  role: Role;
+}
