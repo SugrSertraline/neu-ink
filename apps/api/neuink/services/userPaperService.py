@@ -33,6 +33,7 @@ class UserPaperService:
     ) -> Dict[str, Any]:
         """
         获取用户的个人论文库列表
+        优化版本：只返回列表页面需要的字段，不包括完整的论文内容和笔记数量
         """
         try:
             skip = self._calc_skip(page, page_size)
@@ -48,10 +49,15 @@ class UserPaperService:
                 filters=filters or {},
             )
 
-            # 为每篇论文添加笔记数量
+            # 不再为每篇论文添加笔记数量，以减少数据库查询
+            # 笔记数量可以在需要时通过单独的API获取
+            
+            # 确保每篇论文都包含阅读时长字段
             for paper in papers:
-                note_count = self.note_model.count_by_user_paper(paper["id"])
-                paper["noteCount"] = note_count
+                if "totalReadingTime" not in paper:
+                    paper["totalReadingTime"] = 0
+                if "lastReadTime" not in paper:
+                    paper["lastReadTime"] = None
 
             return self._wrap_success(
                 "获取个人论文库成功",
@@ -400,6 +406,7 @@ class UserPaperService:
             if reading_time > 0:
                 current_time = user_paper.get("totalReadingTime", 0)
                 update_data["totalReadingTime"] = current_time + reading_time
+                print(f"[DEBUG] 更新阅读进度: userPaperId={entry_id}, 当前时间={current_time}秒, 新增时间={reading_time}秒, 总时间={update_data['totalReadingTime']}秒")
             
             # 更新最后阅读时间
             from ..utils.common import get_current_time

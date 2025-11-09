@@ -538,6 +538,54 @@ def update_paper_visibility(paper_id):
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
 
+
+@bp.route("/<paper_id>/parse-references", methods=["POST"])
+@login_required
+@admin_required
+def parse_references(paper_id):
+    """
+    管理员解析参考文献文本并添加到论文中
+    
+    请求体示例:
+    {
+        "text": "[1] J. Smith, \"Title of paper,\" Journal Name, vol. 10, no. 2, pp. 123-145, 2020.\n[2] K. Johnson et al., \"Another paper title,\" Conference Name, 2019."
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or not data.get("text"):
+            return bad_request_response("参考文献文本不能为空")
+        
+        text = data.get("text")
+        
+        # 首先解析参考文献
+        service = get_paper_service()
+        parse_result = service.parse_references(text)
+        
+        if parse_result["code"] != BusinessCode.SUCCESS:
+            return bad_request_response(parse_result["message"])
+        
+        parsed_references = parse_result["data"]["references"]
+        
+        if not parsed_references:
+            return bad_request_response("未能从文本中解析出有效的参考文献")
+        
+        # 将解析后的参考文献添加到论文中
+        add_result = service.add_references_to_paper(
+            paper_id=paper_id,
+            references=parsed_references,
+            user_id=g.current_user["user_id"],
+            is_admin=True
+        )
+        
+        if add_result["code"] == BusinessCode.SUCCESS:
+            return success_response(add_result["data"], add_result["message"])
+        else:
+            return bad_request_response(add_result["message"])
+            
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
 @bp.route("/<paper_id>/sections/<section_id>/blocks/<block_id>", methods=["DELETE"])
 @login_required
 @admin_required

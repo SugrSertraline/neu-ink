@@ -241,3 +241,24 @@ export interface UpdatePaperVisibilityRequest {
 export interface UpdatePaperVisibilityResult {
   paper: Paper;
 }
+
+// —— 请求：解析参考文献 ——
+export interface ParseReferencesRequest {
+  text: string;
+}
+
+// —— 响应：解析参考文献结果 ——
+export interface ParseReferencesResult {
+  references: import('./models').Reference[];
+}
+
+// —— 请求：添加参考文献到论文 ——
+export interface AddReferencesToPaperRequest {
+  references: import('./models').Reference[];
+}
+
+// —— 响应：添加参考文献到论文结果 ——
+export interface AddReferencesToPaperResult {
+  paper: Paper;
+  addedReferences: import('./models').Reference[];
+}

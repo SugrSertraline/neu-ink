@@ -19,12 +19,14 @@ export function usePaperEditPermissions(source: ViewerSource): PaperEditPermissi
   return useMemo(() => {
     const canEditAny = capabilities.canEditPublicPaper || capabilities.canEditPersonalPaper;
 
-    return {
+    const permissions = {
       source,
       ...capabilities,
       canEditContent: canEditAny,
       canEditStructure: canEditAny,
       canAccessEditor: canEditAny,
     };
+
+    return permissions;
   }, [capabilities, source]);
 }

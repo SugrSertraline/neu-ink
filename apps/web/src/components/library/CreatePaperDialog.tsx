@@ -114,7 +114,7 @@ export default function CreatePaperDialog({
       onSuccess?.();
       handleClose();
     } catch (error) {
-      console.error('创建失败:', error);
+      // 静默处理创建失败错误
     } finally {
       setLoading(false);
     }

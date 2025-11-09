@@ -97,6 +97,7 @@ export default function PublicLibraryPage() {
     handleAddToLibrary,
     resetFilters,
     reload,
+    ConfirmDialog,
   } = usePublicLibraryController();
 
   const [showCreateDialog, setShowCreateDialog] = React.useState(false);
@@ -349,6 +350,7 @@ export default function PublicLibraryPage() {
           />
         </>
       )}
+      <ConfirmDialog />
     </div>
   );
 }

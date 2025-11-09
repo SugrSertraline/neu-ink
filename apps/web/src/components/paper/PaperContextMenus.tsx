@@ -135,14 +135,17 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
   const [open, setOpen] = useState(false);
   const [coords, setCoords] = useState({ x: 0, y: 0 });
   const [openSubmenu, setOpenSubmenu] = useState<string | null>(null);
+  
   const submenuCloseTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const validEntries = useMemo(() => {
-    return entries.filter(entry =>
+    const filtered = entries.filter(entry =>
       entry.kind === 'separator'
         ? true
         : (Boolean(entry.onSelect) || Boolean(entry.submenu)) && !entry.disabled,
     );
+    
+    return filtered;
   }, [entries]);
 
   const clearSubmenuCloseTimer = useCallback(() => {
@@ -225,7 +228,9 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
 
   const handleContextMenu = useCallback(
     (event: React.MouseEvent<HTMLElement>) => {
-      if (!validEntries.length) return;
+      if (!validEntries.length) {
+        return;
+      }
 
       const target = event.target as HTMLElement;
 
@@ -236,6 +241,12 @@ const ContextMenuWrapper: React.FC<ContextMenuWrapperProps> = ({
         if (target.closest('[data-block-id]')) return true;
         if (target.closest('[data-reference-id]')) return true;
         if (target.closest('[data-reference-region]')) return true;
+        if (target.closest('[data-references]')) return true; // 添加对 data-references 属性的检查
+        
+        // 检查是否在参考文献区域内
+        const referencesSection = target.closest('section[data-references="true"]');
+        if (referencesSection) return true;
+        
         // 对于这些交互元素，不应该触发右键菜单
         if (target.closest('button, input, textarea, select, a')) return false;
         if (target.closest('[contenteditable="true"]')) return false;
@@ -746,19 +757,30 @@ export function ReferenceContextMenu({
 interface RootReferenceContextMenuProps {
   children: React.ReactNode;
   onAddReference?: MenuAction;
+  onParseReferences?: MenuAction;
 }
 
 export function RootReferenceContextMenu({
   children,
   onAddReference,
+  onParseReferences,
 }: RootReferenceContextMenuProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
-  if (!canEditContent || !onAddReference) return <>{children}</>;
+  
+  const entries: MenuEntry[] = [];
+  
+  if (canEditContent && onAddReference) {
+    entries.push({ kind: 'item', label: '添加参考文献', onSelect: onAddReference });
+  }
+  
+  if (canEditContent && onParseReferences) {
+    entries.push({ kind: 'item', label: '批量解析参考文献', onSelect: onParseReferences });
+  }
+
+  if (!entries.length) return <>{children}</>;
 
   return (
-    <ContextMenuWrapper
-      entries={[{ kind: 'item', label: '添加参考文献', onSelect: onAddReference }]}
-    >
+    <ContextMenuWrapper entries={entries}>
       {children}
     </ContextMenuWrapper>
   );

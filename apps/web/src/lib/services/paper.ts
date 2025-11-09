@@ -31,7 +31,11 @@ import {
   UserPaper,
   UserPaperFilters,
   UserPaperListData,
-  UserStatistics
+  UserStatistics,
+  ParseReferencesRequest,
+  ParseReferencesResult,
+  AddReferencesToPaperRequest,
+  AddReferencesToPaperResult
 } from '@/types/paper/index';
 import { apiClient, callAndNormalize } from '../http';
 import type { UnifiedResult } from '@/types/api';
@@ -554,6 +558,29 @@ export const adminPaperService = {
   ): Promise<UnifiedResult<UpdatePaperVisibilityResult>> {
     return callAndNormalize<UpdatePaperVisibilityResult>(
       apiClient.put(`/admin/papers/${paperId}/visibility`, request)
+    );
+  },
+
+  /**
+   * 解析参考文献
+   */
+  parseReferences(
+    request: ParseReferencesRequest
+  ): Promise<UnifiedResult<ParseReferencesResult>> {
+    return callAndNormalize<ParseReferencesResult>(
+      apiClient.post('/admin/papers/parse-references', request)
+    );
+  },
+
+  /**
+   * 添加参考文献到论文
+   */
+  addReferencesToPaper(
+    paperId: string,
+    request: AddReferencesToPaperRequest
+  ): Promise<UnifiedResult<AddReferencesToPaperResult>> {
+    return callAndNormalize<AddReferencesToPaperResult>(
+      apiClient.post(`/admin/papers/${paperId}/add-references`, request)
     );
   },
 };

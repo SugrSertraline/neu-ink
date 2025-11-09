@@ -176,7 +176,10 @@ export default function InlineEditor({
     immediatelyRender: false,
     extensions,
     content: inlineContentToTiptap(value),
-    onUpdate: ({ editor: ed }) => onChange(tiptapToInlineContent(ed.getJSON())),
+    onUpdate: ({ editor: ed }) => {
+      // 只更新本地状态，不触发保存
+      onChange(tiptapToInlineContent(ed.getJSON()));
+    },
     onSelectionUpdate: () => bumpSelectionTicker(),
     editorProps: {
       attributes: {

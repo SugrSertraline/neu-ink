@@ -71,43 +71,29 @@ export function usePaperSections(
     isPersonalOwner: boolean
   ) => {
     try {
-      console.log('[usePaperSections] handleSectionUpdateWithAPI called:', {
-        sectionId,
-        isPersonalOwner,
-        userPaperId,
-        paperId
-      });
-      
       if (isPersonalOwner && userPaperId) {
-        console.log('[usePaperSections] Using userPaperService for personal paper section');
         const { userPaperService } = await import('@/lib/services/paper');
         const result = await userPaperService.updateSection(userPaperId, sectionId, updateData);
         
         if (result.bizCode === 0) {
-          console.log('[usePaperSections] userPaperService.updateSection success');
           return { success: true };
         } else {
-          console.error('[usePaperSections] userPaperService.updateSection failed:', result.bizMessage);
           toast.error('更新失败', { description: result.bizMessage || '服务器错误' });
           return { success: false, error: result.bizMessage || '更新章节失败' };
         }
       } else {
-        console.log('[usePaperSections] Using adminPaperService for admin paper section');
         const { adminPaperService } = await import('@/lib/services/paper');
         const result = await adminPaperService.updateSection(paperId, sectionId, updateData);
         
         if (result.bizCode === 0) {
-          console.log('[usePaperSections] adminPaperService.updateSection success');
           return { success: true };
         } else {
-          console.error('[usePaperSections] adminPaperService.updateSection failed:', result.bizMessage);
           toast.error('更新失败', { description: result.bizMessage || '服务器错误' });
           return { success: false, error: result.bizMessage || '更新章节失败' };
         }
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : '更新章节时发生未知错误';
-      console.error('[usePaperSections] handleSectionUpdateWithAPI exception:', error);
       toast.error('更新失败', { description: message });
       return { success: false, error: message };
     }
@@ -255,12 +241,8 @@ export function usePaperSections(
     onSaveToServer?: () => Promise<void>
   ) => {
     try {
-      console.log('[usePaperSections] handleSectionTitleUpdate called:', {
-        sectionId,
-        isPersonalOwner,
-        userPaperId,
-        paperId
-      });
+      // 显示加载状态
+      toast.loading('正在更新章节标题...', { id: 'update-section-title' });
       
       // 先本地更新UI
       updateSectionTree(sectionId, section => ({
@@ -286,12 +268,18 @@ export function usePaperSections(
       
       // 不再调用 handleSaveToServer，因为 handleSectionUpdateWithAPI 已经更新了数据库
       if (!result.success) {
-        console.error('Failed to update section title:', result.error);
+        toast.error('更新章节标题失败', {
+          id: 'update-section-title',
+          description: result.error
+        });
       } else {
-        console.log('[usePaperSections] Section title updated successfully');
+        toast.success('章节标题更新成功', { id: 'update-section-title' });
       }
     } catch (error) {
-      console.error('Failed to update section title:', error);
+      toast.error('更新章节标题失败', {
+        id: 'update-section-title',
+        description: error instanceof Error ? error.message : '未知错误'
+      });
     }
   }, [updateSectionTree, handleSectionUpdateWithAPI]);
 
@@ -305,6 +293,9 @@ export function usePaperSections(
       onSaveToServer?: () => Promise<void>
     ) => {
       const newSection = createEmptySection();
+      
+      // 显示加载状态
+      toast.loading('正在添加子章节...', { id: 'add-subsection' });
       
       // 先本地更新UI
       updateSectionTree(sectionId, section => ({
@@ -334,12 +325,17 @@ export function usePaperSections(
 
       // 如果API调用失败，可以考虑回滚本地更新
       if (!result.success) {
-        console.error('Failed to add subsection:', result.error);
+        toast.error('添加子章节失败', {
+          id: 'add-subsection',
+          description: result.error
+        });
         // 回滚本地更新
         updateSectionTree(sectionId, section => ({
           ...section,
           subsections: (section.subsections ?? []).filter(sub => sub.id !== newSection.id)
         }));
+      } else {
+        toast.success('子章节添加成功', { id: 'add-subsection' });
       }
     },
     [updateSectionTree, handleSectionAddWithAPI]
@@ -356,6 +352,9 @@ export function usePaperSections(
       onSaveToServer?: () => Promise<void>
     ) => {
       const newSection = createEmptySection();
+      
+      // 显示加载状态
+      toast.loading('正在添加章节...', { id: 'add-section' });
       
       // 本地更新UI
       updateSections(sections => {
@@ -439,7 +438,12 @@ export function usePaperSections(
       // 如果 API 调用失败，可以考虑回滚本地更新
       if (!result.success) {
         // 这里可以添加回滚逻辑，但暂时先让用户知道添加失败
-        console.error('Failed to add section:', result.error);
+        toast.error('添加章节失败', {
+          id: 'add-section',
+          description: result.error
+        });
+      } else {
+        toast.success('章节添加成功', { id: 'add-section' });
       }
     },
     [updateSections, handleSectionAddWithAPI]
@@ -512,6 +516,9 @@ export function usePaperSections(
       isPersonalOwner: boolean,
       onSaveToServer?: () => Promise<void>
     ) => {
+      // 显示加载状态
+      toast.loading('正在删除章节...', { id: 'delete-section' });
+      
       const result = await handleSectionDeleteWithAPI(
         sectionId,
         paperId,
@@ -522,7 +529,12 @@ export function usePaperSections(
       // 不再调用 handleSaveToServer，因为 handleSectionDeleteWithAPI 已经更新了数据库
       // 如果 API 调用失败，可以考虑回滚本地更新
       if (!result.success) {
-        console.error('Failed to delete section:', result.error);
+        toast.error('删除章节失败', {
+          id: 'delete-section',
+          description: result.error
+        });
+      } else {
+        toast.success('章节删除成功', { id: 'delete-section' });
       }
     },
     [handleSectionDeleteWithAPI]
@@ -795,6 +807,43 @@ export function usePaperSections(
     isPersonalOwner: boolean,
     afterBlockId?: string
   ) => {
+    // 先添加一个"正在解析"的占位block
+    const placeholderId = `parsing_${Date.now()}`;
+    const placeholderBlock = {
+      id: placeholderId,
+      type: 'paragraph' as const,
+      content: {
+        en: [{ type: 'text' as const, content: '正在解析文本，请稍候...' }],
+        zh: [{ type: 'text' as const, content: '正在解析文本，请稍候...' }]
+      }
+    };
+
+    // 立即更新本地状态，添加占位block
+    updateSectionTree(sectionId, section => {
+      const currentBlocks = section.content || [];
+      let insertIndex = currentBlocks.length; // 默认在末尾
+     
+      if (afterBlockId) {
+        for (let i = 0; i < currentBlocks.length; i++) {
+          if (currentBlocks[i].id === afterBlockId) {
+            insertIndex = i + 1;
+            break;
+          }
+        }
+      }
+     
+      const newBlocks = [...currentBlocks];
+      newBlocks.splice(insertIndex, 0, placeholderBlock);
+     
+      return {
+        ...section,
+        content: newBlocks
+      };
+    });
+
+    // 显示加载状态
+    toast.loading('正在解析文本内容...', { id: 'parse-text' });
+
     try {
       if (isPersonalOwner && userPaperId) {
         const { userPaperService } = await import('@/lib/services/paper');
@@ -804,11 +853,11 @@ export function usePaperSections(
         });
         
         if (result.bizCode === 0) {
-          // 更新本地状态，添加返回的blocks
+          // 移除占位block，添加返回的blocks
           updateSectionTree(sectionId, section => {
             const currentBlocks = section.content || [];
             let insertIndex = currentBlocks.length; // 默认在末尾
-            
+           
             if (afterBlockId) {
               for (let i = 0; i < currentBlocks.length; i++) {
                 if (currentBlocks[i].id === afterBlockId) {
@@ -817,20 +866,33 @@ export function usePaperSections(
                 }
               }
             }
+           
+            // 移除占位block
+            const filteredBlocks = currentBlocks.filter(block => block.id !== placeholderId);
             
-            const newBlocks = [...currentBlocks];
+            // 添加解析后的blocks
+            const newBlocks = [...filteredBlocks];
             newBlocks.splice(insertIndex, 0, ...result.data.addedBlocks);
-            
+           
             return {
               ...section,
               content: newBlocks
             };
           });
           
-          toast.success(`成功添加了${result.data.addedBlocks.length}个段落`);
+          toast.success(`成功解析并添加了${result.data.addedBlocks.length}个段落`, { id: 'parse-text' });
           return { success: true, addedBlocks: result.data.addedBlocks };
         } else {
-          toast.error('添加失败', { description: result.bizMessage || '服务器错误' });
+          // 移除占位block
+          updateSectionTree(sectionId, section => ({
+            ...section,
+            content: (section.content || []).filter(block => block.id !== placeholderId)
+          }));
+          
+          toast.error('文本解析失败', {
+            id: 'parse-text',
+            description: result.bizMessage || '服务器错误'
+          });
           return { success: false, error: result.bizMessage || '添加段落失败' };
         }
       } else {
@@ -841,11 +903,11 @@ export function usePaperSections(
         });
         
         if (result.bizCode === 0) {
-          // 更新本地状态，添加返回的blocks
+          // 移除占位block，添加返回的blocks
           updateSectionTree(sectionId, section => {
             const currentBlocks = section.content || [];
             let insertIndex = currentBlocks.length; // 默认在末尾
-            
+           
             if (afterBlockId) {
               for (let i = 0; i < currentBlocks.length; i++) {
                 if (currentBlocks[i].id === afterBlockId) {
@@ -854,26 +916,48 @@ export function usePaperSections(
                 }
               }
             }
+           
+            // 移除占位block
+            const filteredBlocks = currentBlocks.filter(block => block.id !== placeholderId);
             
-            const newBlocks = [...currentBlocks];
+            // 添加解析后的blocks
+            const newBlocks = [...filteredBlocks];
             newBlocks.splice(insertIndex, 0, ...result.data.addedBlocks);
-            
+           
             return {
               ...section,
               content: newBlocks
             };
           });
           
-          toast.success(`成功添加了${result.data.addedBlocks.length}个段落`);
+          toast.success(`成功解析并添加了${result.data.addedBlocks.length}个段落`, { id: 'parse-text' });
           return { success: true, addedBlocks: result.data.addedBlocks };
         } else {
-          toast.error('添加失败', { description: result.bizMessage || '服务器错误' });
+          // 移除占位block
+          updateSectionTree(sectionId, section => ({
+            ...section,
+            content: (section.content || []).filter(block => block.id !== placeholderId)
+          }));
+          
+          toast.error('文本解析失败', {
+            id: 'parse-text',
+            description: result.bizMessage || '服务器错误'
+          });
           return { success: false, error: result.bizMessage || '添加段落失败' };
         }
       }
     } catch (error) {
+      // 移除占位block
+      updateSectionTree(sectionId, section => ({
+        ...section,
+        content: (section.content || []).filter(block => block.id !== placeholderId)
+      }));
+      
       const message = error instanceof Error ? error.message : '添加段落时发生未知错误';
-      toast.error('添加失败', { description: message });
+      toast.error('文本解析失败', {
+        id: 'parse-text',
+        description: message
+      });
       return { success: false, error: message };
     }
   }, [updateSectionTree]);

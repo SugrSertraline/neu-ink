@@ -83,7 +83,6 @@ export default function UsersPage() {
         toast.error(result.bizMessage || '获取用户列表失败');
       }
     } catch (error) {
-      console.error('获取用户列表失败:', error);
       toast.error('获取用户列表失败');
     } finally {
       setLoading(false);
@@ -110,7 +109,6 @@ export default function UsersPage() {
         toast.error(result.bizMessage || '创建用户失败');
       }
     } catch (error) {
-      console.error('创建用户失败:', error);
       toast.error('创建用户失败');
     }
   }, [pagination.page, searchKeyword]);
@@ -129,7 +127,6 @@ export default function UsersPage() {
         toast.error(result.bizMessage || '更新用户信息失败');
       }
     } catch (error) {
-      console.error('更新用户信息失败:', error);
       toast.error('更新用户信息失败');
     }
   }, [selectedUser, pagination.page, searchKeyword]);
@@ -148,7 +145,6 @@ export default function UsersPage() {
         toast.error(result.bizMessage || '删除用户失败');
       }
     } catch (error) {
-      console.error('删除用户失败:', error);
       toast.error('删除用户失败');
     }
   }, [selectedUser, pagination.page, searchKeyword]);
@@ -163,7 +159,6 @@ export default function UsersPage() {
         toast.error(result.bizMessage || '更新用户角色失败');
       }
     } catch (error) {
-      console.error('更新用户角色失败:', error);
       toast.error('更新用户角色失败');
     }
   }, [pagination.page, searchKeyword]);
@@ -311,7 +306,7 @@ export default function UsersPage() {
                   <tr key={user.id} className="hover:bg-gray-50">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <div className="flex-shrink-0 h-10 w-10">
+                        <div className="shrink-0 h-10 w-10">
                           <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
                             <User className="h-6 w-6 text-gray-600" />
                           </div>

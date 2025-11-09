@@ -33,7 +33,6 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
       const personalNotes = notesRaw.map(note => adaptNoteFromApi(note));
       setNotesByBlock(groupNotesByBlock(personalNotes));
     } catch (err) {
-      console.error('加载笔记失败', err);
       setError(err instanceof Error ? err.message : '加载笔记失败，请稍后重试');
       setNotesByBlock({});
     } finally {
@@ -64,7 +63,6 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
           return next;
         });
       } catch (err) {
-        console.error('创建笔记失败', err);
         alert(err instanceof Error ? err.message : '创建笔记失败，请稍后重试');
       } finally {
         setIsMutating(false);
@@ -105,7 +103,6 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
           return next;
         });
       } catch (err) {
-        console.error('更新笔记失败', err);
         alert(err instanceof Error ? err.message : '更新笔记失败，请稍后重试');
       } finally {
         setIsMutating(false);
@@ -138,7 +135,6 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
           return next;
         });
       } catch (err) {
-        console.error('删除笔记失败', err);
         alert(err instanceof Error ? err.message : '删除笔记失败，请稍后重试');
       } finally {
         setIsMutating(false);

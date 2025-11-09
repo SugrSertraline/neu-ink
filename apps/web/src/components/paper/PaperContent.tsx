@@ -21,6 +21,7 @@ import {
 } from './PaperContextMenus';
 import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
 import { useEditingState } from '@/stores/useEditingState';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 
 type Lang = 'en' | 'both';
 
@@ -276,6 +277,7 @@ export default function PaperContent({
 
   const { canEditContent } = usePaperEditPermissionsContext();
   const { isEditing, clearEditing, setHasUnsavedChanges, switchToEdit } = useEditingState();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
   const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
   const [hoveredSectionId, setHoveredSectionId] = useState<string | null>(null);
   const [textParseSectionId, setTextParseSectionId] = useState<string | null>(null);
@@ -307,8 +309,8 @@ export default function PaperContent({
   );
 
   const handleBlockEditStart = useCallback(
-    (blockId: string) => {
-      const switched = switchToEdit(blockId, {
+    async (blockId: string) => {
+      const switched = await switchToEdit(blockId, {
         beforeSwitch: () => {
           if (renamingSectionId && renamingSectionId !== blockId) {
             setRenamingSectionId(null);
@@ -325,8 +327,8 @@ export default function PaperContent({
   );
 
   const handleSectionEditStart = useCallback(
-    (sectionId: string) => {
-      const switched = switchToEdit(sectionId, {
+    async (sectionId: string) => {
+      const switched = await switchToEdit(sectionId, {
         beforeSwitch: () => {
           if (renamingSectionId && renamingSectionId !== sectionId) {
             setRenamingSectionId(null);
@@ -391,7 +393,7 @@ export default function PaperContent({
         <section
           key={section.id}
           id={section.id}
-          className="bg-white dark:bg-slate-900 rounded-lg shadow-sm border border-gray-200 dark:border-slate-700 p-6 space-y-4"
+          className="relative overflow-hidden rounded-2xl border border-white/45 bg-linear-to-tr from-white/30 via-white/15 to-white/35 p-6 shadow-[0_30px_60px_rgba(15,23,42,0.18)] backdrop-blur-[18px] transition-all duration-300 hover:shadow-[0_40px_80px_rgba(15,23,42,0.25)] dark:border-white/10 dark:from-slate-900/60 dark:via-slate-900/45 dark:to-slate-900/55 space-y-4"
           style={{ marginLeft: sectionMargin }}
         >
           <SectionContextMenu
@@ -425,8 +427,16 @@ export default function PaperContent({
             }
             onDelete={
               canEditContent
-                ? () => {
-                    if (window.confirm('确定删除该章节及其所有内容吗？')) {
+                ? async () => {
+                    const confirmed = await confirm({
+                      title: '删除章节',
+                      description: '确定删除该章节及其所有内容吗？此操作不可撤销。',
+                      confirmText: '删除',
+                      cancelText: '取消',
+                      variant: 'destructive',
+                      onConfirm: () => Promise.resolve(),
+                    });
+                    if (confirmed) {
                       onSectionDelete?.(section.id);
                       if (renamingSectionId === section.id) setRenamingSectionId(null);
                     }
@@ -485,6 +495,7 @@ export default function PaperContent({
                   canMoveDown={blockIndex < (section.content?.length ?? 0) - 1}
                   references={references}
                   allSections={sections}
+                  onSaveToServer={onSaveToServer}
                 />
               ) : (
                 <BlockRenderer
@@ -595,8 +606,16 @@ export default function PaperContent({
                       onStartTextParse={canEditContent ? () => handleStartBlockTextParse(section.id, block.id) : undefined}
                       onDelete={
                         canEditContent
-                          ? () => {
-                            if (window.confirm('确定删除该内容块吗？')) {
+                          ? async () => {
+                            const confirmed = await confirm({
+                              title: '删除内容块',
+                              description: '确定删除该内容块吗？此操作不可撤销。',
+                              confirmText: '删除',
+                              cancelText: '取消',
+                              variant: 'destructive',
+                              onConfirm: () => Promise.resolve(),
+                            });
+                            if (confirmed) {
                               onBlockDelete?.(block.id);
                               if (isEditing(block.id)) clearEditing();
                             }
@@ -685,20 +704,23 @@ export default function PaperContent({
 
   const emptyState = canEditContent && onSectionInsert ? (
     <RootSectionContextMenu onAddSection={() => onSectionInsert(null, 'below', null)}>
-      <div className="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900">
+      <div className="relative overflow-hidden rounded-2xl border border-white/45 bg-linear-to-tr from-white/30 via-white/15 to-white/35 p-10 shadow-[0_30px_60px_rgba(15,23,42,0.18)] backdrop-blur-[18px] transition-all duration-300 hover:shadow-[0_40px_80px_rgba(15,23,42,0.25)] text-center dark:border-white/10 dark:from-slate-900/60 dark:via-slate-900/45 dark:to-slate-900/55">
         <p className="text-lg font-semibold text-gray-700 dark:text-gray-200">论文暂无内容</p>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">右键此区域以添加第一章。</p>
       </div>
     </RootSectionContextMenu>
   ) : (
-    <div className="rounded-lg border border-dashed border-gray-300 bg-white p-10 text-center shadow-sm dark:border-slate-700 dark:bg-slate-900">
+    <div className="relative overflow-hidden rounded-2xl border border-white/45 bg-linear-to-tr from-white/30 via-white/15 to-white/35 p-10 shadow-[0_30px_60px_rgba(15,23,42,0.18)] backdrop-blur-[18px] transition-all duration-300 hover:shadow-[0_40px_80px_rgba(15,23,42,0.25)] text-center dark:border-white/10 dark:from-slate-900/60 dark:via-slate-900/45 dark:to-slate-900/55">
       <p className="text-lg font-semibold text-gray-700 dark:text-gray-200">论文暂无内容</p>
       <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">请联系管理员添加内容。</p>
     </div>
   );
 
   return (
-    <div className="space-y-8">{sections.length ? renderedTree : emptyState}</div>
+    <>
+      <div className="space-y-8">{sections.length ? renderedTree : emptyState}</div>
+      <ConfirmDialog />
+    </>
   );
 }
 

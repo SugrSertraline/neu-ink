@@ -150,13 +150,12 @@ export default function TabBar({
     setIsDragging(true);
     setStartX(event.pageX - scrollContainerRef.current.offsetLeft);
     setScrollLeft(scrollContainerRef.current.scrollLeft);
-    scrollContainerRef.current.style.cursor = 'grabbing';
   }, []);
 
   const handleMouseUp = useCallback(() => {
     setIsDragging(false);
     if (scrollContainerRef.current) {
-      scrollContainerRef.current.style.cursor = 'grab';
+      scrollContainerRef.current.style.cursor = '';
     }
   }, []);
 
@@ -175,7 +174,7 @@ export default function TabBar({
     if (!isDragging) return;
     setIsDragging(false);
     if (scrollContainerRef.current) {
-      scrollContainerRef.current.style.cursor = 'grab';
+      scrollContainerRef.current.style.cursor = '';
     }
   }, [isDragging]);
 
@@ -207,10 +206,14 @@ export default function TabBar({
       const tabToClose = tabs.find(tab => tab.id === tabId);
       if (!tabToClose) return;
 
-      // 保存当前滚动位置
-      const scrollY = window.scrollY;
+      // 保存当前滚动位置 - 优先使用 main 元素的滚动位置
       const mainElement = document.querySelector('main');
+      const scrollY = window.scrollY;
       const mainScrollTop = mainElement ? mainElement.scrollTop : 0;
+      
+      // 确定使用哪种滚动方式
+      const useMainScroll = mainElement && mainElement.scrollTop > 0;
+      const savedScrollPosition = useMainScroll ? mainScrollTop : scrollY;
 
       if (tabId === activeTabId) {
         const currentIndex = visibleTabs.findIndex(tab => tab.id === tabId);
@@ -239,16 +242,22 @@ export default function TabBar({
                 await router.push(targetHref);
               }
               
-              // 恢复滚动位置
-              requestAnimationFrame(() => {
-                if (mainElement) {
-                  mainElement.scrollTop = mainScrollTop;
-                } else {
-                  window.scrollTo(0, scrollY);
-                }
-              });
+              // 恢复滚动位置 - 使用多重延迟确保 DOM 完全更新完成
+              setTimeout(() => {
+                requestAnimationFrame(() => {
+                  requestAnimationFrame(() => {
+                    // 重新获取 main 元素，因为 DOM 可能已经更新
+                    const updatedMainElement = document.querySelector('main');
+                    if (useMainScroll && updatedMainElement) {
+                      updatedMainElement.scrollTop = savedScrollPosition;
+                    } else {
+                      window.scrollTo(0, savedScrollPosition);
+                    }
+                  });
+                });
+              }, 100); // 增加额外延迟确保页面完全渲染
             } catch (error) {
-              console.error('Navigation error:', error);
+              // 静默处理导航错误
               setLoading(false, null);
             }
           }
@@ -259,13 +268,19 @@ export default function TabBar({
       
       // 如果不是关闭当前活动标签页，也要恢复滚动位置以防万一
       if (tabId !== activeTabId) {
-        requestAnimationFrame(() => {
-          if (mainElement) {
-            mainElement.scrollTop = mainScrollTop;
-          } else {
-            window.scrollTo(0, scrollY);
-          }
-        });
+        setTimeout(() => {
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              // 重新获取 main 元素
+              const updatedMainElement = document.querySelector('main');
+              if (useMainScroll && updatedMainElement) {
+                updatedMainElement.scrollTop = savedScrollPosition;
+              } else {
+                window.scrollTo(0, savedScrollPosition);
+              }
+            });
+          });
+        }, 100);
       }
     },
     [
@@ -297,7 +312,7 @@ export default function TabBar({
     try {
       router.push(tab.path);
     } catch (error) {
-      console.error('Navigation error:', error);
+      // 静默处理导航错误
       setLoading(false, null);
     }
   };
@@ -390,8 +405,8 @@ export default function TabBar({
             onMouseUp={handleMouseUp}
             onMouseMove={handleMouseMove}
             onMouseLeave={handleMouseLeave}
-            className="flex items-center gap-2 h-full overflow-x-auto overflow-y-hidden scrollbar-hide py-2 cursor-pointer select-none"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+            className="flex items-center gap-2 h-full overflow-x-auto overflow-y-hidden scrollbar-hide py-2 select-none"
+            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', cursor: isDragging ? 'grabbing' : 'grab' }}
           >
             {visibleTabs.map(tab => {
               const isActive = tab.id === activeTabId;
@@ -407,7 +422,7 @@ export default function TabBar({
                 tab.type === 'paper' && badge ? `${badge.label} · ${tab.title}` : tab.title;
 
               const baseBtn =
-                'relative inline-flex items-center gap-2 pl-3.5 pr-2.5 py-2 rounded-xl text-sm font-medium group overflow-hidden shrink-0 max-w-[240px] transition-all duration-250 border border-white/45 backdrop-blur-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4769b8]/45 focus-visible:ring-offset-[1.5px] focus-visible:ring-offset-white';
+                'relative inline-flex items-center gap-2 pl-3.5 pr-2.5 py-2 rounded-xl text-sm font-medium group overflow-hidden shrink-0 w-[240px] transition-all duration-250 border border-white/45 backdrop-blur-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-[#4769b8]/45 focus-visible:ring-offset-[1.5px] focus-visible:ring-offset-white';
               const activeStyles = isActive
                 ? `bg-gradient-to-r ${gradient} text-white shadow-md ${glow} scale-[1.01]`
                 : 'text-slate-700 bg-white/55 hover:bg-white/78 hover:text-slate-900 hover:shadow-[0_12px_32px_rgba(40,65,138,0.16)]';
@@ -461,7 +476,7 @@ export default function TabBar({
                           />
                         ) : null}
 
-                        <span className="flex-1 text-left whitespace-nowrap overflow-hidden text-ellipsis">
+                        <span className="min-w-0 flex-1 text-left whitespace-nowrap overflow-hidden text-ellipsis">
                           {displayTitle}
                         </span>
 
@@ -470,7 +485,7 @@ export default function TabBar({
                             type="button"
                             onClick={event => handleCloseTabClick(event, tab.id)}
                             className={cn(
-                              'w-6 h-6 rounded-lg flex items-center justify-center transition-all duration-200 border backdrop-blur-sm',
+                              'w-6 h-6 rounded-lg flex items-center justify-center transition-all duration-200 border backdrop-blur-sm cursor-pointer',
                               isActive
                                 ? 'bg-white/34 text-white hover:bg-white/48 hover:text-white border-white/50'
                                 : 'bg-white/48 hover:bg-white/70 hover:text-slate-600 text-slate-400 border-white/40 opacity-0 group-hover/tab:opacity-100',

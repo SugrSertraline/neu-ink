@@ -345,7 +345,7 @@ export default function MetadataEditor({
       } catch (err) {
         const message = err instanceof Error ? err.message : '自动保存失败';
         setAutoSaveError(message);
-        console.error('Auto save failed:', err);
+        // 静默处理自动保存错误
       } finally {
         setIsAutoSaving(false);
       }

@@ -8,21 +8,27 @@ import {
   Award,
   NotebookPen,
   Bookmark,
+  Clock,
 } from 'lucide-react';
+import { cn } from '@/lib/utils';
+
 import {
   HoverCard,
   HoverCardContent,
   HoverCardTrigger,
 } from '@/components/ui/hover-card';
 import { Badge } from '@/components/ui/badge';
-  import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/button';
 import { type PaperListItem, type Author } from '@/types/paper';
+import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
 
 interface PersonalMeta {
   readingStatus?: 'unread' | 'reading' | 'finished';
   priority?: 'high' | 'medium' | 'low';
   customTags?: string[];
   noteCount?: number;
+  totalReadingTime?: number; // 总阅读时间（秒）
+  lastReadTime?: string | null; // 最后阅读时间
 }
 
 interface PaperCardProps {
@@ -31,23 +37,25 @@ interface PaperCardProps {
   onDelete?: () => void;
   onAddToLibrary?: () => void;
   onRemoveFromLibrary?: () => void;
+  onEdit?: () => void;
   showLoginRequired?: boolean;
   personalMeta?: PersonalMeta;
   isAdmin?: boolean;
 }
 
 function getStatusColor(status: string): string {
+  // 柔和的玻璃风色板（整体去白、轻微降饱和）
   switch (status) {
     case 'completed':
-      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+      return 'bg-emerald-100/60 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300 border border-white/30 backdrop-blur-md';
     case 'parsing':
-      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+      return 'bg-blue-100/60 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 border border-white/30 backdrop-blur-md';
     case 'pending':
-      return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400';
+      return 'bg-amber-100/60 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300 border border-white/30 backdrop-blur-md';
     case 'failed':
-      return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400';
+      return 'bg-rose-100/60 text-rose-700 dark:bg-rose-900/30 dark:text-rose-300 border border-white/30 backdrop-blur-md';
     default:
-      return 'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300';
+      return 'bg-white/30 text-slate-700 dark:bg-white/10 dark:text-slate-200 border border-white/20 backdrop-blur-md';
   }
 }
 
@@ -79,10 +87,42 @@ const PRIORITY_LABEL: Record<'high' | 'medium' | 'low', string> = {
 };
 
 const PRIORITY_COLOR: Record<'high' | 'medium' | 'low', string> = {
-  high: 'bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300',
-  medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300',
-  low: 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200',
+  high: 'bg-red-100/60 text-red-700 dark:bg-red-900/40 dark:text-red-300 border border-white/30 backdrop-blur-md',
+  medium: 'bg-amber-100/60 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border border-white/30 backdrop-blur-md',
+  low: 'bg-slate-100/60 text-slate-700 dark:bg-slate-800/60 dark:text-slate-200 border border-white/20 backdrop-blur-md',
 };
+
+// 格式化阅读时间显示
+function formatReadingTime(seconds: number): string {
+  if (seconds < 60) return `${seconds}秒`;
+  if (seconds < 3600) return `${Math.floor(seconds / 60)}分钟`;
+  const hours = Math.floor(seconds / 3600);
+  const remainingMinutes = Math.floor((seconds % 3600) / 60);
+  return remainingMinutes > 0 ? `${hours}小时${remainingMinutes}分钟` : `${hours}小时`;
+}
+
+// 格式化最后阅读时间显示
+function formatLastReadTime(lastReadTime: string | null): string {
+  if (!lastReadTime) return '从未阅读';
+  const readDate = new Date(lastReadTime);
+  const now = new Date();
+  const diffMs = now.getTime() - readDate.getTime();
+  const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+  if (diffDays === 0) {
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    if (diffHours === 0) {
+      const diffMinutes = Math.floor(diffMs / (1000 * 60));
+      return diffMinutes <= 1 ? '刚刚' : `${diffMinutes}分钟前`;
+    }
+    return `${diffHours}小时前`;
+  } else if (diffDays === 1) {
+    return '昨天';
+  } else if (diffDays < 7) {
+    return `${diffDays}天前`;
+  } else {
+    return readDate.toLocaleDateString('zh-CN');
+  }
+}
 
 export default function PaperCard({
   paper,
@@ -90,6 +130,7 @@ export default function PaperCard({
   onDelete,
   onAddToLibrary,
   onRemoveFromLibrary,
+  onEdit,
   showLoginRequired = false,
   personalMeta,
   isAdmin = false,
@@ -101,42 +142,98 @@ export default function PaperCard({
   const hasMoreAuthors = paper.authors.length > 3;
   const authorsDisplay = hasMoreAuthors ? `${authors} 等` : authors;
 
+  // ---- 3D 悬浮：使用 Framer Motion 让旋转/浮动更顺滑 ----
+  const mx = useMotionValue(0.5); // [0,1]
+  const my = useMotionValue(0.5); // [0,1]
+  const spring = { stiffness: 200, damping: 18, mass: 0.4 };
+  const rx = useSpring(useTransform(my, [0, 1], [8, -8]), spring); // rotateX
+  const ry = useSpring(useTransform(mx, [0, 1], [-10, 10]), spring); // rotateY
+  const tx = useSpring(useTransform(mx, [0, 1], [-6, 6]), spring); // translateX
+  const ty = useSpring(useTransform(my, [0, 1], [-6, 6]), spring); // translateY
+
+  const handleMouseMove: React.MouseEventHandler<HTMLDivElement> = (e) => {
+    const el = e.currentTarget as HTMLDivElement;
+    const rect = el.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const px = x / rect.width; // 0..1
+    const py = y / rect.height;
+    mx.set(px);
+    my.set(py);
+    el.style.setProperty('--cursor-x', `${x}px`);
+    el.style.setProperty('--cursor-y', `${y}px`);
+  };
+
+  const handleMouseLeave: React.MouseEventHandler<HTMLDivElement> = (e) => {
+    const el = e.currentTarget as HTMLDivElement;
+    mx.set(0.5);
+    my.set(0.5);
+    el.style.setProperty('--cursor-x', `50%`);
+    el.style.setProperty('--cursor-y', `50%`);
+  };
+
   return (
-    <HoverCard>
+    <HoverCard delayOpen={200} delayClose={100}>
       <HoverCardTrigger asChild>
-        <div
+        <motion.div
           onClick={onClick}
-          className="group relative cursor-pointer rounded-lg border border-gray-200 bg-white p-4 transition-all hover:border-blue-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-600"
+          onMouseMove={handleMouseMove}
+          onMouseLeave={handleMouseLeave}
+          data-glow="true"
+          style={{
+            rotateX: rx,
+            rotateY: ry,
+            x: tx,
+            y: ty,
+            transformPerspective: 900,
+          }}
+          whileHover={{ scale: 1.012 }}
+          transition={{ type: 'spring', stiffness: 200, damping: 18 }}
+          className={cn(
+            'glass-card group relative cursor-pointer rounded-2xl border border-transparent px-4 py-4 transition-all will-change-transform',
+            // 背景降白 + 渐变玻璃：更协调的边框与内容层
+            'shadow-[0_18px_44px_rgba(15,23,42,0.12)] hover:shadow-[0_28px_68px_rgba(40,65,138,0.22)]',
+            'backdrop-blur-2xl bg-white/30 dark:bg-white/5'
+          )}
         >
+          {/* 3D 深度阴影层（跟随鼠标） */}
+          <div aria-hidden className="depth-shadow pointer-events-none absolute inset-2 rounded-2xl" />
+
+          {/* 左侧活跃装饰条 */}
+          <div className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 h-8 w-[3px] rounded-r-full bg-white/70 shadow-[0_0_9px_rgba(255,255,255,0.45)] opacity-0 group-hover:opacity-100 transition-opacity" />
+
           {paper.parseStatus && (
-            <div className="absolute right-3 top-3">
+            <div className="absolute right-3 top-3 z-10">
               <Badge
                 variant="secondary"
-                className={`text-xs ${getStatusColor(paper.parseStatus.status)}`}
+                className={`text-[11px] font-medium rounded-full px-2 py-0.5 ${getStatusColor(
+                  paper.parseStatus.status
+                )}`}
               >
                 {getStatusText(paper.parseStatus.status)}
               </Badge>
             </div>
           )}
 
-          <h3 className="mb-2 line-clamp-2 pr-20 text-sm font-semibold text-gray-900 dark:text-gray-100">
+          <h3 className="relative z-10 mb-2 line-clamp-2 pr-20 text-sm font-semibold text-slate-900 dark:text-slate-100">
             {paper.title}
           </h3>
 
-          <p className="mb-3 line-clamp-1 text-xs text-gray-600 dark:text-gray-400">
+          <p className="relative z-10 mb-3 line-clamp-1 text-xs text-slate-700/80 dark:text-slate-300/90">
             {authorsDisplay || '未知作者'}
             {paper.year && <span> • {paper.year}</span>}
           </p>
 
-          <div className="flex flex-wrap gap-1.5">
+          <div className="relative z-10 flex flex-wrap gap-1.5">
             {isAdmin && (
               <Badge
                 variant="outline"
-                className={`text-xs font-medium ${
+                className={cn(
+                  'text-[11px] font-medium rounded-full border-white/30 backdrop-blur-sm',
                   paper.isPublic
-                    ? 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-800/40 dark:bg-blue-900/30 dark:text-blue-300'
-                    : 'border-slate-200 bg-slate-100 text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300'
-                }`}
+                    ? 'bg-white/30 text-[#28418A] dark:bg-white/10 dark:text-white'
+                    : 'bg-white/20 text-slate-700 dark:bg-white/10 dark:text-slate-200'
+                )}
               >
                 {paper.isPublic ? '对外展示' : '暂不展示'}
               </Badge>
@@ -144,7 +241,7 @@ export default function PaperCard({
             {paper.sciQuartile && paper.sciQuartile !== '无' && (
               <Badge
                 variant="outline"
-                className="text-xs font-medium text-red-600 dark:text-red-400"
+                className="text-[11px] font-medium rounded-full border-white/30 bg-white/30 text-rose-600 dark:bg-white/10 dark:text-rose-300"
               >
                 SCI {paper.sciQuartile}
               </Badge>
@@ -152,7 +249,7 @@ export default function PaperCard({
             {paper.casQuartile && paper.casQuartile !== '无' && (
               <Badge
                 variant="outline"
-                className="text-xs font-medium text-orange-600 dark:text-orange-400"
+                className="text-[11px] font-medium rounded-full border-white/30 bg-white/30 text-orange-600 dark:bg-white/10 dark:text-orange-300"
               >
                 CAS {paper.casQuartile}
               </Badge>
@@ -160,7 +257,7 @@ export default function PaperCard({
             {paper.ccfRank && paper.ccfRank !== '无' && (
               <Badge
                 variant="outline"
-                className="text-xs font-medium text-purple-600 dark:text-purple-400"
+                className="text-[11px] font-medium rounded-full border-white/30 bg-white/30 text-purple-600 dark:bg-white/10 dark:text-purple-300"
               >
                 CCF {paper.ccfRank}
               </Badge>
@@ -168,7 +265,7 @@ export default function PaperCard({
             {paper.impactFactor && (
               <Badge
                 variant="outline"
-                className="text-xs font-medium text-blue-600 dark:text-blue-400"
+                className="text-[11px] font-medium rounded-full border-white/30 bg-white/30 text-blue-600 dark:bg-white/10 dark:text-blue-300"
               >
                 IF {paper.impactFactor.toFixed(2)}
               </Badge>
@@ -176,38 +273,51 @@ export default function PaperCard({
           </div>
 
           {personalMeta && (
-            <div className="mt-3 flex flex-wrap items-center gap-2">
+            <div className="relative z-10 mt-3 flex flex-wrap items-center gap-2">
               {personalMeta.readingStatus && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-blue-50 px-2 py-0.5 text-[11px] font-medium text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                <span className="inline-flex items-center gap-1 rounded-full bg-[#E8EEF9]/60 px-2 py-0.5 text-[11px] font-medium text-[#28418A] border border-white/30 backdrop-blur-sm">
                   <Bookmark className="h-3 w-3" />
                   {READ_STATUS_LABEL[personalMeta.readingStatus]}
                 </span>
               )}
               {personalMeta.priority && (
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium ${PRIORITY_COLOR[personalMeta.priority]}`}
-                >
+                <span className={cn('inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium', PRIORITY_COLOR[personalMeta.priority])}>
                   {PRIORITY_LABEL[personalMeta.priority]}
                 </span>
               )}
               {typeof personalMeta.noteCount === 'number' && personalMeta.noteCount >= 0 && (
-                <span className="inline-flex items-center gap-1 rounded-full bg-violet-100 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                <span className="inline-flex items-center gap-1 rounded-full bg-violet-100/60 px-2 py-0.5 text-[11px] font-medium text-violet-700 dark:bg-violet-900/40 dark:text-violet-300 border border-white/30 backdrop-blur-sm">
                   <NotebookPen className="h-3 w-3" />
                   笔记 {personalMeta.noteCount}
                 </span>
               )}
+              {typeof personalMeta.totalReadingTime === 'number' && (
+                <span
+                  className={cn(
+                    'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[11px] font-medium border border-white/30 backdrop-blur-sm',
+                    personalMeta.totalReadingTime > 0
+                      ? 'bg-emerald-100/60 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300'
+                      : 'bg-white/30 text-slate-500 dark:bg-white/10 dark:text-slate-400'
+                  )}
+                >
+                  <Clock className="h-3 w-3" />
+                  {personalMeta.totalReadingTime > 0
+                    ? formatReadingTime(personalMeta.totalReadingTime)
+                    : '未阅读'}
+                </span>
+              )}
               {personalMeta.customTags && personalMeta.customTags.length > 0 && (
                 <div className="flex flex-wrap gap-1">
-                  {personalMeta.customTags.slice(0, 3).map(tag => (
+                  {personalMeta.customTags.slice(0, 3).map((tag) => (
                     <span
                       key={tag}
-                      className="rounded bg-gray-100 px-2 py-0.5 text-[11px] text-gray-600 dark:bg-gray-700 dark:text-gray-200"
+                      className="rounded px-2 py-0.5 text-[11px] text-slate-700 dark:text-slate-200 bg-white/30 dark:bg-white/10 border border-white/30 backdrop-blur-sm"
                     >
                       #{tag}
                     </span>
                   ))}
                   {personalMeta.customTags.length > 3 && (
-                    <span className="text-[11px] text-gray-500 dark:text-gray-400">
+                    <span className="text-[11px] text-slate-500 dark:text-slate-400">
                       +{personalMeta.customTags.length - 3}
                     </span>
                   )}
@@ -216,22 +326,20 @@ export default function PaperCard({
             </div>
           )}
 
-          {(onDelete || onAddToLibrary || onRemoveFromLibrary || showLoginRequired) && (
-            <div className="mt-3 flex flex-wrap gap-2 border-t border-gray-100 pt-3 dark:border-gray-700">
+          {(onDelete || onAddToLibrary || onRemoveFromLibrary || onEdit || showLoginRequired) && (
+            <div className="relative z-10 mt-3 flex flex-wrap gap-2 border-t border-white/20 pt-3 dark:border-white/10">
               {showLoginRequired && (
-                <span className="text-xs text-blue-600 dark:text-blue-400">
-                  登录后查看详情
-                </span>
+                <span className="text-xs text-[#28418A]">登录后查看详情</span>
               )}
               {onAddToLibrary && (
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={event => {
+                  onClick={(event) => {
                     event.stopPropagation();
                     onAddToLibrary();
                   }}
-                  className="h-7 text-xs"
+                  className="h-7 text-xs bg-white/30 hover:bg-white/40 border border-white/30 backdrop-blur-sm text-[#28418A]"
                 >
                   <Plus className="mr-1 h-3 w-3" />
                   添加到我的论文库
@@ -241,11 +349,11 @@ export default function PaperCard({
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={event => {
+                  onClick={(event) => {
                     event.stopPropagation();
                     onDelete();
                   }}
-                  className="h-7 text-xs text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-900/20"
+                  className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50/50 dark:hover:bg-rose-900/20 bg-white/30 border border-white/30 backdrop-blur-sm"
                 >
                   <Trash2 className="mr-1 h-3 w-3" />
                   删除
@@ -255,38 +363,61 @@ export default function PaperCard({
                 <Button
                   size="sm"
                   variant="ghost"
-                  onClick={event => {
+                  onClick={(event) => {
                     event.stopPropagation();
                     onRemoveFromLibrary();
                   }}
-                  className="h-7 text-xs text-rose-600 hover:bg-rose-50 hover:text-rose-700 dark:text-rose-300 dark:hover:bg-rose-900/20"
+                  className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50/50 dark:text-rose-300 dark:hover:bg-rose-900/20 bg-white/30 border border-white/30 backdrop-blur-sm"
                 >
                   <Trash2 className="mr-1 h-3 w-3" />
                   从个人库删除
                 </Button>
               )}
+              {onEdit && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onEdit();
+                  }}
+                  className="h-7 text-xs bg-white/30 hover:bg-white/40 border border-white/30 backdrop-blur-sm"
+                >
+                  编辑
+                </Button>
+              )}
             </div>
           )}
-        </div>
+        
+          {/* 装饰层：柔和玻璃边框 & 纹理降白 */}
+          <div aria-hidden className="pointer-events-none absolute inset-0 rounded-2xl" style={{ zIndex: 0 }} />
+        
+        </motion.div>
       </HoverCardTrigger>
 
-      <HoverCardContent className="w-96" side="top" align="start">
+      <HoverCardContent
+        className={cn(
+          'w-96 rounded-2xl border border-white/20 bg-white/40 backdrop-blur-2xl shadow-[0_14px_30px_rgba(40,65,138,0.16)] dark:bg-white/5 dark:border-white/10'
+        )}
+        side="top"
+        align="start"
+      >
         <div className="space-y-3">
           <div>
-            <h4 className="mb-1 font-semibold text-gray-900 dark:text-gray-100">
+            <h4 className="mb-1 font-semibold text-slate-900 dark:text-slate-100">
               {paper.title}
             </h4>
             {paper.titleZh && (
-              <p className="text-sm text-gray-600 dark:text-gray-400">{paper.titleZh}</p>
+              <p className="text-sm text-slate-700/80 dark:text-slate-300/90">{paper.titleZh}</p>
             )}
           </div>
 
           {paper.authors.length > 0 && (
             <div className="flex items-start gap-2">
-              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
               <div>
-                <p className="text-xs font-medium text-gray-700 dark:text-gray-300">作者</p>
-                <p className="text-xs text-gray-600 dark:text-gray-400">
+                <p className="text-xs font-medium text-slate-700 dark:text-slate-300">作者</p>
+                <p className="text-xs text-slate-700/80 dark:text-slate-300/90">
                   {paper.authors.map((author: Author) => author.name).join(', ')}
                 </p>
               </div>
@@ -295,14 +426,14 @@ export default function PaperCard({
 
           {(paper.publication || paper.date) && (
             <div className="flex items-start gap-2">
-              <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+              <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
               <div>
-                <p className="text-xs font-medium text-gray-700 dark:text-gray-300">发表信息</p>
+                <p className="text-xs font-medium text-slate-700 dark:text-slate-300">发表信息</p>
                 {paper.publication && (
-                  <p className="text-xs text-gray-600 dark:text-gray-400">{paper.publication}</p>
+                  <p className="text-xs text-slate-700/80 dark:text-slate-300/90">{paper.publication}</p>
                 )}
                 {paper.date && (
-                  <p className="text-xs text-gray-500 dark:text-gray-500">{paper.date}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">{paper.date}</p>
                 )}
               </div>
             </div>
@@ -310,27 +441,27 @@ export default function PaperCard({
 
           {(paper.sciQuartile || paper.casQuartile || paper.ccfRank || paper.impactFactor) && (
             <div className="flex items-start gap-2">
-              <Award className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+              <Award className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
               <div className="flex-1">
-                <p className="mb-1 text-xs font-medium text-gray-700 dark:text-gray-300">评级信息</p>
+                <p className="mb-1 text-xs font-medium text-slate-700 dark:text-slate-300">评级信息</p>
                 <div className="flex flex-wrap gap-1.5">
                   {paper.sciQuartile && paper.sciQuartile !== '无' && (
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="secondary" className="text-xs bg-white/30 border border-white/30 backdrop-blur-sm">
                       SCI {paper.sciQuartile}
                     </Badge>
                   )}
                   {paper.casQuartile && paper.casQuartile !== '无' && (
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="secondary" className="text-xs bg-white/30 border border-white/30 backdrop-blur-sm">
                       CAS {paper.casQuartile}
                     </Badge>
                   )}
                   {paper.ccfRank && paper.ccfRank !== '无' && (
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="secondary" className="text-xs bg-white/30 border border-white/30 backdrop-blur-sm">
                       CCF {paper.ccfRank}
                     </Badge>
                   )}
                   {paper.impactFactor && (
-                    <Badge variant="secondary" className="text-xs">
+                    <Badge variant="secondary" className="text-xs bg-white/30 border border-white/30 backdrop-blur-sm">
                       影响因子: {paper.impactFactor.toFixed(3)}
                     </Badge>
                   )}
@@ -339,12 +470,32 @@ export default function PaperCard({
             </div>
           )}
 
+          {personalMeta && (
+            <div className="flex items-start gap-2">
+              <Clock className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+              <div>
+                <p className="text-xs font-medium text-slate-700 dark:text-slate-300">阅读信息</p>
+                {typeof personalMeta.totalReadingTime === 'number' && (
+                  <p className="text-xs text-slate-700/80 dark:text-slate-300/90">
+                    总阅读时长: {personalMeta.totalReadingTime > 0
+                      ? formatReadingTime(personalMeta.totalReadingTime)
+                      : '未阅读'
+                    }
+                  </p>
+                )}
+                <p className="text-xs text-slate-700/80 dark:text-slate-300/90">
+                  最后阅读: {formatLastReadTime(personalMeta.lastReadTime || null)}
+                </p>
+              </div>
+            </div>
+          )}
+
           {isAdmin && (
             <div className="flex items-start gap-2">
-              <Bookmark className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+              <Bookmark className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
               <div>
-                <p className="text-xs font-medium text-gray-700 dark:text-gray-300">展示状态</p>
-                <p className="text-xs text-gray-600 dark:text-gray-400">
+                <p className="text-xs font-medium text-slate-700 dark:text-slate-300">展示状态</p>
+                <p className="text-xs text-slate-700/80 dark:text-slate-300/90">
                   {paper.isPublic ? '当前对所有访客可见' : '仅管理员可见，尚未公开'}
                 </p>
               </div>
@@ -353,27 +504,27 @@ export default function PaperCard({
 
           {paper.articleType && (
             <div className="flex items-start gap-2">
-              <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-gray-500" />
+              <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
               <div>
-                <p className="text-xs font-medium text-gray-700 dark:text-gray-300">文章类型</p>
-                <p className="text-xs text-gray-600 dark:text-gray-400">{paper.articleType}</p>
+                <p className="text-xs font-medium text-slate-700 dark:text-slate-300">文章类型</p>
+                <p className="text-xs text-slate-700/80 dark:text-slate-300/90">{paper.articleType}</p>
               </div>
             </div>
           )}
 
           {paper.doi && (
-            <div className="rounded-md bg-gray-50 p-2 dark:bg-gray-800">
-              <p className="text-xs font-medium text-gray-700 dark:text-gray-300">DOI</p>
-              <p className="break-all text-xs text-gray-600 dark:text-gray-400">{paper.doi}</p>
+            <div className="rounded-md bg-white/30 p-2 border border-white/30 backdrop-blur-sm dark:bg-white/10 dark:border-white/10">
+              <p className="text-xs font-medium text-slate-700 dark:text-slate-300">DOI</p>
+              <p className="break-all text-xs text-slate-700/80 dark:text-slate-300/90">{paper.doi}</p>
             </div>
           )}
 
           {paper.tags && paper.tags.length > 0 && (
             <div>
-              <p className="mb-1 text-xs font-medium text-gray-700 dark:text-gray-300">标签</p>
+              <p className="mb-1 text-xs font-medium text-slate-700 dark:text-slate-300">标签</p>
               <div className="flex flex-wrap gap-1">
                 {paper.tags.map((tag, index) => (
-                  <Badge key={index} variant="outline" className="text-xs">
+                  <Badge key={index} variant="outline" className="text-xs border-white/30 bg-white/30 backdrop-blur-sm">
                     {tag}
                   </Badge>
                 ))}
@@ -382,6 +533,65 @@ export default function PaperCard({
           )}
         </div>
       </HoverCardContent>
+
+      {/* 样式：降低内容白度、协调边框 + 3D 悬浮与光晕 */}
+      <style jsx>{`
+        .glass-card {
+          position: relative;
+          /* 双层背景：内层内容降低白度，外层用于实现渐变边框 */
+          background:
+            linear-gradient(180deg, rgba(255,255,255,0.65), rgba(255,255,255,0.18)) padding-box,
+            linear-gradient(160deg, rgba(255,255,255,0.55), rgba(40,65,138,0.28)) border-box;
+          border: 1px solid transparent; /* 由 border-box 渐变呈现边框，整体更协调 */
+          transform-style: preserve-3d;
+        }
+        /* 鼠标跟随的光晕（蓝调） */
+        .glass-card::after {
+          content: '';
+          position: absolute;
+          inset: -1px;
+          border-radius: 1rem; /* 与 rounded-2xl 呼应 */
+          pointer-events: none;
+          background:
+            radial-gradient(
+              260px circle at var(--cursor-x, 50%) var(--cursor-y, 50%),
+              rgba(40,65,138,0.16),
+              rgba(40,65,138,0.07) 40%,
+              transparent 60%
+            );
+          opacity: 0;
+          transition: opacity 200ms ease;
+          filter: drop-shadow(0 10px 26px rgba(40,65,138,0.14));
+          z-index: 0;
+        }
+        .glass-card:hover::after {
+          opacity: 1;
+        }
+        /* 内侧微高光，提升玻璃质感而不过白 */
+        .glass-card::before {
+          content: '';
+          position: absolute;
+          inset: 1px;
+          border-radius: 0.95rem;
+          pointer-events: none;
+          background: linear-gradient(180deg, rgba(255,255,255,0.34), rgba(255,255,255,0.08));
+          mix-blend-mode: overlay;
+          opacity: 0.55;
+          z-index: 0;
+        }
+        /* 深度阴影，营造卡片漂浮在界面上的 3D 效果 */
+        .depth-shadow {
+          background:
+            radial-gradient(120px 80px at var(--cursor-x, 50%) calc(100% + 20px), rgba(2,8,23,0.25), transparent 70%);
+          filter: blur(18px);
+          opacity: 0;
+          transform: translateZ(-40px);
+          transition: opacity 200ms ease;
+        }
+        .glass-card:hover .depth-shadow {
+          opacity: 1;
+        }
+      `}</style>
     </HoverCard>
   );
 }

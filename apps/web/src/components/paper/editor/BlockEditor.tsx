@@ -2,6 +2,8 @@
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { useEditingState } from '@/stores/useEditingState';
+import { toast } from 'sonner';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import type {
   BlockContent,
   Reference,
@@ -35,6 +37,7 @@ import {
   ListOrdered,
   Quote,
   Minus,
+  Loader2,
 } from 'lucide-react';
 import katex from 'katex';
 
@@ -52,6 +55,7 @@ interface BlockEditorProps {
   dragHandleProps?: Record<string, unknown>;
   onAddBlockAfter?: (type: BlockContent['type']) => void;
   lang?: 'en' | 'zh' | 'both';
+  onSaveToServer?: () => Promise<void>;
 }
 
 const cloneBlock = <T extends BlockContent>(target: T): T =>
@@ -71,10 +75,13 @@ export default function BlockEditor({
   dragHandleProps,
   onAddBlockAfter,
   lang = 'both',
+  onSaveToServer,
 }: BlockEditorProps) {
   const [isHovered, setIsHovered] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const { isEditing, clearEditing, setHasUnsavedChanges, switchToEdit } = useEditingState();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
 
   const originalBlockRef = useRef<BlockContent>(cloneBlock(block));
   const originalSerializedRef = useRef<string>(JSON.stringify(block));
@@ -102,24 +109,52 @@ export default function BlockEditor({
     setHasUnsavedChanges(serializedBlock !== originalSerializedRef.current);
   }, [isCurrentlyEditing, serializedBlock, setHasUnsavedChanges]);
 
-  const handleCompleteEditing = useCallback(() => {
-    originalBlockRef.current = cloneBlock(block);
-    originalSerializedRef.current = serializedBlock;
-    setHasUnsavedChanges(false);
-    clearEditing();
-  }, [block, serializedBlock, clearEditing, setHasUnsavedChanges]);
+  const handleCompleteEditing = useCallback(async () => {
+    // 先保存到服务器
+    if (onSaveToServer) {
+      setIsSaving(true);
+      try {
+        toast.loading('正在保存内容...', { id: 'save-block' });
+        await onSaveToServer();
+        // 保存成功后，更新原始状态并退出编辑模式
+        originalBlockRef.current = cloneBlock(block);
+        originalSerializedRef.current = serializedBlock;
+        setHasUnsavedChanges(false);
+        clearEditing();
+        toast.success('内容保存成功', { id: 'save-block' });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '保存失败，请稍后重试';
+        toast.error('保存失败', {
+          id: 'save-block',
+          description: message
+        });
+        // 如果保存失败，不退出编辑模式
+        return;
+      } finally {
+        setIsSaving(false);
+      }
+    } else {
+      // 如果没有 onSaveToServer 函数，直接退出编辑模式
+      originalBlockRef.current = cloneBlock(block);
+      originalSerializedRef.current = serializedBlock;
+      setHasUnsavedChanges(false);
+      clearEditing();
+      toast.success('内容已更新');
+    }
+  }, [block, serializedBlock, clearEditing, setHasUnsavedChanges, onSaveToServer]);
 
   const handleCancelEditing = useCallback(() => {
     if (serializedBlock !== originalSerializedRef.current) {
       onChange(cloneBlock(originalBlockRef.current));
+      toast.info('已取消编辑，内容已恢复');
     }
     setHasUnsavedChanges(false);
     clearEditing();
   }, [serializedBlock, onChange, setHasUnsavedChanges, clearEditing]);
 
-  const handleStartEditing = useCallback(() => {
+  const handleStartEditing = useCallback(async () => {
     if (isCurrentlyEditing) return;
-    const switched = switchToEdit(block.id, {
+    const switched = await switchToEdit(block.id, {
       onRequestSave: ({ currentId }) => {
         if (currentId === block.id) {
           handleCompleteEditing();
@@ -261,7 +296,19 @@ export default function BlockEditor({
 
           <button
             type="button"
-            onClick={onDelete}
+            onClick={async () => {
+              const confirmed = await confirm({
+                title: '删除内容块',
+                description: '确定删除该内容块吗？此操作不可撤销。',
+                confirmText: '删除',
+                cancelText: '取消',
+                variant: 'destructive',
+                onConfirm: () => Promise.resolve(),
+              });
+              if (confirmed) {
+                onDelete?.();
+              }
+            }}
             className="p-1 hover:bg-red-100 rounded text-red-600"
             title="删除块"
           >
@@ -381,19 +428,29 @@ export default function BlockEditor({
           <button
             type="button"
             onClick={handleCancelEditing}
-            className="px-3 py-1 bg-gray-500 text-white text-sm rounded hover:bg-gray-600 transition-colors"
+            disabled={isSaving}
+            className="px-3 py-1 bg-gray-500 text-white text-sm rounded hover:bg-gray-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             取消
           </button>
           <button
             type="button"
             onClick={handleCompleteEditing}
-            className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors"
+            disabled={isSaving}
+            className="px-3 py-1 bg-blue-500 text-white text-sm rounded hover:bg-blue-600 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
-            完成编辑
+            {isSaving ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                保存中...
+              </>
+            ) : (
+              '完成编辑'
+            )}
           </button>
         </div>
       )}
+      <ConfirmDialog />
     </div>
   );
 }

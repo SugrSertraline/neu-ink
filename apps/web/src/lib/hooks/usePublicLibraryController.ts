@@ -8,6 +8,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useTabStore } from '@/stores/useTabStore';
 import { usePaperService } from '@/lib/services/paper';
 import { isSuccess } from '@/lib/http';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import type {
   Author,
   Paper,
@@ -113,6 +114,7 @@ export function usePublicLibraryController() {
   const { isAuthenticated, isAdmin } = useAuth();
   const { addTab, setActiveTab } = useTabStore();
   const { publicPaperService, adminPaperService, userPaperService, paperCache } = usePaperService();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
 
   const [viewMode, setViewMode] = useState<ViewMode>('card');
 
@@ -337,7 +339,16 @@ export function usePublicLibraryController() {
     async (paperId: string) => {
       if (!isAdmin) return;
 
-      if (!window.confirm('确定要删除这篇论文吗？此操作不可撤销。')) return;
+      const confirmed = await confirm({
+        title: '删除论文',
+        description: '确定要删除这篇论文吗？此操作不可撤销。',
+        confirmText: '删除',
+        cancelText: '取消',
+        variant: 'destructive',
+        onConfirm: () => Promise.resolve(),
+      });
+      
+      if (!confirmed) return;
 
       try {
         const result = await adminPaperService.deletePaper(paperId);
@@ -347,10 +358,10 @@ export function usePublicLibraryController() {
         await loadPapers();
       } catch (error) {
         const message = error instanceof Error ? error.message : '网络错误';
-        alert(`删除失败：${message}`);
+        toast.error(`删除失败：${message}`);
       }
     },
-    [adminPaperService, isAdmin, loadPapers],
+    [adminPaperService, isAdmin, loadPapers, confirm],
   );
 
   const handleAddToLibrary = useCallback(
@@ -376,7 +387,6 @@ export function usePublicLibraryController() {
           toast.error(result.bizMessage || result.topMessage || '添加失败');
         }
       } catch (error) {
-        console.error('添加到个人论文库失败:', error);
         toast.error('添加失败，请稍后重试');
       }
     },
@@ -452,5 +462,8 @@ export function usePublicLibraryController() {
     handleAddToLibrary,
     resetFilters,
     reload: loadPapers,
+    
+    // 确认对话框组件
+    ConfirmDialog,
   };
 }

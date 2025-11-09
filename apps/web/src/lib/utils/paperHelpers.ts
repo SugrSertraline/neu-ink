@@ -27,7 +27,6 @@ import type {
   
   export const cloneBlock = (block: BlockContent): BlockContent => {
     if (!block || !block.type) {
-      console.error('无效的块对象:', block);
       return {
         id: generateId('paragraph'),
         type: 'paragraph',
@@ -46,7 +45,6 @@ import type {
         JSON.stringify(block, (key, value) => (value === undefined ? null : value)),
       );
     } catch (error) {
-      console.error('克隆块时出错:', error);
       const cloned = { ...block };
       cloned.id = generateId(block.type);
       return cloned;
@@ -122,7 +120,7 @@ import type {
           id,
           type: 'code',
           language: 'javascript',
-          code: '// Your code here\nconsole.log("Hello, World!");',
+          code: '// Your code here',
           caption: {
             en: [{ type: 'text', content: 'Code example' }],
             ...(lang === 'both' && { zh: [{ type: 'text', content: '代码示例' }] }),

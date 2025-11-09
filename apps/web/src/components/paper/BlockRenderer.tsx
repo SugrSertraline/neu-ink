@@ -172,7 +172,7 @@ function BlockMath({ math }: { math: string }) {
         displayMode: true,
       });
     } catch (err) {
-      console.error('KaTeX block render error:', err);
+      // 静默处理KaTeX渲染错误，显示原始LaTeX文本
       mathRef.current.textContent = `$$${math}$$`;
     }
   }, [math]);
@@ -187,7 +187,7 @@ const resolveMediaUrl = (src?: string) => {
     try {
       return new URL(src, window.location.origin).href;
     } catch (err) {
-      console.warn('resolveMediaUrl fallback for src:', src, err);
+      // 静默处理URL解析错误，返回原始src
     }
   }
   return src;
@@ -317,7 +317,7 @@ export default function BlockRenderer({
     if (!inlineEditingEnabled || isEditing) return;
     const switched = switchToEdit(block.id, {
       onRequestSave: ({ currentId }) => {
-        console.info('[BlockRenderer] TODO: auto-save before switching block ->', currentId);
+        // TODO: auto-save before switching block
       },
     });
     if (!switched) return;
@@ -338,12 +338,6 @@ export default function BlockRenderer({
   }, [block, setHasUnsavedChanges, clearEditing]);
 
   const handleSaveEdit = useCallback(async () => {
-    console.log('[BlockRenderer] handleSaveEdit called:', {
-      blockId: block.id,
-      hasOnBlockUpdate: !!onBlockUpdate,
-      hasOnSaveToServer: !!onSaveToServer
-    });
-    
     if (!onBlockUpdate) {
       setDraftBlock(cloneBlock(block));
       setIsEditing(false);
@@ -353,10 +347,7 @@ export default function BlockRenderer({
 
     // 如果内容有变化，先更新本地
     if (JSON.stringify(draftBlock) !== JSON.stringify(block)) {
-      console.log('[BlockRenderer] Content changed, calling onBlockUpdate');
       onBlockUpdate(draftBlock);
-    } else {
-      console.log('[BlockRenderer] No content changes detected');
     }
 
     setDraftBlock(cloneBlock(draftBlock));
@@ -366,20 +357,15 @@ export default function BlockRenderer({
 
     // 然后保存到服务器
     if (onSaveToServer) {
-      console.log('[BlockRenderer] Calling onSaveToServer');
       setIsSaving(true);
       try {
         await onSaveToServer();
-        console.log('[BlockRenderer] onSaveToServer completed successfully');
         // toast.success 已经在 onSaveToServer 中处理
       } catch (err) {
         // 错误处理已经在 onSaveToServer 中处理
-        console.error('[BlockRenderer] Save to server failed:', err);
       } finally {
         setIsSaving(false);
       }
-    } else {
-      console.log('[BlockRenderer] No onSaveToServer callback provided');
     }
   }, [draftBlock, block, onBlockUpdate, setHasUnsavedChanges, clearEditing, onSaveToServer]);
 
@@ -1322,10 +1308,14 @@ export default function BlockRenderer({
         ) : (
           <>
             {renderContent()}
-            {/* 笔记指示器 - 仅在个人论文库访问时显示，放在左上角外侧，小绿点带呼吸灯效果 */}
+            {/* 笔记指示器 - 仅在个人论文库访问时显示，放在右上角外侧，蓝色呼吸灯效果 */}
             {isPersonalOwner && notesCount > 0 && (
-              <div className="absolute -left-1 -top-1 pointer-events-none z-10">
-                <div className="w-3 h-3 bg-green-500 rounded-full shadow-lg shadow-green-500/50 animate-pulse"></div>
+              <div className="absolute -right-1 -top-1 pointer-events-none z-10">
+                <div className="relative">
+                  <div className="absolute inset-0 w-3 h-3 bg-blue-500 rounded-full animate-pulse blur-sm"></div>
+                  <div className="absolute inset-0 w-3 h-3 bg-blue-400 rounded-full animate-pulse blur-md opacity-75"></div>
+                  <div className="relative w-3 h-3 bg-blue-600 rounded-full shadow-lg shadow-blue-500/60 animate-pulse"></div>
+                </div>
               </div>
             )}
             <div className="pointer-events-none absolute right-3 top-3 opacity-0 transition group-hover:opacity-100 flex items-center gap-2">

@@ -83,7 +83,15 @@ const renderAuthors = (authors: PaperMetadata['authors']) => (
 );
 
 // 优化后的信息展示组件
-function MetadataDisplay({ metadata }: { metadata: PaperMetadata }) {
+function MetadataDisplay({
+  metadata,
+  allowEdit,
+  onEditRequest
+}: {
+  metadata: PaperMetadata;
+  allowEdit?: boolean;
+  onEditRequest?: () => void;
+}) {
   // 定义不同指标的徽章样式
   const badgeVariants = {
     sci: 'border-blue-500/50 bg-blue-500/10 text-blue-700 dark:text-blue-400 hover:bg-blue-500/20',
@@ -97,7 +105,7 @@ function MetadataDisplay({ metadata }: { metadata: PaperMetadata }) {
       data-metadata-region="true"
       className={cn(
         // 毛玻璃和辉光效果
-        'border-white/20 bg-white/50 shadow-lg backdrop-blur-lg',
+        'border-white/20 bg-white/50 shadow-lg backdrop-blur-lg group',
         'dark:border-white/10 dark:bg-black/20 dark:shadow-2xl',
         // 发光效果 (可选，通过伪元素实现)
         'relative overflow-hidden',
@@ -197,6 +205,22 @@ function MetadataDisplay({ metadata }: { metadata: PaperMetadata }) {
           </div>
         </div>
       </CardContent>
+      {/* 右上角编辑按钮 */}
+      <div className="absolute right-3 top-3 opacity-0 transition group-hover:opacity-100 z-10">
+        {allowEdit && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onEditRequest?.();
+            }}
+            className="cursor-pointer rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow hover:bg-blue-700"
+          >
+            编辑
+          </button>
+        )}
+      </div>
     </Card>
   );
 }
@@ -219,7 +243,11 @@ export default function PaperMetadata({
     <div className="space-y-8" data-metadata={dataMetadata}>
       <MetadataContextMenu onEdit={allowEdit ? onEditRequest : undefined}>
         <div data-metadata-region="true">
-          <MetadataDisplay metadata={metadata} />
+          <MetadataDisplay
+            metadata={metadata}
+            allowEdit={allowEdit}
+            onEditRequest={onEditRequest}
+          />
         </div>
       </MetadataContextMenu>
       

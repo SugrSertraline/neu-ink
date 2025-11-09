@@ -1,60 +1,36 @@
-// components/paper/ReferenceEditorOverlay.tsx
 'use client';
 
-import { useCallback, useEffect, type ChangeEvent, type FormEvent } from 'react';
-import { createPortal } from 'react-dom';
+import { useCallback, type ChangeEvent, type FormEvent } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog';
 import type { Reference } from '@/types/paper';
 
-type ReferenceEditorOverlayProps = {
+type ReferenceEditorDialogProps = {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
   mode: 'create' | 'edit';
   reference: Reference;
   onChange: (next: Reference) => void;
-  onCancel: () => void;
   onSave: () => void;
-  container?: HTMLElement | null;
-  isOpen: boolean;
 };
 
-export default function ReferenceEditorOverlay({
+export default function ReferenceEditorDialog({
+  open,
+  onOpenChange,
   mode,
   reference,
   onChange,
-  onCancel,
   onSave,
-  container,
-  isOpen,
-}: ReferenceEditorOverlayProps) {
-   const portalTarget =
-    container ??
-    (typeof window !== 'undefined' ? document.body : null);
-  if (!portalTarget || !isOpen) return null;
-
-  useEffect(() => {
-  if (typeof window === 'undefined') return;
-
-  const html = document.documentElement;
-  const body = document.body;
-  const prevHtml = html.style.overflow;
-  const prevBody = body.style.overflow;
-  html.style.overflow = 'hidden';
-  body.style.overflow = 'hidden';
-
-  let restoreContainer: (() => void) | undefined;
-  if (container) {
-    const prev = container.style.overflow;
-    container.style.overflow = 'hidden';
-    restoreContainer = () => {
-      container.style.overflow = prev;
-    };
-  }
-
-  return () => {
-    html.style.overflow = prevHtml;
-    body.style.overflow = prevBody;
-    restoreContainer?.();
+}: ReferenceEditorDialogProps) {
+  const handleCancel = () => {
+    onOpenChange(false);
   };
-}, [container]);
-  const positionCls = 'fixed';
+
+  const handleSave = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    onSave();
+    onOpenChange(false);
+  };
+
   const authorsValue = (reference.authors ?? []).join('\n');
   const yearDisplay = reference.year && reference.year > 0 ? reference.year.toString() : '';
 
@@ -107,39 +83,19 @@ export default function ReferenceEditorOverlay({
     updateReference('url', event.target.value);
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    onSave();
-  };
-
-  return createPortal(
-    <div
-      className={`${positionCls} inset-0 z-9999 flex items-start justify-end bg-slate-900/40 px-4 py-6 backdrop-blur-sm overscroll-contain`}
-      onClick={onCancel}
-    >
-      <div
-        className="w-full max-w-md rounded-xl bg-white p-6 shadow-2xl dark:bg-slate-900 max-h-[70vh] overflow-y-auto"
-        onClick={event => event.stopPropagation()}
-      >
-        <form className="flex flex-col gap-4" onSubmit={handleSubmit}>
-          <header className="flex items-start justify-between gap-3">
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">
-                {mode === 'create' ? '新增参考文献' : '编辑参考文献'}
-              </h2>
-              <p className="text-sm text-slate-500 dark:text-slate-400">
-                提交后将自动保存到当前列表。
-              </p>
-            </div>
-            <button
-              type="button"
-              onClick={onCancel}
-              className="rounded-full border border-transparent px-3 py-1 text-sm text-slate-500 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
-            >
-              关闭
-            </button>
-          </header>
-
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>
+            {mode === 'create' ? '新增参考文献' : '编辑参考文献'}
+          </DialogTitle>
+          <DialogDescription>
+            提交后将自动保存到当前列表。
+          </DialogDescription>
+        </DialogHeader>
+        
+        <form className="flex flex-col gap-4 mt-4" onSubmit={handleSave}>
           <label className="flex flex-col gap-1 text-sm text-slate-600 dark:text-slate-300">
             <span className="font-medium text-slate-800 dark:text-slate-100">标题</span>
             <input
@@ -237,10 +193,10 @@ export default function ReferenceEditorOverlay({
             />
           </label>
 
-          <footer className="mt-2 flex justify-end gap-3">
+          <div className="flex justify-end gap-3 mt-4">
             <button
               type="button"
-              onClick={onCancel}
+              onClick={handleCancel}
               className="rounded-md border border-slate-300 px-4 py-2 text-sm text-slate-600 transition hover:bg-slate-100 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
             >
               取消
@@ -251,10 +207,9 @@ export default function ReferenceEditorOverlay({
             >
               保存
             </button>
-          </footer>
+          </div>
         </form>
-      </div>
-    </div>,
-    portalTarget
+      </DialogContent>
+    </Dialog>
   );
 }

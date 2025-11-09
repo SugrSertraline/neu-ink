@@ -1287,6 +1287,93 @@ class PaperService:
             "data": None,
         }
 
+    def parse_references(self, text: str) -> Dict[str, Any]:
+        """
+        解析参考文献文本，返回结构化的参考文献列表
+        
+        Args:
+            text: 参考文献文本，可能包含多条参考文献
+            
+        Returns:
+            解析后的参考文献列表
+        """
+        try:
+            # 使用LLM工具解析参考文献
+            llm_utils = get_llm_utils()
+            parsed_references = llm_utils.parse_references(text)
+            
+            if not parsed_references:
+                return self._wrap_error("参考文献解析失败，无法提取有效的参考文献")
+            
+            return self._wrap_success(
+                "参考文献解析成功",
+                {
+                    "references": parsed_references,
+                    "count": len(parsed_references)
+                }
+            )
+        except Exception as exc:
+            return self._wrap_error(f"参考文献解析失败: {exc}")
+
+    def add_references_to_paper(
+        self,
+        paper_id: str,
+        references: List[Dict[str, Any]],
+        user_id: str,
+        is_admin: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        将解析后的参考文献添加到论文中
+        
+        Args:
+            paper_id: 论文ID
+            references: 参考文献列表
+            user_id: 用户ID
+            is_admin: 是否为管理员
+            
+        Returns:
+            添加结果
+        """
+        try:
+            # 检查论文是否存在及权限
+            paper = self.paper_model.find_by_id(paper_id)
+            if not paper:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+
+            if not is_admin and paper["createdBy"] != user_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
+
+            # 获取当前参考文献列表
+            current_references = paper.get("references", [])
+            
+            # 为新参考文献添加编号
+            next_number = len(current_references) + 1
+            for ref in references:
+                if "number" not in ref:
+                    ref["number"] = next_number
+                    next_number += 1
+            
+            # 合并参考文献列表
+            updated_references = current_references + references
+            
+            # 更新论文
+            update_data = {"references": updated_references}
+            if self.paper_model.update(paper_id, update_data):
+                updated_paper = self.paper_model.find_by_id(paper_id)
+                return self._wrap_success(
+                    f"成功添加{len(references)}条参考文献",
+                    {
+                        "paper": updated_paper,
+                        "addedReferences": references,
+                        "totalReferences": len(updated_references)
+                    }
+                )
+            else:
+                return self._wrap_error("更新论文失败")
+                
+        except Exception as exc:
+            return self._wrap_error(f"添加参考文献失败: {exc}")
+
     def _wrap_error(self, message: str) -> Dict[str, Any]:
         return self._wrap_failure(BusinessCode.UNKNOWN_ERROR, message)
 

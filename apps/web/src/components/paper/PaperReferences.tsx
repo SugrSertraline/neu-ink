@@ -25,6 +25,7 @@ interface PaperReferencesProps {
   onReferenceCopyUrl?: (url: string, reference: Reference) => void;
   onReferenceOpenLink?: (url: string, reference: Reference) => void;
   onReferenceAdd?: () => void;
+  onParseReferences?: () => void;
   'data-references'?: string;
 }
 
@@ -64,6 +65,7 @@ export default function PaperReferences({
   onReferenceCopyUrl,
   onReferenceOpenLink,
   onReferenceAdd,
+  onParseReferences,
   'data-references': dataReferences,
 }: PaperReferencesProps) {
   const handleMouseEnter = useCallback(
@@ -79,7 +81,7 @@ export default function PaperReferences({
     try {
       await navigator.clipboard?.writeText(text);
     } catch (error) {
-      console.warn('复制到剪贴板失败:', error);
+      // 静默失败，不影响用户体验
     }
   }, []);
 
@@ -87,7 +89,7 @@ export default function PaperReferences({
     try {
       window.open(url, '_blank', 'noopener,noreferrer');
     } catch (error) {
-      console.warn('打开链接失败:', error);
+      // 静默失败，不影响用户体验
     }
   }, []);
 
@@ -111,12 +113,15 @@ export default function PaperReferences({
       }
       
       return (
-        <RootReferenceContextMenu onAddReference={onReferenceAdd}>
+        <RootReferenceContextMenu
+          onAddReference={onReferenceAdd}
+          onParseReferences={onParseReferences}
+        >
           <div
             data-reference-region="true"
             className="rounded-md border border-dashed border-gray-300 px-4 py-6 text-sm text-gray-500 dark:border-slate-700 dark:text-slate-400 cursor-pointer hover:bg-gray-50 dark:hover:bg-slate-800/50 transition-colors"
           >
-            当前没有参考文献，请右键此区域快速添加。
+            当前没有参考文献，请右键此区域快速添加或批量解析参考文献。
           </div>
         </RootReferenceContextMenu>
       );
@@ -231,7 +236,10 @@ export default function PaperReferences({
   if (!onReferenceAdd) return section;
 
   return (
-    <RootReferenceContextMenu onAddReference={onReferenceAdd}>
+    <RootReferenceContextMenu
+      onAddReference={onReferenceAdd}
+      onParseReferences={onParseReferences}
+    >
       {section}
     </RootReferenceContextMenu>
   );

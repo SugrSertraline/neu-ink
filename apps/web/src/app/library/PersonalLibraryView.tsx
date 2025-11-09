@@ -1,15 +1,16 @@
 'use client';
 
 import React from 'react';
-import { BookOpen, Tag, SlidersHorizontal, BookmarkMinus, Plus } from 'lucide-react';
+import { BookOpen, Tag, SlidersHorizontal, BookmarkMinus, Plus, Clock, Edit } from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
 import ViewModeSwitcher from '@/components/library/ViewModeSwitcher';
 import PaperCard from '@/components/library/PaperCard';
 import CreatePaperDialog from '@/components/library/CreatePaperDialog';
-import { usePersonalLibraryController } from '@/lib/hooks/usePersonalLibraryController';
+import PersonalLibraryFilters from '@/components/library/PersonalLibraryFilters';
+import EditPaperDialog from '@/components/library/EditPaperDialog';
+import { usePersonalLibraryController, type PersonalLibraryItem } from '@/lib/hooks/usePersonalLibraryController';
 import type { Author } from '@/types/paper';
 import { userPaperService } from '@/lib';
 import { toast } from 'sonner';
@@ -85,6 +86,7 @@ export default function PersonalLibraryView() {
     reload,
     currentPage,
     setCurrentPage,
+    ConfirmDialog,
   } = usePersonalLibraryController();
 
   const displayName = user?.nickname || user?.username || '已登录用户';
@@ -98,6 +100,8 @@ export default function PersonalLibraryView() {
   ].filter(Boolean) as string[];
 
   const [showCreateDialog, setShowCreateDialog] = React.useState(false);
+  const [showEditDialog, setShowEditDialog] = React.useState(false);
+  const [editingPaper, setEditingPaper] = React.useState<PersonalLibraryItem | null>(null);
 
   const handleCreateSuccess = React.useCallback(() => {
     toast.success('论文创建成功');
@@ -106,6 +110,18 @@ export default function PersonalLibraryView() {
     reload();
     setShowCreateDialog(false);
   }, [setCurrentPage, reload]);
+
+  const handleEditSuccess = React.useCallback(() => {
+    toast.success('论文信息已更新');
+    reload();
+    setShowEditDialog(false);
+    setEditingPaper(null);
+  }, [reload]);
+
+  const handleEditPaper = React.useCallback((item: PersonalLibraryItem) => {
+    setEditingPaper(item);
+    setShowEditDialog(true);
+  }, []);
 
   return (
     <div className="relative flex h-full flex-col">
@@ -158,70 +174,18 @@ export default function PersonalLibraryView() {
 
       <div className="relative flex-none border-b border-white/60 bg-white/75 px-6 py-4 shadow-[0_12px_32px_rgba(28,45,96,0.1)] backdrop-blur-xl">
         <div className="rounded-2xl border border-white/70 bg-white/78 px-5 py-4 shadow backdrop-blur-2xl">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center">
-            <div className="relative flex-1">
-              <Input
-                value={searchTerm}
-                onChange={event => setSearchTerm(event.target.value)}
-                placeholder="搜索论文标题、作者或期刊…"
-                className="h-11 rounded-xl border border-white/70 bg-white/80 pl-12 text-sm text-slate-700 placeholder:text-slate-400 focus-visible:ring-2 focus-visible:ring-[#4769b8]"
-              />
-              <BookOpen className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-[#28418A]" />
-            </div>
-
-            <div className="grid w-full gap-3 sm:grid-cols-3 lg:w-auto">
-              <select
-                value={readingStatus}
-                onChange={event => setReadingStatus(event.target.value as typeof readingStatus)}
-                className="h-11 rounded-xl border border-white/70 bg-white/80 px-3 text-sm text-slate-700 shadow focus:outline-none focus:ring-2 focus:ring-[#4769b8]"
-              >
-                <option value="all">全部状态</option>
-                <option value="unread">未开始</option>
-                <option value="reading">阅读中</option>
-                <option value="finished">已完成</option>
-              </select>
-
-              <select
-                value={priority}
-                onChange={event => setPriority(event.target.value as typeof priority)}
-                className="h-11 rounded-xl border border白/70 bg白/80 px-3 text-sm text-slate-700 shadow focus:outline-none focus:ring-2 focus:ring-[#4769b8]"
-              >
-                <option value="all">全部优先级</option>
-                <option value="high">高优先级</option>
-                <option value="medium">中优先级</option>
-                <option value="low">低优先级</option>
-              </select>
-
-              <select
-                value={customTag}
-                onChange={event => setCustomTag(event.target.value)}
-                className="h-11 rounded-xl border border-white/70 bg-white/80 px-3 text-sm text-slate-700 shadow focus:outline-none focus:ring-2 focus:ring-[#4769b8]"
-              >
-                <option value="all">全部标签</option>
-                {personalTags.map(tag => (
-                  <option key={tag} value={tag}>
-                    #{tag}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          {hasActiveFilters && (
-            <div className="mt-4 flex flex-wrap items-center gap-2 text-xs text-[#28418A]">
-              <span className="rounded-full border border-white/60 bg-white/70 px-3 py-[6px] text-[11px] font-medium shadow">
-                当前筛选
-              </span>
-              {filterSummary.map(label => (
-                <span
-                  key={label}
-                  className="rounded-full border border-[#28418A1A] bg-[#28418A0D] px-3 py-[6px] text-[11px] shadow"
-                >
-                  {label}
-                </span>
-              ))}
-            </div>
-          )}
+          <PersonalLibraryFilters
+            searchTerm={searchTerm}
+            onSearchChange={setSearchTerm}
+            filterReadingStatus={readingStatus}
+            onReadingStatusChange={(value) => setReadingStatus(value)}
+            filterPriority={priority}
+            onPriorityChange={(value) => setPriority(value)}
+            filterCustomTag={customTag}
+            onCustomTagChange={setCustomTag}
+            personalTags={personalTags}
+            onResetFilters={resetFilters}
+          />
         </div>
       </div>
 
@@ -265,9 +229,12 @@ export default function PersonalLibraryView() {
                           priority: personalMeta.priority,
                           customTags: personalMeta.customTags,
                           noteCount: personalMeta.noteCount ?? 0,
+                          totalReadingTime: personalMeta.totalReadingTime,
+                          lastReadTime: personalMeta.lastReadTime,
                         }}
                         onClick={() => handleOpen({ paper, personalMeta })}
                         onRemoveFromLibrary={() => handleRemove(personalMeta.userPaperId)}
+                        onEdit={() => handleEditPaper({ paper, personalMeta })}
                       />
                     </div>
                   ))}
@@ -305,6 +272,23 @@ export default function PersonalLibraryView() {
                                 笔记 {safeNoteCount}
                               </span>
                             )}
+                            {typeof personalMeta.totalReadingTime === 'number' && (
+                              <span className={`rounded-full border px-2 py-[3px] flex items-center gap-1 ${
+                                personalMeta.totalReadingTime > 0
+                                  ? 'border-white/60 bg-emerald-50/80 text-emerald-700'
+                                  : 'border-white/40 bg-gray-50/60 text-gray-500'
+                              }`}>
+                                <Clock className="h-3 w-3" />
+                                {personalMeta.totalReadingTime > 0
+                                  ? personalMeta.totalReadingTime < 60
+                                    ? `${personalMeta.totalReadingTime}秒`
+                                    : personalMeta.totalReadingTime < 3600
+                                    ? `${Math.floor(personalMeta.totalReadingTime / 60)}分钟`
+                                    : `${Math.floor(personalMeta.totalReadingTime / 3600)}小时${Math.floor((personalMeta.totalReadingTime % 3600) / 60)}分钟`
+                                  : '未阅读'
+                                }
+                              </span>
+                            )}
                             {tags.map(tag => (
                               <span
                                 key={tag}
@@ -316,6 +300,17 @@ export default function PersonalLibraryView() {
                           </div>
                         </div>
                         <div className="ml-4 flex items-center gap-2">
+                          <button
+                            type="button"
+                            onClick={event => {
+                              event.stopPropagation();
+                              handleEditPaper({ paper, personalMeta });
+                            }}
+                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-transparent bg-white/80 text-[#28418A] shadow transition hover:border-[#28418A33] hover:bg-[#28418A12]"
+                            aria-label="编辑论文"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </button>
                           <button
                             type="button"
                             onClick={event => {
@@ -378,6 +373,18 @@ export default function PersonalLibraryView() {
           />
         </>
       )}
+      
+      {/* 编辑论文对话框 */}
+      {showEditDialog && (
+        <EditPaperDialog
+          open={showEditDialog}
+          onOpenChange={setShowEditDialog}
+          paper={editingPaper}
+          onSuccess={handleEditSuccess}
+        />
+      )}
+      
+      <ConfirmDialog />
     </div>
   );
 }

@@ -177,7 +177,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
           await router.push(targetHref);
         }
       } catch (error) {
-        console.error('Navigation error:', error);
+        // 静默处理导航错误
         setLoading(false, null);
       }
     },
@@ -234,7 +234,7 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
                 await router.push(targetHref);
               }
             } catch (error) {
-              console.error('Navigation error:', error);
+              // 静默处理导航错误
               setLoading(false, null);
             }
           }

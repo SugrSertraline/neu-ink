@@ -15,6 +15,8 @@ import { createPortal } from 'react-dom';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
+// NEW: 动画库
+import { motion, AnimatePresence } from 'framer-motion';
 
 import { useTabStore } from '@/stores/useTabStore';
 import { useEditingState } from '@/stores/useEditingState';
@@ -43,18 +45,33 @@ import { usePaperBlocks } from '@/lib/hooks/usePaperBlocks';
 import { usePaperNotes } from '@/lib/hooks/usePaperNotes';
 import { usePaperReferences } from '@/lib/hooks/usePaperReferences';
 import { usePaperSections } from '@/lib/hooks/usePaperSections';
+import { useReadingProgress } from '@/lib/hooks/useReadingProgress';
+import ParseReferencesDialog from '@/components/paper/ParseReferencesDialog';
 import {
   NOTES_PANEL_WIDTH,
   NOTES_PANEL_GAP,
 } from '@/types/paper/constants';
-import MetadataEditorOverlay from './MetadataEditorOverlay';
-import AbstractAndKeywordsEditorOverlay from './AbstractAndKeywordsEditorOverlay';
+import MetadataEditorDialog from '@/components/paper/MetadataEditorDialog';
+import AbstractAndKeywordsEditorDialog from '@/components/paper/AbstractAndKeywordsEditorDialog';
+import ReferenceEditorDialog from '@/components/paper/ReferenceEditorDialog';
 
 type Lang = 'en' | 'both';
 const HEADER_STICKY_OFFSET = 8;
 
 // 与 Tailwind 的 max-w-5xl (64rem) 对齐，使 content+notes 整体居中时宽度可控
 const CONTENT_MAX_W_REM = 64;
+
+// 统一动画参数
+const MOTION = {
+  duration: 0.28,
+  ease: [0.22, 1, 0.36, 1] as [number, number, number, number],
+};
+const PANEL_DELAY_IN = 0.12;
+
+// NEW：固定 wrapper 的最大宽度（内容 + 间距 + 面板宽度）
+const WRAPPER_MAX_W = `calc(${CONTENT_MAX_W_REM}rem + ${NOTES_PANEL_GAP}px + ${NOTES_PANEL_WIDTH}px)`;
+// NEW：内容在“未显示面板”时右移半个(面板+间距)，看起来居中；显示面板时回到 0
+const CONTENT_SHIFT_X = (NOTES_PANEL_WIDTH + NOTES_PANEL_GAP) / 2;
 
 type ReferenceEditorOverlayProps = {
   mode: 'create' | 'edit';
@@ -81,20 +98,17 @@ function ReferenceEditorOverlay({
   // 禁用页面滚动
   useEffect(() => {
     if (isOpen) {
-      // 禁用页面滚动
       const originalOverflow = document.body.style.overflow;
       const originalPaddingRight = document.body.style.paddingRight;
-      
-      // 如果有滚动条，添加右边距防止抖动
+
       const scrollbarWidth = window.innerWidth - document.documentElement.clientWidth;
       if (scrollbarWidth > 0) {
         document.body.style.paddingRight = `${scrollbarWidth}px`;
       }
-      
+
       document.body.style.overflow = 'hidden';
-      
+
       return () => {
-        // 恢复页面滚动
         document.body.style.overflow = originalOverflow;
         document.body.style.paddingRight = originalPaddingRight;
       };
@@ -394,20 +408,21 @@ export default function PaperPage() {
   );
 
   const effectiveSource = activeSource ?? sourceCandidates[0] ?? 'public-guest';
+  
   const permissions = usePaperEditPermissions(effectiveSource);
 
   const canEditContent = permissions.canEditContent;
   const canToggleVisibility = permissions.canToggleVisibility;
   const [isPublicVisible, setIsPublicVisible] = useState(paper?.isPublic ?? false);
   const isPersonalOwner = effectiveSource === 'personal-owner';
-  
+
   useEffect(() => {
     if (paper) {
       setIsPublicVisible(paper.isPublic);
     }
   }, [paper?.isPublic]);
 
-  const { setHasUnsavedChanges, switchToEdit, clearEditing } = useEditingState();
+  const { setHasUnsavedChanges, switchToEdit, clearEditing, currentEditingId } = useEditingState();
 
   const [lang, setLang] = useState<Lang>('en');
   const [searchQuery, setSearchQuery] = useState('');
@@ -433,19 +448,22 @@ export default function PaperPage() {
   const [abstractKeywordsEditorError, setAbstractKeywordsEditorError] = useState<string | null>(null);
   const [isAbstractKeywordsSubmitting, setIsAbstractKeywordsSubmitting] = useState(false);
   const [isHeaderAffixed, setIsHeaderAffixed] = useState(false);
+  const [isParseReferencesOpen, setIsParseReferencesOpen] = useState(false);
+  
 
   const contentRef = useRef<HTMLDivElement>(null);
-  const wrapperRef = useRef<HTMLDivElement>(null); // 新增：外层居中壳
+  const wrapperRef = useRef<HTMLDivElement>(null); // 外层居中壳
   const headerRef = useAutoHeaderHeight('--app-header-h', 24, HEADER_STICKY_OFFSET);
 
-  // 固定面板位置状态 + 动画开关
+  // 固定面板位置状态
   const [notesFixedStyle, setNotesFixedStyle] = useState<{
     top: number;
     left: number;
     width: number;
     height: number;
   } | null>(null);
-  const [notesOpen, setNotesOpen] = useState(false);
+
+  const [notesOpen, setNotesOpen] = useState(false); // 标志位（不再用 CSS 过渡，动画由 framer 接管）
 
   const displayContent = editableDraft ?? paper ?? null;
   const metadata = displayContent?.metadata ?? null;
@@ -489,6 +507,26 @@ export default function PaperPage() {
     handleReferenceMoveDown,
   } = usePaperReferences(editableDraft, setEditableDraft, setHasUnsavedChanges);
 
+  const openParseDialog = useCallback(() => {
+    setIsParseReferencesOpen(true);
+  }, []);
+
+  const closeParseDialog = useCallback(() => {
+    setIsParseReferencesOpen(false);
+  }, []);
+
+  const handleReferencesAdded = useCallback((references: Reference[]) => {
+    // 更新本地状态
+    setEditableDraft(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        references: [...(prev.references || []), ...references],
+      };
+    });
+    setHasUnsavedChanges(true);
+  }, [setEditableDraft, setHasUnsavedChanges]);
+
   const {
     handleSectionTitleUpdate,
     handleSectionAddSubsection,
@@ -508,6 +546,7 @@ export default function PaperPage() {
     handleBlockMove,
     handleBlockAppendSubsection,
     handleBlockAddComponent,
+    handleBlockSaveToServer,
   } = usePaperBlocks(
     lang,
     paperId,
@@ -516,6 +555,13 @@ export default function PaperPage() {
     updateSections,
     setActiveBlockId
   );
+
+  // 添加阅读进度跟踪功能
+  const { updatePosition, saveImmediately } = useReadingProgress({
+    userPaperId: resolvedUserPaperId || '',
+    enabled: Boolean(isPersonalOwner && resolvedUserPaperId),
+    saveInterval: 30000, // 30秒自动保存一次
+  });
 
   const handleMetadataEditStart = useCallback(() => {
     if (!metadata) return;
@@ -619,14 +665,13 @@ export default function PaperPage() {
       if (!wrapper) return;
 
       const rect = wrapper.getBoundingClientRect();
-      // 读取 header 高度（useAutoHeaderHeight 会维护这个变量）
       const headerVar = getComputedStyle(document.documentElement).getPropertyValue('--app-header-h').trim();
       const headerH = parseFloat(headerVar || '160');
       const gap = NOTES_PANEL_GAP;
 
       const top = headerH + gap;
       const left = rect.right - NOTES_PANEL_WIDTH; // 紧贴 wrapper 右侧
-      const height = Math.max(200, window.innerHeight - top - gap); // 兜底高度 160px
+      const height = Math.max(200, window.innerHeight - top - gap);
 
       setNotesFixedStyle({
         top,
@@ -636,13 +681,11 @@ export default function PaperPage() {
       });
     };
 
-    // 初算 + 监听 wrapper/ header 尺寸变化与窗口 resize/scroll
     compute();
 
     const roWrapper = new ResizeObserver(() => compute());
     const roHeader = new ResizeObserver(() => compute());
     if (wrapperRef.current) roWrapper.observe(wrapperRef.current);
-    // headerRef 是一个 ref，指向 header 容器
     // @ts-ignore
     if (headerRef?.current) roHeader.observe(headerRef.current as Element);
 
@@ -652,7 +695,7 @@ export default function PaperPage() {
     window.addEventListener('resize', onResize, { passive: true });
     window.addEventListener('scroll', onScroll, { passive: true });
 
-    // 打开动画
+    // 打开标志（动画由 framer 执行）
     const raf = requestAnimationFrame(() => setNotesOpen(true));
 
     return () => {
@@ -677,11 +720,9 @@ export default function PaperPage() {
 
   const scrollToTarget = (target: HTMLElement) => {
     const scroller = getScrollParent(target);
-    // 使用 block 的 scroll-margin-top 进行补偿，不再手算 header
     if (scroller === window) {
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     } else {
-      // 只滚这个容器，并使目标元素居中显示
       const parent = scroller as HTMLElement;
       const parentRect = parent.getBoundingClientRect();
       const rect = target.getBoundingClientRect();
@@ -690,11 +731,10 @@ export default function PaperPage() {
     }
   };
 
-  // 处理目录导航
+  // 目录导航
   const handleTOCNavigate = useCallback((elementId: string) => {
     let targetElement: HTMLElement | null = null;
-    
-    // 根据不同的ID类型查找对应的元素
+
     switch (elementId) {
       case 'metadata':
         targetElement = document.querySelector('[data-metadata="true"]') as HTMLElement;
@@ -706,20 +746,16 @@ export default function PaperPage() {
         targetElement = document.querySelector('[data-references="true"]') as HTMLElement;
         break;
       default:
-        // 对于章节和块，直接使用ID查找
         targetElement = document.getElementById(elementId) as HTMLElement;
         break;
     }
-    
+
     if (targetElement) {
-      // 添加高亮效果
       targetElement.classList.add('toc-highlighted');
-      
-      // 3秒后移除高亮效果
       setTimeout(() => {
         targetElement.classList.remove('toc-highlighted');
       }, 3000);
-      
+
       scrollToTarget(targetElement);
     }
   }, []);
@@ -755,90 +791,76 @@ export default function PaperPage() {
           keywords: keywords || prev.keywords,
         };
       });
-      // 避免在setEditableDraft的回调中调用其他状态更新
       setHasUnsavedChanges(true);
     },
     [setHasUnsavedChanges],
   );
+
   // 保存到服务器的函数
-const handleSaveToServer = useCallback(
-  async (data?: PaperContentModel) => {
-    const payload = data ?? editableDraft;
-    if (!payload) return;
+  const handleSaveToServer = useCallback(
+    async (data?: PaperContentModel) => {
+      const payload = data ?? editableDraft;
+      if (!payload) return;
 
-    try {
-      console.log('[PaperPage] handleSaveToServer called:', {
-        isPersonalOwner,
-        resolvedUserPaperId,
-        paperId
-      });
-      
-      const service = isPersonalOwner ? userPaperService : adminPaperService;
-      const id = isPersonalOwner ? resolvedUserPaperId : paperId;
+      try {
+        const service = isPersonalOwner ? userPaperService : adminPaperService;
+        const id = isPersonalOwner ? resolvedUserPaperId : paperId;
 
-      if (!id) {
-        console.error('[PaperPage] No valid ID for saving:', { isPersonalOwner, resolvedUserPaperId, paperId });
-        toast.error('保存失败', { description: '无法确定要保存的论文标识' });
-        return;
+        if (!id) {
+          toast.error('保存失败', { description: '无法确定要保存的论文标识' });
+          return;
+        }
+
+        const result = isPersonalOwner
+          ? await userPaperService.updateUserPaper(id, { paperData: payload })
+          : await adminPaperService.updatePaper(id, payload);
+
+        if (result.bizCode === 0) {
+          setHasUnsavedChanges(false);
+          toast.success('保存成功', { description: '最新变更已同步到服务器。' });
+        } else {
+          toast.error('保存失败', {
+            description: result.bizMessage ?? '服务器未返回详细信息，请稍后重试。',
+          });
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '保存过程中发生未知错误，请稍后再试。';
+        toast.error('保存出错', { description: message });
       }
+    },
+    [editableDraft, paperId, resolvedUserPaperId, isPersonalOwner, setHasUnsavedChanges]
+  );
 
-      console.log('[PaperPage] Saving to server with ID:', id, 'isPersonalOwner:', isPersonalOwner);
-      
-      const result = isPersonalOwner
-        ? await userPaperService.updateUserPaper(id, { paperData: payload })
-        : await adminPaperService.updatePaper(id, payload);
-
-      if (result.bizCode === 0) {
-        console.log('[PaperPage] Save to server successful');
-        setHasUnsavedChanges(false);
-        toast.success('保存成功', { description: '最新变更已同步到服务器。' });
-      } else {
-        console.error('[PaperPage] Save to server failed:', result.bizMessage);
-        toast.error('保存失败', {
-          description: result.bizMessage ?? '服务器未返回详细信息，请稍后重试。',
-        });
-      }
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '保存过程中发生未知错误，请稍后再试。';
-      console.error('[PaperPage] Save to server exception:', err);
-      toast.error('保存出错', { description: message });
-    }
-  },
-  [editableDraft, paperId, resolvedUserPaperId, isPersonalOwner, setHasUnsavedChanges]
-);
   const handleMetadataOverlaySubmit = useCallback(
-  async (next: PaperMetadataModel, abstract?: { en?: string; zh?: string }, keywords?: string[]) => {
-    setIsMetadataSubmitting(true);
-    setMetadataEditorError(null);
-    try {
-      const base = (editableDraft ?? paper)!; // paper 已加载时不为空
-      const nextDraft: PaperContentModel = {
-        ...base,
-        metadata: next,
-        abstract: abstract ?? base.abstract,
-        keywords: keywords ?? base.keywords,
-      };
+    async (next: PaperMetadataModel, abstract?: { en?: string; zh?: string }, keywords?: string[]) => {
+      setIsMetadataSubmitting(true);
+      setMetadataEditorError(null);
+      try {
+        const base = (editableDraft ?? paper)!;
+        const nextDraft: PaperContentModel = {
+          ...base,
+          metadata: next,
+          abstract: abstract ?? base.abstract,
+          keywords: keywords ?? base.keywords,
+        };
 
-      // 先更新本地 UI
-      setEditableDraft(nextDraft);
+        setEditableDraft(nextDraft);
+        await handleSaveToServer(nextDraft);
 
-      // 直接用 nextDraft 保存到后端（不会用到闭包里的旧值）
-      await handleSaveToServer(nextDraft);
+        setIsMetadataEditorOpen(false);
+        setMetadataEditorInitial(null);
+        clearEditing();
+      } catch (err) {
+        const message = err instanceof Error ? err.message : '保存失败，请稍后重试';
+        setMetadataEditorError(message);
+        toast.error('元数据保存失败', { description: message });
+      } finally {
+        setIsMetadataSubmitting(false);
+      }
+    },
+    [editableDraft, paper, handleSaveToServer, clearEditing]
+  );
 
-      // 成功后关闭弹层 & 收尾
-      setIsMetadataEditorOpen(false);
-      setMetadataEditorInitial(null);
-      clearEditing();
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '保存失败，请稍后重试';
-      setMetadataEditorError(message);
-      toast.error('元数据保存失败', { description: message });
-    } finally {
-      setIsMetadataSubmitting(false);
-    }
-  },
-  [editableDraft, paper, handleSaveToServer, clearEditing]
-);
   const handleMetadataOverlayCancel = useCallback(() => {
     setMetadataEditorError(null);
     setIsMetadataEditorOpen(false);
@@ -851,20 +873,16 @@ const handleSaveToServer = useCallback(
       setIsAbstractKeywordsSubmitting(true);
       setAbstractKeywordsEditorError(null);
       try {
-        const base = (editableDraft ?? paper)!; // paper 已加载时不为空
+        const base = (editableDraft ?? paper)!;
         const nextDraft: PaperContentModel = {
           ...base,
           abstract: abstract ?? base.abstract,
           keywords: keywords ?? base.keywords,
         };
 
-        // 先更新本地 UI
         setEditableDraft(nextDraft);
-
-        // 直接用 nextDraft 保存到后端（不会用到闭包里的旧值）
         await handleSaveToServer(nextDraft);
 
-        // 成功后关闭弹层 & 收尾
         setIsAbstractKeywordsEditorOpen(false);
         setAbstractKeywordsEditorInitial(null);
         clearEditing();
@@ -889,17 +907,20 @@ const handleSaveToServer = useCallback(
   const handleBlockSelect = useCallback(
     (blockId: string) => {
       setActiveBlockId(blockId);
+      // 更新阅读位置
+      if (isPersonalOwner && resolvedUserPaperId) {
+        updatePosition(blockId);
+      }
       if (isPersonalOwner) {
         setSelectedBlockId(prev => (prev === blockId ? null : blockId));
       }
     },
-    [isPersonalOwner],
+    [isPersonalOwner, resolvedUserPaperId, updatePosition],
   );
 
   const handleCloseNotes = useCallback(() => {
     setSelectedBlockId(null);
   }, []);
-
 
   const handleCreateNote = useCallback(
     async (blockId: string, content: InlineContent[]) => {
@@ -936,30 +957,24 @@ const handleSaveToServer = useCallback(
 
   const handleParseTextAdd = useCallback(
     async (sectionId: string, text: string, afterBlockId?: string) => {
-      console.log('[handleParseTextAdd] 开始处理文本解析请求', { sectionId, textLength: text.length, afterBlockId });
-      
       try {
         const id = isPersonalOwner ? resolvedUserPaperId : paperId;
-        
+
         if (!id) {
-          console.error('[handleParseTextAdd] 无法确定论文标识', { isPersonalOwner, resolvedUserPaperId, paperId });
           toast.error('无法确定论文标识');
           return { success: false, error: '无法确定论文标识' };
         }
 
-        // 使用我们新添加的handleAddBlocksFromText函数
         const result = await handleAddBlocksFromText(sectionId, text, paperId, resolvedUserPaperId, isPersonalOwner, afterBlockId);
-        
+
         if (result.success) {
           return { success: true, addedBlocks: result.addedBlocks };
         } else {
           return { success: false, error: result.error };
         }
       } catch (err) {
-        console.error('[handleParseTextAdd] 请求异常', err);
         let message = err instanceof Error ? err.message : '添加过程中发生未知错误';
-        
-        // 检查是否是网络错误或超时
+
         if (err instanceof Error) {
           if (err.message.includes('timeout') || err.message.includes('Timeout')) {
             message = '请求超时，可能是文本内容过多或服务器响应较慢，请稍后重试';
@@ -967,7 +982,7 @@ const handleSaveToServer = useCallback(
             message = '网络连接错误，请检查网络连接后重试';
           }
         }
-        
+
         toast.error('添加失败', { description: message });
         return { success: false, error: message };
       }
@@ -991,7 +1006,6 @@ const handleSaveToServer = useCallback(
               : '论文已从公共库中隐藏',
           }
         );
-        // 更新本地状态以反映更改，避免重新加载页面
         if (paper) {
           setEditableDraft(prev => {
             if (!prev) return prev;
@@ -1001,7 +1015,6 @@ const handleSaveToServer = useCallback(
             };
           });
         }
-        // 更新本地的 isPublicVisible 状态
         setIsPublicVisible(newVisibility);
         setHasUnsavedChanges(false);
       } else {
@@ -1035,6 +1048,15 @@ const handleSaveToServer = useCallback(
     isPublicVisible,
     handleToggleVisibility,
   ]);
+
+  // 页面卸载时保存阅读进度
+  useEffect(() => {
+    return () => {
+      if (isPersonalOwner && resolvedUserPaperId) {
+        saveImmediately();
+      }
+    };
+  }, [isPersonalOwner, resolvedUserPaperId, saveImmediately]);
 
   if (isLoading) {
     return (
@@ -1072,7 +1094,7 @@ const handleSaveToServer = useCallback(
         <div
           ref={headerRef}
           className="sticky z-50 px-4 transition-all duration-200 ease-out"
-            style={{ top: HEADER_STICKY_OFFSET }}
+          style={{ top: HEADER_STICKY_OFFSET }}
         >
           <PaperHeader
             lang={lang}
@@ -1091,20 +1113,20 @@ const handleSaveToServer = useCallback(
           <div
             ref={wrapperRef}
             className="mx-auto px-4 lg:px-8"
-            style={{
-              maxWidth: showNotesPanel
-                ? `calc(${CONTENT_MAX_W_REM}rem + ${NOTES_PANEL_GAP}px + ${NOTES_PANEL_WIDTH}px)`
-                : `${CONTENT_MAX_W_REM}rem`,
-            }}
+            // NEW：固定为“内容 + 间距 + 面板”的最大宽度
+            style={{ maxWidth: WRAPPER_MAX_W }}
           >
             <div
               className="lg:flex lg:items-start lg:gap-(--notes-gap,0)"
               style={{ '--notes-gap': `${NOTES_PANEL_GAP}px` } as CSSProperties}
             >
-              {/* 左侧 content：保持原来的 max-w-5xl，自动占满剩余 */}
-              <div
+              {/* 左侧 content：只做 X 轴动画，避免 Y 抖动 */}
+              <motion.div
                 ref={contentRef}
-                className="max-w-5xl w-full p-8 mx-auto lg:mx-0"
+                className="max-w-5xl w-full p-8 mx-auto lg:mx-0 will-change-transform"
+                initial={false}
+                animate={{ x: showNotesPanel ? 0 : CONTENT_SHIFT_X }}
+                transition={MOTION}
               >
                 <div className="flex flex-col gap-8 pb-24">
                   <PaperMetadata
@@ -1152,17 +1174,15 @@ const handleSaveToServer = useCallback(
                     onBlockUpdate={(blockId, block) => {
                       const blockInfo = findBlockSection(blockId);
                       if (!blockInfo) return;
-                      
-                      // 确保个人论文库总是使用 resolvedUserPaperId
+
                       const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
-                      console.log('[PaperPage] onBlockUpdate:', { blockId, isPersonalOwner, userPaperId, paperId });
-                      return handleBlockUpdate(blockId, block, blockInfo.section.id, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
+                      return handleBlockUpdate(blockId, block, blockInfo.section.id, paperId, userPaperId, isPersonalOwner);
                     }}
                     onBlockDuplicate={handleBlockDuplicate}
                     onBlockDelete={(blockId) => {
                       const blockInfo = findBlockSection(blockId);
                       if (!blockInfo) return;
-                      
+
                       const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
                       return handleBlockDelete(blockId, blockInfo.section.id, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
                     }}
@@ -1171,7 +1191,17 @@ const handleSaveToServer = useCallback(
                     onBlockAppendSubsection={handleBlockAppendSubsection}
                     onBlockAddComponent={handleBlockAddComponent}
                     onParseTextAdd={canEditContent ? handleParseTextAdd : undefined}
-                    onSaveToServer={handleSaveToServer}
+                    onSaveToServer={async () => {
+                      if (currentEditingId) {
+                        const blockInfo = findBlockSection(currentEditingId);
+                        if (blockInfo) {
+                          const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                          await handleBlockSaveToServer(currentEditingId, blockInfo.section.id, paperId, userPaperId, isPersonalOwner, editableDraft || undefined);
+                          return;
+                        }
+                      }
+                      await handleSaveToServer();
+                    }}
                     notesByBlock={notesByBlock}
                     isPersonalOwner={isPersonalOwner}
                   />
@@ -1196,137 +1226,182 @@ const handleSaveToServer = useCallback(
                     onReferenceMoveUp={canEditContent ? handleReferenceMoveUp : undefined}
                     onReferenceMoveDown={canEditContent ? handleReferenceMoveDown : undefined}
                     onReferenceAdd={canEditContent ? handleReferenceAdd : undefined}
+                    onParseReferences={canEditContent ? openParseDialog : undefined}
                     data-references="true"
                   />
 
                   {(displayReferences?.length ?? 0) === 0 && <div className="h-4" />}
 
-                  {/* 移动端 notes：紧随 content，桌面端隐藏 */}
-                  {showNotesPanel && (
-                    <div className="lg:hidden rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-                      <PersonalNotePanel
-                        blockId={selectedBlockId!}
-                        sectionId={selectedBlockInfo?.section?.id ?? ''}
-                        sectionLabel={selectedBlockInfo?.section?.title?.en ?? 'Section'}
-                        blockLabel={`Block ${(selectedBlockInfo?.blockIndex ?? 0) + 1}`}
-                        notes={notesForSelectedBlock}
-                        onCreateNote={content => handleCreateNote(selectedBlockId!, content)}
-                        onUpdateNote={(noteId, content) =>
-                          handleUpdateNote(selectedBlockId!, noteId, content)
-                        }
-                        onDeleteNote={noteId => handleDeleteNote(selectedBlockId!, noteId)}
-                        references={displayContent.references ?? []}
-                        highlightedRefs={highlightedRefs}
-                        setHighlightedRefs={setHighlightedRefs}
-                        contentRef={contentRef}
-                        onClose={handleCloseNotes}
-                        isLoading={notesLoading}
-                        isMutating={notesMutating}
-                        error={notesError}
-                        onRetry={loadNotes}
-                      />
-                    </div>
-                  )}
+                  {/* 移动端 notes：顺滑折叠展开 */}
+                  <AnimatePresence initial={false}>
+                    {showNotesPanel && (
+                      <motion.div
+                        key="notes-mobile"
+                        className="lg:hidden rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
+                        initial={{ height: 0, opacity: 0 }}
+                        animate={{ height: 'auto', opacity: 1 }}
+                        exit={{ height: 0, opacity: 0 }}
+                        transition={MOTION}
+                      >
+                        <PersonalNotePanel
+                          blockId={selectedBlockId!}
+                          sectionId={selectedBlockInfo?.section?.id ?? ''}
+                          sectionLabel={selectedBlockInfo?.section?.title?.en ?? 'Section'}
+                          blockLabel={`Block ${(selectedBlockInfo?.blockIndex ?? 0) + 1}`}
+                          notes={notesForSelectedBlock}
+                          onCreateNote={content => handleCreateNote(selectedBlockId!, content)}
+                          onUpdateNote={(noteId, content) =>
+                            handleUpdateNote(selectedBlockId!, noteId, content)
+                          }
+                          onDeleteNote={noteId => handleDeleteNote(selectedBlockId!, noteId)}
+                          references={displayContent.references ?? []}
+                          highlightedRefs={highlightedRefs}
+                          setHighlightedRefs={setHighlightedRefs}
+                          contentRef={contentRef}
+                          onClose={handleCloseNotes}
+                          isLoading={notesLoading}
+                          isMutating={notesMutating}
+                          error={notesError}
+                          onRetry={loadNotes}
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
                 </div>
-              </div>
+              </motion.div>
 
-              {/* 桌面端固定（fixed）笔记：通过 Portal 挂在 body 上，不随 content 滚动 */}
-              {showNotesPanel && notesFixedStyle &&
-                createPortal(
-                  <div
-                    className={`hidden lg:block fixed z-50 transition-all duration-300 ease-out
-                                ${notesOpen ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-2'}`}
-                    style={{
-                      top: notesFixedStyle.top,
-                      left: notesFixedStyle.left,
-                      width: notesFixedStyle.width,
-                      height: notesFixedStyle.height,
-                    }}
-                  >
-                    <div
-                      className="
-                        h-full
-                        rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-lg
-                        dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200
-                        overflow-y-auto
-                      "
+              {/* 桌面端固定（fixed）笔记：Portal + 动画（先内容左移，后滑入） */}
+              {createPortal(
+                <AnimatePresence>
+                  {showNotesPanel && notesFixedStyle ? (
+                    <motion.div
+                      key="notes-desktop"
+                      className="hidden lg:block fixed z-50"
+                      style={{
+                        top: notesFixedStyle.top,
+                        left: notesFixedStyle.left,
+                        width: notesFixedStyle.width,
+                        height: notesFixedStyle.height,
+                      }}
+                      initial={{ opacity: 0, x: 12 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      exit={{ opacity: 0, x: 12 }}
+                      transition={{ ...MOTION, delay: PANEL_DELAY_IN }}
                     >
-                      <PersonalNotePanel
-                        blockId={selectedBlockId!}
-                        sectionId={selectedBlockInfo?.section?.id ?? ''}
-                        sectionLabel={selectedBlockInfo?.section?.title?.en ?? 'Section'}
-                        blockLabel={`Block ${(selectedBlockInfo?.blockIndex ?? 0) + 1}`}
-                        notes={notesForSelectedBlock}
-                        onCreateNote={content => handleCreateNote(selectedBlockId!, content)}
-                        onUpdateNote={(noteId, content) =>
-                          handleUpdateNote(selectedBlockId!, noteId, content)
-                        }
-                        onDeleteNote={noteId => handleDeleteNote(selectedBlockId!, noteId)}
-                        references={displayContent.references ?? []}
-                        highlightedRefs={highlightedRefs}
-                        setHighlightedRefs={setHighlightedRefs}
-                        contentRef={contentRef}
-                        onClose={handleCloseNotes}
-                        isLoading={notesLoading}
-                        isMutating={notesMutating}
-                        error={notesError}
-                        onRetry={loadNotes}
-                      />
-                    </div>
-                  </div>,
-                  document.body
-                )
-              }
+                      <div
+                        className="
+                          h-full
+                          rounded-xl border border-slate-200 bg-white p-4 text-sm text-slate-600 shadow-lg
+                          dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200
+                          overflow-y-auto
+                        "
+                      >
+                        <PersonalNotePanel
+                          blockId={selectedBlockId!}
+                          sectionId={selectedBlockInfo?.section?.id ?? ''}
+                          sectionLabel={selectedBlockInfo?.section?.title?.en ?? 'Section'}
+                          blockLabel={`Block ${(selectedBlockInfo?.blockIndex ?? 0) + 1}`}
+                          notes={notesForSelectedBlock}
+                          onCreateNote={content => handleCreateNote(selectedBlockId!, content)}
+                          onUpdateNote={(noteId, content) =>
+                            handleUpdateNote(selectedBlockId!, noteId, content)
+                          }
+                          onDeleteNote={noteId => handleDeleteNote(selectedBlockId!, noteId)}
+                          references={displayContent.references ?? []}
+                          highlightedRefs={highlightedRefs}
+                          setHighlightedRefs={setHighlightedRefs}
+                          contentRef={contentRef}
+                          onClose={handleCloseNotes}
+                          isLoading={notesLoading}
+                          isMutating={notesMutating}
+                          error={notesError}
+                          onRetry={loadNotes}
+                        />
+                      </div>
+                    </motion.div>
+                  ) : null}
+                </AnimatePresence>,
+                document.body
+              )}
             </div>
           </div>
         </div>
 
         {canEditContent && editingReferenceId && referenceDraft && (
-          <ReferenceEditorOverlay
+          <ReferenceEditorDialog
+            open={Boolean(editingReferenceId && referenceDraft)}
+            onOpenChange={(open) => {
+              if (!open) {
+                handleReferenceEditorCancel();
+              }
+            }}
             mode={referenceEditorMode}
             reference={referenceDraft}
             onChange={handleReferenceDraftChange}
-            onCancel={handleReferenceEditorCancel}
             onSave={handleReferenceEditorSubmit}
-            isOpen={Boolean(editingReferenceId && referenceDraft)}
           />
         )}
 
-       {canEditContent && isMetadataEditorOpen && metadataEditorInitial && (
-  <MetadataEditorOverlay
-    metadata={metadataEditorInitial}
-    abstract={displayContent?.abstract}
-    keywords={displayContent?.keywords}
-    onCancel={handleMetadataOverlayCancel}
-    onSubmit={handleMetadataOverlaySubmit}     
-    isSubmitting={isMetadataSubmitting}
-    externalError={metadataEditorError}
-    userPaperId={resolvedUserPaperId ?? undefined}
-    paperId={paperId}
+        {canEditContent && isMetadataEditorOpen && metadataEditorInitial && (
+          <MetadataEditorDialog
+            open={isMetadataEditorOpen}
+            onOpenChange={(open) => {
+              if (!open) {
+                handleMetadataOverlayCancel();
+              }
+            }}
+            metadata={metadataEditorInitial}
+            abstract={displayContent?.abstract}
+            keywords={displayContent?.keywords}
+            onSubmit={handleMetadataOverlaySubmit}
+            isSubmitting={isMetadataSubmitting}
+            externalError={metadataEditorError}
+            userPaperId={resolvedUserPaperId ?? undefined}
+            paperId={paperId}
+          />
+        )}
 
-  />
-)}
+        {canEditContent && isAbstractKeywordsEditorOpen && abstractKeywordsEditorInitial && (
+          <AbstractAndKeywordsEditorDialog
+            open={isAbstractKeywordsEditorOpen}
+            onOpenChange={(open) => {
+              if (!open) {
+                handleAbstractKeywordsOverlayCancel();
+              }
+            }}
+            abstract={abstractKeywordsEditorInitial.abstract}
+            keywords={abstractKeywordsEditorInitial.keywords}
+            onSubmit={handleAbstractKeywordsOverlaySubmit}
+            isSubmitting={isAbstractKeywordsSubmitting}
+            externalError={abstractKeywordsEditorError}
+            userPaperId={resolvedUserPaperId ?? undefined}
+            paperId={paperId}
+          />
+        )}
 
-{canEditContent && isAbstractKeywordsEditorOpen && abstractKeywordsEditorInitial && (
-  <AbstractAndKeywordsEditorOverlay
-    abstract={abstractKeywordsEditorInitial.abstract}
-    keywords={abstractKeywordsEditorInitial.keywords}
-    onCancel={handleAbstractKeywordsOverlayCancel}
-    onSubmit={handleAbstractKeywordsOverlaySubmit}
-    isSubmitting={isAbstractKeywordsSubmitting}
-    externalError={abstractKeywordsEditorError}
-    userPaperId={resolvedUserPaperId ?? undefined}
-    paperId={paperId}
-  />
-)}
+        {/* 悬浮目录 */}
+        <PaperTableOfContents
+          paperContent={displayContent}
+          containerRef={pageContainerRef}
+          onNavigate={handleTOCNavigate}
+        />
 
-{/* 悬浮目录 */}
-<PaperTableOfContents
-  paperContent={displayContent}
-  containerRef={pageContainerRef}
-  onNavigate={handleTOCNavigate}
-/>
-</div>
-</PaperEditPermissionsContext.Provider>
-);
+        {/* 参考文献解析对话框 */}
+        {canEditContent && (
+          <ParseReferencesDialog
+            open={isParseReferencesOpen}
+            onOpenChange={(open) => {
+              if (!open) {
+                closeParseDialog();
+              }
+            }}
+            paperId={paperId}
+            userPaperId={resolvedUserPaperId}
+            isPersonalOwner={isPersonalOwner}
+            onReferencesAdded={handleReferencesAdded}
+          />
+        )}
+      </div>
+    </PaperEditPermissionsContext.Provider>
+  );
 }

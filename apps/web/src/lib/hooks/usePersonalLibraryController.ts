@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 
 import { usePaperService } from '@/lib/services/paper';
 import { isSuccess } from '@/lib/http';
+import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import type {
   Paper,
   PaperListItem,
@@ -39,6 +40,7 @@ const PERSONAL_PARSE_STATUS: ParseStatus = {
 };
 
 function mapUserPaperToListItem(userPaper: UserPaper): PersonalLibraryItem {
+  // 适配新的API返回结构，只从paperData.metadata获取基本信息
   const metadata: PaperMetadata = userPaper.paperData?.metadata ?? {
     title: '未命名论文',
     authors: [],
@@ -75,9 +77,11 @@ function mapUserPaperToListItem(userPaper: UserPaper): PersonalLibraryItem {
       readingStatus: userPaper.readingStatus,
       priority: userPaper.priority,
       customTags: userPaper.customTags ?? [],
-      noteCount: userPaper.noteCount,
+      // noteCount 现在不再在列表API中返回，设为undefined，前端会处理为0
+      noteCount: undefined,
       sourcePaperId: userPaper.sourcePaperId,
-      totalReadingTime: userPaper.totalReadingTime,
+      // 确保 totalReadingTime 有默认值
+      totalReadingTime: userPaper.totalReadingTime ?? 0,
       lastReadTime: userPaper.lastReadTime,
     },
   };
@@ -105,6 +109,7 @@ export function usePersonalLibraryController() {
   const { userPaperService, paperCache } = usePaperService();
   const { addTab, setActiveTab } = useTabStore();
   const router = useRouter();
+  const { confirm, ConfirmDialog } = useConfirmDialog();
 
   const [items, setItems] = useState<PersonalLibraryItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -175,7 +180,17 @@ export function usePersonalLibraryController() {
 
   const handleRemove = useCallback(
     async (userPaperId: string) => {
-      if (!window.confirm('确定要从个人库移除该论文吗？')) return;
+      const confirmed = await confirm({
+        title: '移除论文',
+        description: '确定要从个人库移除该论文吗？',
+        confirmText: '移除',
+        cancelText: '取消',
+        variant: 'destructive',
+        onConfirm: () => Promise.resolve(),
+      });
+      
+      if (!confirmed) return;
+      
       try {
         const result = await userPaperService.deleteUserPaper(userPaperId);
         if (!isSuccess(result)) {
@@ -188,54 +203,80 @@ export function usePersonalLibraryController() {
         toast.error(`移除失败：${message}`);
       }
     },
-    [loadPapers, userPaperService],
+    [loadPapers, userPaperService, confirm],
   );
 
     const handleOpen = useCallback(
-    async (item: PersonalLibraryItem) => {
-      const { personalMeta, paper } = item;
-      const routePaperId = personalMeta.userPaperId;
-      const tabId = `paper:${routePaperId}`;
-      const path = `/paper/${routePaperId}?source=personal-owner`;
-      const viewerSource: ViewerSource = 'personal-owner';
-
-      try {
-        const cachedEntry = paperCache.get(routePaperId);
-        let userPaperDetail: UserPaper | null =
-          cachedEntry && 'paperData' in cachedEntry ? (cachedEntry as UserPaper) : null;
-
-        if (!userPaperDetail) {
-          const res = await userPaperService.getUserPaperDetail(routePaperId);
-          if (!isSuccess(res) || !res.data) {
-            throw new Error(res.bizMessage || res.topMessage || '获取个人论文详情失败');
+      async (item: PersonalLibraryItem) => {
+        const { personalMeta, paper } = item;
+        const routePaperId = personalMeta.userPaperId;
+        const tabId = `paper:${routePaperId}`;
+        const path = `/paper/${routePaperId}?source=personal-owner`;
+        const viewerSource: ViewerSource = 'personal-owner';
+  
+        try {
+          // 如果当前阅读状态不是"reading"，则自动切换为"reading"
+          if (personalMeta.readingStatus !== 'reading') {
+            const updateResult = await userPaperService.updateUserPaper(routePaperId, {
+              readingStatus: 'reading',
+            });
+            
+            if (!isSuccess(updateResult)) {
+              // 静默失败，不影响用户体验
+            } else {
+              // 更新本地状态
+              setItems(prevItems =>
+                prevItems.map(prevItem =>
+                  prevItem.personalMeta.userPaperId === routePaperId
+                    ? {
+                        ...prevItem,
+                        personalMeta: {
+                          ...prevItem.personalMeta,
+                          readingStatus: 'reading',
+                        },
+                      }
+                    : prevItem
+                )
+              );
+            }
           }
-          userPaperDetail = res.data;
-          paperCache.set(routePaperId, userPaperDetail);
+  
+          const cachedEntry = paperCache.get(routePaperId);
+          let userPaperDetail: UserPaper | null =
+            cachedEntry && 'paperData' in cachedEntry ? (cachedEntry as UserPaper) : null;
+  
+          if (!userPaperDetail) {
+            const res = await userPaperService.getUserPaperDetail(routePaperId);
+            if (!isSuccess(res) || !res.data) {
+              throw new Error(res.bizMessage || res.topMessage || '获取个人论文详情失败');
+            }
+            userPaperDetail = res.data;
+            paperCache.set(routePaperId, userPaperDetail);
+          }
+  
+          const normalizedPaper = normalizeUserPaperToPaper(userPaperDetail);
+  
+          addTab({
+            id: tabId,
+            type: 'paper',
+            title: paper.title,
+            path,
+            data: {
+              source: viewerSource,
+              paperId: normalizedPaper.id,
+              userPaperId: personalMeta.userPaperId,
+              initialPaper: normalizedPaper,
+            },
+          });
+          setActiveTab(tabId);
+          router.push(path);
+        } catch (err) {
+          const message = err instanceof Error ? err.message : '网络错误';
+          toast.error(`打开论文失败：${message}`);
         }
-
-        const normalizedPaper = normalizeUserPaperToPaper(userPaperDetail);
-
-        addTab({
-          id: tabId,
-          type: 'paper',
-          title: paper.title,
-          path,
-          data: {
-            source: viewerSource,
-            paperId: normalizedPaper.id,
-            userPaperId: personalMeta.userPaperId,
-            initialPaper: normalizedPaper,
-          },
-        });
-        setActiveTab(tabId);
-        router.push(path);
-      } catch (err) {
-        const message = err instanceof Error ? err.message : '网络错误';
-        toast.error(`打开论文失败：${message}`);
-      }
-    },
-    [addTab, paperCache, router, setActiveTab, userPaperService],
-  );
+      },
+      [addTab, paperCache, router, setActiveTab, userPaperService, setItems],
+    );
 
 
   const personalTags = useMemo(() => {
@@ -278,5 +319,8 @@ export function usePersonalLibraryController() {
     handleRemove,
     handleOpen,
     resetFilters,
+    
+    // 确认对话框组件
+    ConfirmDialog,
   };
 }

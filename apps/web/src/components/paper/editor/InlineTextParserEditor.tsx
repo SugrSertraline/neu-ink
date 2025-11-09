@@ -50,10 +50,7 @@ export default function InlineTextParserEditor({
         setText('');
         setError(null);
         setHasUnsavedChanges(false);
-        // 显示成功消息，包含添加的blocks数量
-        if (result.addedBlocks && result.addedBlocks.length > 0) {
-          console.log(`成功添加了 ${result.addedBlocks.length} 个段落`);
-        }
+        // 成功添加了段落
         onCancel();
       } else {
         setError(result.error || '解析失败，请重试');

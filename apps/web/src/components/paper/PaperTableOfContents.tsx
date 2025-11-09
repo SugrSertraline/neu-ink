@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useMemo, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { ChevronRight, ChevronDown, FileText, BookOpen, List, Quote } from 'lucide-react';
+import { motion, AnimatePresence } from 'framer-motion';
 import type {
   PaperContent,
   Section,
@@ -26,6 +27,10 @@ interface TOCItem {
   icon?: React.ReactNode;
   children?: TOCItem[];
 }
+
+// 动画参数
+const EASE: [number, number, number, number] = [0.22, 1, 0.36, 1];
+const DURATION = 0.28;
 
 // 从InlineContent数组中提取文本内容
 function extractTextFromInlineContent(inlineContent?: InlineContent[]): string {
@@ -57,16 +62,18 @@ function getBlockPreview(block: BlockContent): string {
   switch (block.type) {
     case 'heading':
     case 'paragraph':
-    case 'quote':
+    case 'quote': {
       const text = extractTextFromInlineContent(block.content?.en) ||
                    extractTextFromInlineContent(block.content?.zh) || '';
       return text.length > 30 ? text.substring(0, 30) + '...' : text;
+    }
     case 'math':
-      return block.latex?.substring(0, 20) + (block.latex && block.latex.length > 20 ? '...' : '');
-    case 'figure':
+      return (block.latex ?? '').substring(0, 20) + ((block.latex && block.latex.length > 20) ? '...' : '');
+    case 'figure': {
       const captionText = extractTextFromInlineContent(block.caption?.en) ||
                           extractTextFromInlineContent(block.caption?.zh) || '图';
       return captionText;
+    }
     case 'table':
       return '表格';
     case 'code':
@@ -151,12 +158,10 @@ function traverseSections(
   return items;
 }
 
-export default function PaperTableOfContents({ paperContent, onNavigate,containerRef }: TableOfContentsProps) {
+export default function PaperTableOfContents({ paperContent, onNavigate, containerRef }: TableOfContentsProps) {
   const [isCollapsed, setIsCollapsed] = useState(true);
   const [expandedItems, setExpandedItems] = useState<Set<string>>(new Set());
-  const [tocPosition, setTocPosition] = useState<{
-    left: number;
-  } | null>(null);
+  const [tocPosition, setTocPosition] = useState<{ left: number } | null>(null);
   const [highlightedElement, setHighlightedElement] = useState<string | null>(null);
   
   // 生成目录项
@@ -219,14 +224,11 @@ export default function PaperTableOfContents({ paperContent, onNavigate,containe
   useLayoutEffect(() => {
     const compute = () => {
       if (!containerRef?.current) {
-        // 如果没有传入 ref，使用默认位置
         setTocPosition({ left: 20 });
         return;
       }
 
       const containerRect = containerRef.current.getBoundingClientRect();
-      // 获取内容区域的左边缘（容器左边缘 + 内边距）
-      // 在大屏幕上，容器使用 lg:px-8，即左右各32px内边距
       const computedStyle = getComputedStyle(containerRef.current);
       const paddingLeft = parseFloat(computedStyle.paddingLeft);
       const contentLeft = containerRect.left + paddingLeft;
@@ -235,11 +237,9 @@ export default function PaperTableOfContents({ paperContent, onNavigate,containe
     };
     compute();
 
-    // 监听窗口大小变化
     const handleResize = () => compute();
     window.addEventListener('resize', handleResize, { passive: true });
 
-    // 监听容器变化
     let resizeObserver: ResizeObserver | null = null;
     if (containerRef?.current) {
       resizeObserver = new ResizeObserver(() => compute());
@@ -248,22 +248,16 @@ export default function PaperTableOfContents({ paperContent, onNavigate,containe
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      if (resizeObserver) {
-        resizeObserver.disconnect();
-      }
+      if (resizeObserver) resizeObserver.disconnect();
     };
   }, [containerRef]);
-
 
   // 切换章节展开/折叠状态
   const toggleExpand = (itemId: string) => {
     setExpandedItems(prev => {
       const newSet = new Set(prev);
-      if (newSet.has(itemId)) {
-        newSet.delete(itemId);
-      } else {
-        newSet.add(itemId);
-      }
+      if (newSet.has(itemId)) newSet.delete(itemId);
+      else newSet.add(itemId);
       return newSet;
     });
   };
@@ -273,15 +267,8 @@ export default function PaperTableOfContents({ paperContent, onNavigate,containe
     if (item.type === 'section' && item.children && item.children.length > 0) {
       toggleExpand(item.id);
     }
-    
-    // 设置高亮元素
     setHighlightedElement(item.id);
-    
-    // 3秒后移除高亮
-    setTimeout(() => {
-      setHighlightedElement(null);
-    }, 3000);
-    
+    setTimeout(() => setHighlightedElement(null), 3000);
     onNavigate(item.id);
   };
   
@@ -304,22 +291,19 @@ export default function PaperTableOfContents({ paperContent, onNavigate,containe
           style={{ paddingLeft: `${8 + item.level * 12}px` }}
           onClick={() => handleClick(item)}
         >
-          {isExpandable && (
-            <span className="flex-shrink-0">
+          {isExpandable ? (
+            <span className="shrink-0">
               {isExpanded ? (
                 <ChevronDown className="w-3 h-3" />
               ) : (
                 <ChevronRight className="w-3 h-3" />
               )}
             </span>
+          ) : (
+            <span className="w-3 h-3 flex-shrink-0" />
           )}
-          {!isExpandable && <span className="w-3 h-3 flex-shrink-0" />}
           
-          {item.icon && (
-            <span className="flex-shrink-0">
-              {item.icon}
-            </span>
-          )}
+          {item.icon && <span className="shrink-0">{item.icon}</span>}
           
           <span className="truncate flex-1">
             {item.title}
@@ -334,78 +318,104 @@ export default function PaperTableOfContents({ paperContent, onNavigate,containe
       </div>
     );
   };
+
   if (!tocPosition) return null;
-  // 使用 Portal 将目录挂载到 body，实现悬浮效果
+
+  // 使用 Portal 将目录挂载到 body，实现悬浮效果 + 动画
   return createPortal(
     <>
-      {/* 折叠状态的触发按钮 - 长条风格，紧贴左侧边缘 */}
-      {isCollapsed && (
-        <button
-          onClick={() => setIsCollapsed(false)}
-          className="hidden lg:block fixed z-40 pointer-events-auto bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-l border-t border-b border-gray-200 dark:border-slate-700 shadow-lg hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl transition-all duration-200 py-4 px-1 rounded-r-lg"
-          style={{
-            left: `${tocPosition.left}px`, // 精确对齐到内容区域左边缘
-            top: '50vh',
-            transform: 'translateY(-50%)',
-          }}
-          title="展开目录"
-        >
-          <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
-        </button>
-      )}
+      {/* 折叠状态触发按钮：淡入 + 从左轻微滑入 */}
+      <AnimatePresence initial={false}>
+        {isCollapsed && (
+          <motion.button
+            key="toc-collapsed-trigger"
+            onClick={() => setIsCollapsed(false)}
+            className="hidden lg:block fixed z-40 pointer-events-auto bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border-l border-t border-b border-gray-200 dark:border-slate-700 shadow-lg hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl transition-all duration-200 py-4 px-1 rounded-r-lg"
+            style={{
+              left: `${tocPosition.left}px`,
+              top: '50vh',
+              transform: 'translateY(-50%)',
+            }}
+            title="展开目录"
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -8 }}
+            transition={{ duration: 0.2, ease: EASE }}
+          >
+            <ChevronRight className="w-4 h-4 text-gray-600 dark:text-gray-400" />
+          </motion.button>
+        )}
+      </AnimatePresence>
       
-      {/* 展开状态的目录面板 */}
-      {!isCollapsed && (
-        <div
-          className="hidden lg:block fixed z-40 pointer-events-auto bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border border-gray-200 dark:border-slate-700 rounded-xl shadow-2xl overflow-hidden transition-all duration-300 ease-out"
-          style={{
-            left: `${tocPosition.left}px`, // 精确对齐到内容区域左边缘
-            top: '50vh',
-            transform: 'translateY(-50%)',
-            maxHeight: 'calc(50vh - 60px)', // 缩减为原本的一半
-          }}
-        >
-          <div className="flex items-center justify-start p-3 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-800 dark:to-slate-800/80 border-b border-gray-200 dark:border-slate-700 relative">
-            <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
-              <BookOpen className="w-4 h-4" />
-              目录
-            </h3>
-            {/* 长条风格的关闭按钮，位于右边缘 */}
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                setIsCollapsed(true);
-              }}
-              className="absolute top-1/2 transform -translate-y-1/2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border border-gray-200 dark:border-slate-700 shadow-lg hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl transition-all duration-200 py-3 px-1 rounded-r-lg z-10"
+      {/* 展开状态的目录面板：整体滑入/滑出；关闭按钮在面板右侧“外面” */}
+      <AnimatePresence>
+        {!isCollapsed && (
+          <motion.div
+            key="toc-panel-wrapper"
+            className="hidden lg:block fixed z-40 will-change-transform"
+            style={{
+              left: `${tocPosition.left}px`,
+              top: '35vh',
+              transform: 'translateY(-50%)',
+            }}
+            initial={{ opacity: 0, x: -12 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: -12 }}
+            transition={{ duration: DURATION, ease: EASE }}
+          >
+            {/* 面板主体 */}
+            <div
+              className="pointer-events-auto bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border border-gray-200 dark:border-slate-700 rounded-xl shadow-2xl overflow-hidden transition-all duration-300 ease-out"
               style={{
-                right: '2px', // 调整到组件内部右边缘
+                maxHeight: 'calc(50vh - 60px)', // 半高
+              }}
+            >
+              <div className="flex items-center justify-start p-3 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-800 dark:to-slate-800/80 border-b border-gray-200 dark:border-slate-700 relative">
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
+                  <BookOpen className="w-4 h-4" />
+                  目录
+                </h3>
+              </div>
+              <div
+                className="p-2 overflow-y-auto w-72 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent"
+                style={{
+                  maxHeight: 'calc(50vh - 120px)',
+                }}
+              >
+                {tocItems.length > 0 ? (
+                  <div className="space-y-0.5">
+                    {tocItems.map(item => renderTOCItem(item, highlightedElement))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
+                    暂无目录内容
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {/* 关闭按钮：在目录面板右侧"外侧"，垂直居中 */}
+            <motion.button
+              key="toc-close"
+              onClick={() => setIsCollapsed(true)}
+              className="absolute top-1/2 -translate-y-1/2 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm border border-gray-200 dark:border-slate-700 shadow-lg hover:bg-white dark:hover:bg-slate-800 hover:shadow-xl transition-all duration-200 py-3 px-1 rounded-r-lg"
+              style={{
+                left: '100%',        // 紧贴面板右边缘之外
+                marginLeft: '0px',   // 紧贴右边缘，不留间距
               }}
               title="收起目录"
+              initial={{ opacity: 0, x: 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              exit={{ opacity: 0, x: 8 }}
+              transition={{ duration: 0.2, ease: EASE }}
             >
+              {/* 使用 ChevronRight 旋转 180° 作为"向左收起"的视觉 */}
               <ChevronRight className="w-4 h-4 text-gray-500 dark:text-gray-400 transform rotate-180" />
-            </button>
-          </div>
-          
-          <div
-            className="p-2 overflow-y-auto w-72 scrollbar-thin scrollbar-thumb-gray-300 dark:scrollbar-thumb-slate-600 scrollbar-track-transparent"
-            style={{
-              maxHeight: 'calc(50vh - 120px)', // 缩减为原本的一半
-            }}
-          >
-            {tocItems.length > 0 ? (
-              <div className="space-y-0.5">
-                {tocItems.map(item => renderTOCItem(item, highlightedElement))}
-              </div>
-            ) : (
-              <p className="text-sm text-gray-500 dark:text-gray-400 text-center py-8">
-                暂无目录内容
-              </p>
-            )}
-          </div>
-        </div>
-      )}
+            </motion.button>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </>,
     document.body
   );
 }
-

@@ -16,7 +16,7 @@ const InlineMathSpan = memo(({ latex = '' }: InlineMathSpanProps) => {
         displayMode: false,
       });
     } catch (err) {
-      console.error('Inline math render error:', err);
+      // 静默处理数学公式渲染错误，返回原始LaTeX文本
       return latex;
     }
   }, [latex]);

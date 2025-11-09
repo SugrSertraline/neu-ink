@@ -8,13 +8,13 @@ from datetime import datetime, timedelta
 from typing import Optional, Dict, Any
 from functools import wraps
 from flask import request, jsonify, current_app, g
-from neuink.config.constants import ResponseCode, ResponseMessage, JWT_ALGORITHM, ADMIN_USERNAME
+from neuink.config.constants import ResponseCode, ResponseMessage, JWT_ALGORITHM, ADMIN_USERNAME, JWT_ACCESS_TOKEN_EXPIRES_DEFAULT
 
 # neuink/utils/auth.py
 
 def generate_token(user_data: Dict[str, Any]) -> str:
     secret_key = os.getenv("JWT_SECRET_KEY", "default-secret")
-    expires_in = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES", "3600"))
+    expires_in = int(os.getenv("JWT_ACCESS_TOKEN_EXPIRES", str(JWT_ACCESS_TOKEN_EXPIRES_DEFAULT)))
 
     # 根据你现在的管理员判定逻辑：用户名等于 ADMIN_USERNAME 就是管理员
     is_admin = user_data.get("username") == ADMIN_USERNAME

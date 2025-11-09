@@ -35,8 +35,8 @@ export function useReadingProgress({
     const now = Date.now();
     const readingTime = Math.floor((now - startTimeRef.current) / 1000); // 秒
 
-    // 至少有 5 秒的阅读时间才保存
-    if (readingTime < 5) return;
+    // 至少有 1 秒的阅读时间才保存
+    if (readingTime < 1) return;
 
     isSavingRef.current = true;
 
@@ -49,7 +49,6 @@ export function useReadingProgress({
       // 重置计时器
       startTimeRef.current = now;
     } catch (error) {
-      console.error('保存阅读进度失败:', error);
       // 静默失败，不打断用户阅读
     } finally {
       isSavingRef.current = false;

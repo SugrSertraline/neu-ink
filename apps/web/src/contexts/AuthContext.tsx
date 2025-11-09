@@ -160,7 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!isPublicPath(pathname) && (err?.authReset || needsRedirect(undefined, err?.message))) {
         redirectToLogin();
       } else if (!isPublicPath(pathname)) {
-        console.error('[AuthContext] Failed to refresh user:', error);
+        // 静默失败，不打断用户体验
       }
     }
   }, [clearRedirectGuard, needsRedirect, redirectToLogin, pathname]);
@@ -169,7 +169,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await authService.logout();
     } catch (error) {
-      console.error('[AuthContext] Logout API call failed:', error);
+      // 静默失败，不打断用户体验
     } finally {
       apiClient.clearToken();
       setUser(null);

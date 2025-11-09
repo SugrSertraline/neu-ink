@@ -110,13 +110,13 @@ class UserPaperModel:
                 else:
                     base_query["sourcePaperId"] = None
 
-        projection = {"_id": 0}
+        # 使用列表页面的投影，只返回必要字段，不包括完整的paperData
+        projection = self._list_summary_projection(include_score=bool(search))
         
         # 全文搜索
         if search:
             query = dict(base_query)
             query["$text"] = {"$search": search}
-            projection["score"] = {"$meta": "textScore"}
             
             cursor = (
                 self.collection.find(query, projection)
@@ -208,3 +208,30 @@ class UserPaperModel:
             "fromPublic": from_public,
             "uploaded": uploaded,
         }
+
+    @staticmethod
+    def _list_summary_projection(include_score: bool = False) -> Dict[str, Any]:
+        """
+        列表页面的投影，只返回必要字段，不包括完整的paperData
+        """
+        projection: Dict[str, Any] = {
+            "_id": 0,
+            "id": 1,
+            "userId": 1,
+            "sourcePaperId": 1,
+            "customTags": 1,
+            "readingStatus": 1,
+            "priority": 1,
+            "readingPosition": 1,
+            "totalReadingTime": 1,
+            "lastReadTime": 1,
+            "remarks": 1,
+            "addedAt": 1,
+            "updatedAt": 1,
+            # 只返回paperData中的基本元数据，不包括大字段
+            "paperData.id": 1,
+            "paperData.metadata": 1,
+        }
+        if include_score:
+            projection["score"] = {"$meta": "textScore"}
+        return projection
