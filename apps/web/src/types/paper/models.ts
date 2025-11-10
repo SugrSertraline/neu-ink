@@ -28,10 +28,8 @@ export interface Reference {
 export interface Section {
   id: string;
   number?: string;
-  title: {
-    en?: string;
-    zh?: string;
-  };
+  title: string;
+  titleZh?: string;
   content: BlockContent[];
   subsections?: Section[];
 }
@@ -47,7 +45,6 @@ export interface ParseStatus {
 export interface PaperMetadata {
   title: string;
   titleZh?: string;
-  shortTitle?: string;
   authors: Author[];
   publication?: string;
   year?: number;

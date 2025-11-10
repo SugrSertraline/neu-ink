@@ -37,7 +37,7 @@ interface PaperContentProps {
   contentRef: React.RefObject<HTMLDivElement | null>;
   setSearchResults: (results: string[]) => void;
   setCurrentSearchIndex: (index: number) => void;
-  onSectionTitleUpdate?: (sectionId: string, title: Section['title']) => void;
+  onSectionTitleUpdate?: (sectionId: string, title: { en: string; zh: string }) => void;
   onSectionAddSubsection?: (sectionId: string) => Promise<void> | void;
   onSectionInsert?: (
     targetSectionId: string | null,
@@ -291,7 +291,8 @@ export default function PaperContent({
   }, [canEditContent, clearEditing]);
 
   const handleSectionRenameConfirm = useCallback(
-    (sectionId: string, title: Section['title']) => {
+    (sectionId: string, title: { en: string; zh: string }) => {
+      // 直接使用后端期望的格式
       onSectionTitleUpdate?.(sectionId, title);
       setRenamingSectionId(null);
       setHasUnsavedChanges(false);
@@ -382,8 +383,8 @@ export default function PaperContent({
       parentSectionId: string | null,
     ): React.ReactNode => {
       const sectionNumber = generateSectionNumber(path);
-      const hasZhTitle = !!section.title?.zh?.trim();
-      const normalizedZh = (section.title?.zh ?? '').trim();
+      const hasZhTitle = !!section.titleZh?.trim();
+      const normalizedZh = (section.titleZh ?? '').trim();
       const sectionMargin = Math.max(0, (path.length - 1) * 24);
       const isRenaming = renamingSectionId === section.id;
       const isFirstSibling = index === 0;
@@ -452,11 +453,11 @@ export default function PaperContent({
             >
               <span className="text-blue-600 dark:text-blue-400 font-semibold">{sectionNumber}.</span>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-baseline gap-3">
-                <span>{highlightText(section.title?.en ?? '', searchQuery)}</span>
+                <span>{highlightText(String(section.title ?? ''), searchQuery)}</span>
                 <span className="text-gray-400 mx-1">/</span>
                 {hasZhTitle ? (
                   <span className="rounded px-1 bg-gray-50 text-gray-700">
-                    {highlightText(normalizedZh, searchQuery)}
+                    {highlightText(String(normalizedZh), searchQuery)}
                   </span>
                 ) : (
                   <span className="rounded px-1 bg-gray-100 text-gray-500 italic">
@@ -470,7 +471,7 @@ export default function PaperContent({
           {canEditContent && isRenaming && (
             <SectionTitleInlineEditor
               key={section.id}
-              initialTitle={section.title}
+              initialTitle={section}
               lang={lang}
               onCancel={() => setRenamingSectionId(null)}
               onConfirm={(title) => handleSectionRenameConfirm(section.id, title)}
@@ -567,7 +568,7 @@ export default function PaperContent({
                     </div>
                     <InlineTextParserEditor
                       sectionId={section.id}
-                      sectionTitle={section.title?.en || section.title?.zh || '未命名章节'}
+                      sectionTitle={String(section.title || section.titleZh || '未命名章节')}
                       context="block"
                       blockId={block.id}
                       onParseText={(text) => onParseTextAdd?.(section.id, text, block.id) || Promise.resolve({ success: false })}
@@ -584,7 +585,7 @@ export default function PaperContent({
                   ) : (
                     <BlockContextMenu
                       sectionId={section.id}
-                      sectionTitle={section.title?.en || section.title?.zh || '未命名章节'}
+                      sectionTitle={String(section.title || section.titleZh || '未命名章节')}
                       onEdit={
                         canEditContent
                           ? () => {
@@ -634,7 +635,7 @@ export default function PaperContent({
           {canEditContent && textParseSectionId === section.id && (
             <InlineTextParserEditor
               sectionId={section.id}
-              sectionTitle={section.title?.en || section.title?.zh || '未命名章节'}
+              sectionTitle={String(section.title || section.titleZh || '未命名章节')}
               context="section"
               onParseText={(text) => onParseTextAdd?.(section.id, text) || Promise.resolve({ success: false })}
               onCancel={handleParseTextComplete}
@@ -730,17 +731,17 @@ function SectionTitleInlineEditor({
   onCancel,
   onConfirm,
 }: {
-  initialTitle: Section['title'];
+  initialTitle: Section;
   lang: Lang;
   onCancel: () => void;
-  onConfirm: (title: Section['title']) => void;
+  onConfirm: (title: { en: string; zh: string }) => void;
 }) {
-  const [en, setEn] = useState(initialTitle.en ?? '');
-  const [zh, setZh] = useState(initialTitle.zh ?? '');
+  const [en, setEn] = useState(initialTitle.title ?? '');
+  const [zh, setZh] = useState(initialTitle.titleZh ?? '');
   const { setHasUnsavedChanges } = useEditingState();
 
   useEffect(() => {
-    const hasChanges = en !== (initialTitle.en ?? '') || zh !== (initialTitle.zh ?? '');
+    const hasChanges = en !== (initialTitle.title ?? '') || zh !== (initialTitle.titleZh ?? '');
     setHasUnsavedChanges(hasChanges);
   }, [en, zh, initialTitle, setHasUnsavedChanges]);
 

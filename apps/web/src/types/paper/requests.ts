@@ -169,7 +169,7 @@ export interface AddBlockFromTextToSectionRequest {
 
 // —— 响应：添加block结果（从文本解析）——
 export interface AddBlockFromTextToSectionResult {
-  addedBlocks: import('./content').BlockContent[];
+  loadingBlockId: string;
   sectionId: string;
 }
 

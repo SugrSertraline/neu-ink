@@ -56,7 +56,6 @@ function mapUserPaperToListItem(userPaper: UserPaper): PersonalLibraryItem {
     parseStatus: PERSONAL_PARSE_STATUS,
     title: metadata.title ?? '未命名论文',
     titleZh: metadata.titleZh,
-    shortTitle: metadata.shortTitle,
     authors: metadata.authors ?? [],
     publication: metadata.publication,
     year: metadata.year,
@@ -125,6 +124,7 @@ export function usePersonalLibraryController() {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(20);
+  const [openingPaperId, setOpeningPaperId] = useState<string | null>(null);
 
   useEffect(() => {
     const handler = window.setTimeout(() => setDebouncedSearch(searchTerm), 400);
@@ -210,6 +210,10 @@ export function usePersonalLibraryController() {
       async (item: PersonalLibraryItem) => {
         const { personalMeta, paper } = item;
         const routePaperId = personalMeta.userPaperId;
+        
+        // 设置加载状态
+        setOpeningPaperId(routePaperId);
+        
         const tabId = `paper:${routePaperId}`;
         const path = `/paper/${routePaperId}?source=personal-owner`;
         const viewerSource: ViewerSource = 'personal-owner';
@@ -273,6 +277,9 @@ export function usePersonalLibraryController() {
         } catch (err) {
           const message = err instanceof Error ? err.message : '网络错误';
           toast.error(`打开论文失败：${message}`);
+        } finally {
+          // 清除加载状态
+          setOpeningPaperId(null);
         }
       },
       [addTab, paperCache, router, setActiveTab, userPaperService, setItems],
@@ -319,6 +326,9 @@ export function usePersonalLibraryController() {
     handleRemove,
     handleOpen,
     resetFilters,
+    
+    // 加载状态
+    openingPaperId,
     
     // 确认对话框组件
     ConfirmDialog,

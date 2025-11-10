@@ -9,6 +9,7 @@ import {
   NotebookPen,
   Bookmark,
   Clock,
+  Loader2,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -20,7 +21,7 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { type PaperListItem, type Author } from '@/types/paper';
-import { motion, useMotionValue, useSpring, useTransform } from 'framer-motion';
+import { motion, useMotionValue, useSpring, useTransform, AnimatePresence, Variants } from 'framer-motion';
 
 interface PersonalMeta {
   readingStatus?: 'unread' | 'reading' | 'finished';
@@ -41,6 +42,7 @@ interface PaperCardProps {
   showLoginRequired?: boolean;
   personalMeta?: PersonalMeta;
   isAdmin?: boolean;
+  isLoading?: boolean;
 }
 
 function getStatusColor(status: string): string {
@@ -91,6 +93,13 @@ const PRIORITY_COLOR: Record<'high' | 'medium' | 'low', string> = {
   medium: 'bg-amber-100/60 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 border border-white/30 backdrop-blur-md',
   low: 'bg-slate-100/60 text-slate-700 dark:bg-slate-800/60 dark:text-slate-200 border border-white/20 backdrop-blur-md',
 };
+// 获取安全的标题显示文本
+function getSafeTitle(title: any): string {
+  if (typeof title === 'string') {
+    return title || '未命名论文';
+  }
+  return '未命名论文';
+}
 
 // 格式化阅读时间显示
 function formatReadingTime(seconds: number): string {
@@ -124,6 +133,45 @@ function formatLastReadTime(lastReadTime: string | null): string {
   }
 }
 
+// 定义动画变体
+const containerVariants: Variants = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      when: "beforeChildren",
+      staggerChildren: 0.08
+    }
+  },
+  exit: {
+    opacity: 0,
+    transition: {
+      when: "afterChildren",
+      staggerChildren: 0.03
+    }
+  }
+};
+
+const itemVariants: Variants = {
+  hidden: { opacity: 0, y: 15 },
+  visible: {
+    opacity: 1,
+    y: 0,
+    transition: {
+      type: "spring",
+      stiffness: 350,
+      damping: 25
+    }
+  },
+  exit: {
+    opacity: 0,
+    y: -10,
+    transition: {
+      duration: 0.15
+    }
+  }
+};
+
 export default function PaperCard({
   paper,
   onClick,
@@ -134,6 +182,7 @@ export default function PaperCard({
   showLoginRequired = false,
   personalMeta,
   isAdmin = false,
+  isLoading = false,
 }: PaperCardProps) {
   const authors = paper.authors
     .slice(0, 3)
@@ -173,24 +222,25 @@ export default function PaperCard({
   };
 
   return (
-    <HoverCard delayOpen={200} delayClose={100}>
+    <HoverCard delayOpen={200} delayClose={100} openDelay={300}>
       <HoverCardTrigger asChild>
         <motion.div
-          onClick={onClick}
-          onMouseMove={handleMouseMove}
-          onMouseLeave={handleMouseLeave}
+          onClick={isLoading ? undefined : onClick}
+          onMouseMove={isLoading ? undefined : handleMouseMove}
+          onMouseLeave={isLoading ? undefined : handleMouseLeave}
           data-glow="true"
           style={{
-            rotateX: rx,
-            rotateY: ry,
-            x: tx,
-            y: ty,
+            rotateX: isLoading ? 0 : rx,
+            rotateY: isLoading ? 0 : ry,
+            x: isLoading ? 0 : tx,
+            y: isLoading ? 0 : ty,
             transformPerspective: 900,
           }}
-          whileHover={{ scale: 1.012 }}
+          whileHover={isLoading ? {} : { scale: 1.012 }}
           transition={{ type: 'spring', stiffness: 200, damping: 18 }}
           className={cn(
-            'glass-card group relative cursor-pointer rounded-2xl border border-transparent px-4 py-4 transition-all will-change-transform',
+            'glass-card group relative rounded-2xl border border-transparent px-4 py-4 transition-all will-change-transform',
+            isLoading ? 'cursor-not-allowed opacity-70' : 'cursor-pointer',
             // 背景降白 + 渐变玻璃：更协调的边框与内容层
             'shadow-[0_18px_44px_rgba(15,23,42,0.12)] hover:shadow-[0_28px_68px_rgba(40,65,138,0.22)]',
             'backdrop-blur-2xl bg-white/30 dark:bg-white/5'
@@ -200,7 +250,10 @@ export default function PaperCard({
           <div aria-hidden className="depth-shadow pointer-events-none absolute inset-2 rounded-2xl" />
 
           {/* 左侧活跃装饰条 */}
-          <div className="pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 h-8 w-[3px] rounded-r-full bg-white/70 shadow-[0_0_9px_rgba(255,255,255,0.45)] opacity-0 group-hover:opacity-100 transition-opacity" />
+          <div className={cn(
+            "pointer-events-none absolute left-0 top-1/2 -translate-y-1/2 h-8 w-[3px] rounded-r-full bg-white/70 shadow-[0_0_9px_rgba(255,255,255,0.45)] transition-opacity",
+            isLoading ? "opacity-100" : "opacity-0 group-hover:opacity-100"
+          )} />
 
           {paper.parseStatus && (
             <div className="absolute right-3 top-3 z-10">
@@ -216,7 +269,7 @@ export default function PaperCard({
           )}
 
           <h3 className="relative z-10 mb-2 line-clamp-2 pr-20 text-sm font-semibold text-slate-900 dark:text-slate-100">
-            {paper.title}
+            {getSafeTitle(paper.title)}
           </h3>
 
           <p className="relative z-10 mb-3 line-clamp-1 text-xs text-slate-700/80 dark:text-slate-300/90">
@@ -388,6 +441,16 @@ export default function PaperCard({
               )}
             </div>
           )}
+
+          {/* 加载状态覆盖层 */}
+          {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-white/40 backdrop-blur-sm rounded-2xl z-20">
+              <div className="flex items-center gap-2">
+                <Loader2 className="h-5 w-5 animate-spin text-[#28418A]" />
+                <span className="text-sm text-[#28418A]">打开中...</span>
+              </div>
+            </div>
+          )}
         
           {/* 装饰层：柔和玻璃边框 & 纹理降白 */}
           <div aria-hidden className="pointer-events-none absolute inset-0 rounded-2xl" style={{ zIndex: 0 }} />
@@ -395,144 +458,184 @@ export default function PaperCard({
         </motion.div>
       </HoverCardTrigger>
 
-      <HoverCardContent
-        className={cn(
-          'w-96 rounded-2xl border border-white/20 bg-white/40 backdrop-blur-2xl shadow-[0_14px_30px_rgba(40,65,138,0.16)] dark:bg-white/5 dark:border-white/10'
-        )}
-        side="top"
-        align="start"
-      >
-        <div className="space-y-3">
-          <div>
-            <h4 className="mb-1 font-semibold text-slate-900 dark:text-slate-100">
-              {paper.title}
-            </h4>
-            {paper.titleZh && (
-              <p className="text-sm text-slate-700/80 dark:text-slate-300/90">{paper.titleZh}</p>
+      <AnimatePresence mode="wait">
+        <HoverCardContent
+          asChild
+          side="top"
+          align="start"
+        >
+          <motion.div
+            initial={{ opacity: 0, scale: 0.8, y: 10 }}
+            animate={{
+              opacity: 1,
+              scale: 1,
+              y: 0,
+              transition: {
+                type: "spring",
+                stiffness: 300,
+                damping: 25,
+                mass: 0.8
+              }
+            }}
+            exit={{
+              opacity: 0,
+              scale: 0.9,
+              y: -10,
+              transition: {
+                duration: 0.2,
+                ease: "easeInOut"
+              }
+            }}
+            whileHover={{
+              scale: 1.02,
+              transition: { duration: 0.2 }
+            }}
+            className={cn(
+              'w-96 rounded-2xl border border-white/20 bg-white/40 backdrop-blur-2xl shadow-[0_14px_30px_rgba(40,65,138,0.16)] dark:bg-white/5 dark:border-white/10'
             )}
-          </div>
-
-          {paper.authors.length > 0 && (
-            <div className="flex items-start gap-2">
-              <FileText className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-              <div>
-                <p className="text-xs font-medium text-slate-700 dark:text-slate-300">作者</p>
-                <p className="text-xs text-slate-700/80 dark:text-slate-300/90">
-                  {paper.authors.map((author: Author) => author.name).join(', ')}
-                </p>
-              </div>
-            </div>
-          )}
-
-          {(paper.publication || paper.date) && (
-            <div className="flex items-start gap-2">
-              <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-              <div>
-                <p className="text-xs font-medium text-slate-700 dark:text-slate-300">发表信息</p>
-                {paper.publication && (
-                  <p className="text-xs text-slate-700/80 dark:text-slate-300/90">{paper.publication}</p>
+          >
+            <motion.div 
+              className="space-y-3"
+              variants={containerVariants}
+              initial="hidden"
+              animate="visible"
+              exit="exit"
+            >
+              <motion.div variants={itemVariants}>
+                <h4 className="mb-1 font-semibold text-slate-900 dark:text-slate-100">
+                  {getSafeTitle(paper.title)}
+                </h4>
+                {paper.titleZh && (
+                  <p className="text-sm text-slate-700/80 dark:text-slate-300/90">{paper.titleZh}</p>
                 )}
-                {paper.date && (
-                  <p className="text-xs text-slate-500 dark:text-slate-400">{paper.date}</p>
-                )}
-              </div>
-            </div>
-          )}
+              </motion.div>
 
-          {(paper.sciQuartile || paper.casQuartile || paper.ccfRank || paper.impactFactor) && (
-            <div className="flex items-start gap-2">
-              <Award className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-              <div className="flex-1">
-                <p className="mb-1 text-xs font-medium text-slate-700 dark:text-slate-300">评级信息</p>
-                <div className="flex flex-wrap gap-1.5">
-                  {paper.sciQuartile && paper.sciQuartile !== '无' && (
-                    <Badge variant="secondary" className="text-xs bg-white/30 border border-white/30 backdrop-blur-sm">
-                      SCI {paper.sciQuartile}
-                    </Badge>
-                  )}
-                  {paper.casQuartile && paper.casQuartile !== '无' && (
-                    <Badge variant="secondary" className="text-xs bg-white/30 border border-white/30 backdrop-blur-sm">
-                      CAS {paper.casQuartile}
-                    </Badge>
-                  )}
-                  {paper.ccfRank && paper.ccfRank !== '无' && (
-                    <Badge variant="secondary" className="text-xs bg-white/30 border border-white/30 backdrop-blur-sm">
-                      CCF {paper.ccfRank}
-                    </Badge>
-                  )}
-                  {paper.impactFactor && (
-                    <Badge variant="secondary" className="text-xs bg-white/30 border border-white/30 backdrop-blur-sm">
-                      影响因子: {paper.impactFactor.toFixed(3)}
-                    </Badge>
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+              {paper.authors.length > 0 && (
+                <motion.div className="flex items-start gap-2" variants={itemVariants}>
+                  <FileText className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                  <div>
+                    <p className="text-xs font-medium text-slate-700 dark:text-slate-300">作者</p>
+                    <p className="text-xs text-slate-700/80 dark:text-slate-300/90">
+                      {paper.authors.map((author: Author) => author.name).join(', ')}
+                    </p>
+                  </div>
+                </motion.div>
+              )}
 
-          {personalMeta && (
-            <div className="flex items-start gap-2">
-              <Clock className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-              <div>
-                <p className="text-xs font-medium text-slate-700 dark:text-slate-300">阅读信息</p>
-                {typeof personalMeta.totalReadingTime === 'number' && (
-                  <p className="text-xs text-slate-700/80 dark:text-slate-300/90">
-                    总阅读时长: {personalMeta.totalReadingTime > 0
-                      ? formatReadingTime(personalMeta.totalReadingTime)
-                      : '未阅读'
-                    }
-                  </p>
-                )}
-                <p className="text-xs text-slate-700/80 dark:text-slate-300/90">
-                  最后阅读: {formatLastReadTime(personalMeta.lastReadTime || null)}
-                </p>
-              </div>
-            </div>
-          )}
+              {(paper.publication || paper.date) && (
+                <motion.div className="flex items-start gap-2" variants={itemVariants}>
+                  <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                  <div>
+                    <p className="text-xs font-medium text-slate-700 dark:text-slate-300">发表信息</p>
+                    {paper.publication && (
+                      <p className="text-xs text-slate-700/80 dark:text-slate-300/90">{paper.publication}</p>
+                    )}
+                    {paper.date && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400">{paper.date}</p>
+                    )}
+                  </div>
+                </motion.div>
+              )}
 
-          {isAdmin && (
-            <div className="flex items-start gap-2">
-              <Bookmark className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-              <div>
-                <p className="text-xs font-medium text-slate-700 dark:text-slate-300">展示状态</p>
-                <p className="text-xs text-slate-700/80 dark:text-slate-300/90">
-                  {paper.isPublic ? '当前对所有访客可见' : '仅管理员可见，尚未公开'}
-                </p>
-              </div>
-            </div>
-          )}
+              {(paper.sciQuartile || paper.casQuartile || paper.ccfRank || paper.impactFactor) && (
+                <motion.div className="flex items-start gap-2" variants={itemVariants}>
+                  <Award className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                  <div className="flex-1">
+                    <p className="mb-1 text-xs font-medium text-slate-700 dark:text-slate-300">评级信息</p>
+                    <div className="flex flex-wrap gap-1.5">
+                      {paper.sciQuartile && paper.sciQuartile !== '无' && (
+                        <Badge variant="secondary" className="text-xs bg-white/30 border border-white/30 backdrop-blur-sm">
+                          SCI {paper.sciQuartile}
+                        </Badge>
+                      )}
+                      {paper.casQuartile && paper.casQuartile !== '无' && (
+                        <Badge variant="secondary" className="text-xs bg-white/30 border border-white/30 backdrop-blur-sm">
+                          CAS {paper.casQuartile}
+                        </Badge>
+                      )}
+                      {paper.ccfRank && paper.ccfRank !== '无' && (
+                        <Badge variant="secondary" className="text-xs bg-white/30 border border-white/30 backdrop-blur-sm">
+                          CCF {paper.ccfRank}
+                        </Badge>
+                      )}
+                      {paper.impactFactor && (
+                        <Badge variant="secondary" className="text-xs bg-white/30 border border-white/30 backdrop-blur-sm">
+                          影响因子: {paper.impactFactor.toFixed(3)}
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
+                </motion.div>
+              )}
 
-          {paper.articleType && (
-            <div className="flex items-start gap-2">
-              <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
-              <div>
-                <p className="text-xs font-medium text-slate-700 dark:text-slate-300">文章类型</p>
-                <p className="text-xs text-slate-700/80 dark:text-slate-300/90">{paper.articleType}</p>
-              </div>
-            </div>
-          )}
+              {personalMeta && (
+                <motion.div className="flex items-start gap-2" variants={itemVariants}>
+                  <Clock className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                  <div>
+                    <p className="text-xs font-medium text-slate-700 dark:text-slate-300">阅读信息</p>
+                    {typeof personalMeta.totalReadingTime === 'number' && (
+                      <p className="text-xs text-slate-700/80 dark:text-slate-300/90">
+                        总阅读时长: {personalMeta.totalReadingTime > 0
+                          ? formatReadingTime(personalMeta.totalReadingTime)
+                          : '未阅读'
+                        }
+                      </p>
+                    )}
+                    <p className="text-xs text-slate-700/80 dark:text-slate-300/90">
+                      最后阅读: {formatLastReadTime(personalMeta.lastReadTime || null)}
+                    </p>
+                  </div>
+                </motion.div>
+              )}
 
-          {paper.doi && (
-            <div className="rounded-md bg-white/30 p-2 border border-white/30 backdrop-blur-sm dark:bg-white/10 dark:border-white/10">
-              <p className="text-xs font-medium text-slate-700 dark:text-slate-300">DOI</p>
-              <p className="break-all text-xs text-slate-700/80 dark:text-slate-300/90">{paper.doi}</p>
-            </div>
-          )}
+              {isAdmin && (
+                <motion.div className="flex items-start gap-2" variants={itemVariants}>
+                  <Bookmark className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                  <div>
+                    <p className="text-xs font-medium text-slate-700 dark:text-slate-300">展示状态</p>
+                    <p className="text-xs text-slate-700/80 dark:text-slate-300/90">
+                      {paper.isPublic ? '当前对所有访客可见' : '仅管理员可见，尚未公开'}
+                    </p>
+                  </div>
+                </motion.div>
+              )}
 
-          {paper.tags && paper.tags.length > 0 && (
-            <div>
-              <p className="mb-1 text-xs font-medium text-slate-700 dark:text-slate-300">标签</p>
-              <div className="flex flex-wrap gap-1">
-                {paper.tags.map((tag, index) => (
-                  <Badge key={index} variant="outline" className="text-xs border-white/30 bg-white/30 backdrop-blur-sm">
-                    {tag}
-                  </Badge>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      </HoverCardContent>
+              {paper.articleType && (
+                <motion.div className="flex items-start gap-2" variants={itemVariants}>
+                  <Calendar className="mt-0.5 h-4 w-4 shrink-0 text-slate-500" />
+                  <div>
+                    <p className="text-xs font-medium text-slate-700 dark:text-slate-300">文章类型</p>
+                    <p className="text-xs text-slate-700/80 dark:text-slate-300/90">{paper.articleType}</p>
+                  </div>
+                </motion.div>
+              )}
+
+              {paper.doi && (
+                <motion.div 
+                  className="rounded-md bg-white/30 p-2 border border-white/30 backdrop-blur-sm dark:bg-white/10 dark:border-white/10" 
+                  variants={itemVariants}
+                >
+                  <p className="text-xs font-medium text-slate-700 dark:text-slate-300">DOI</p>
+                  <p className="break-all text-xs text-slate-700/80 dark:text-slate-300/90">{paper.doi}</p>
+                </motion.div>
+              )}
+
+              {paper.tags && paper.tags.length > 0 && (
+                <motion.div variants={itemVariants}>
+                  <p className="mb-1 text-xs font-medium text-slate-700 dark:text-slate-300">标签</p>
+                  <div className="flex flex-wrap gap-1">
+                    {paper.tags.map((tag, index) => (
+                      <Badge key={index} variant="outline" className="text-xs border-white/30 bg-white/30 backdrop-blur-sm">
+                        {tag}
+                      </Badge>
+                    ))}
+                  </div>
+                </motion.div>
+              )}
+            </motion.div>
+          </motion.div>
+        </HoverCardContent>
+      </AnimatePresence>
 
       {/* 样式：降低内容白度、协调边框 + 3D 悬浮与光晕 */}
       <style jsx>{`

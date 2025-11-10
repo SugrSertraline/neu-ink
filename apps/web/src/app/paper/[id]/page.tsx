@@ -968,7 +968,8 @@ export default function PaperPage() {
         const result = await handleAddBlocksFromText(sectionId, text, paperId, resolvedUserPaperId, isPersonalOwner, afterBlockId);
 
         if (result.success) {
-          return { success: true, addedBlocks: result.addedBlocks };
+          // 现在返回的是 loadingBlockId，而不是 addedBlocks
+          return { success: true, loadingBlockId: result.loadingBlockId };
         } else {
           return { success: false, error: result.error };
         }
@@ -1246,7 +1247,7 @@ export default function PaperPage() {
                         <PersonalNotePanel
                           blockId={selectedBlockId!}
                           sectionId={selectedBlockInfo?.section?.id ?? ''}
-                          sectionLabel={selectedBlockInfo?.section?.title?.en ?? 'Section'}
+                          sectionLabel={String(selectedBlockInfo?.section?.title ?? 'Section')}
                           blockLabel={`Block ${(selectedBlockInfo?.blockIndex ?? 0) + 1}`}
                           notes={notesForSelectedBlock}
                           onCreateNote={content => handleCreateNote(selectedBlockId!, content)}
@@ -1299,7 +1300,7 @@ export default function PaperPage() {
                         <PersonalNotePanel
                           blockId={selectedBlockId!}
                           sectionId={selectedBlockInfo?.section?.id ?? ''}
-                          sectionLabel={selectedBlockInfo?.section?.title?.en ?? 'Section'}
+                          sectionLabel={String(selectedBlockInfo?.section?.title ?? 'Section')}
                           blockLabel={`Block ${(selectedBlockInfo?.blockIndex ?? 0) + 1}`}
                           notes={notesForSelectedBlock}
                           onCreateNote={content => handleCreateNote(selectedBlockId!, content)}

@@ -747,7 +747,7 @@ class LLMUtils:
 - ordered-list: 有序列表 (items数组，每项包含content双语言)
 - unordered-list: 无序列表 (items数组，每项包含content双语言)
 - quote: 引用 (需要author字段，content双语言)
-- math: 数学公式 (latex字段保留原始公式，content为解释文字)
+- math: 数学公式 (latex字段保留原始公式，要去掉左右的双$$符号，并且去掉例如\tag的编号，content为解释文字)
 - code: 代码 (language字段，code字段保留原始代码)
 - figure: 图片 (src, alt, caption双语言)
 - table: 表格 (headers, rows, align)

@@ -33,7 +33,6 @@ interface MetadataFormAuthor {
 interface MetadataFormState {
   title: string;
   titleZh: string;
-  shortTitle: string;
   abstractEn: string;
   abstractZh: string;
   keywords: string[];
@@ -92,7 +91,6 @@ const toFormState = (
 ): MetadataFormState => ({
   title: metadata.title ?? '',
   titleZh: metadata.titleZh ?? '',
-  shortTitle: metadata.shortTitle ?? '',
   abstractEn: abstract?.en ?? '',
   abstractZh: abstract?.zh ?? '',
   keywords: keywords ? [...keywords] : [],
@@ -146,7 +144,6 @@ const toMetadata = (form: MetadataFormState): {
     metadata: {
       title: form.title.trim(),
       titleZh: form.titleZh.trim() || undefined,
-      shortTitle: form.shortTitle.trim() || undefined,
       authors: validAuthors,
       publication: form.publication.trim() || undefined,
       year,
@@ -458,26 +455,15 @@ export default function MetadataEditorDialog({
                   />
                 </div>
 
-                {/* 标题（中文） + 短标题 */}
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700">标题（中文）</label>
-                    <input
-                      value={form.titleZh}
-                      onChange={e => handleBasicChange('titleZh', e.target.value)}
-                      className={`mt-1 w-full ${glowInput}`}
-                      placeholder="可选"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700">短标题</label>
-                    <input
-                      value={form.shortTitle}
-                      onChange={e => handleBasicChange('shortTitle', e.target.value)}
-                      className={`mt-1 w-full ${glowInput}`}
-                      placeholder="可选"
-                    />
-                  </div>
+                {/* 标题（中文） */}
+                <div>
+                  <label className="block text-sm font-medium text-slate-700">标题（中文）</label>
+                  <input
+                    value={form.titleZh}
+                    onChange={e => handleBasicChange('titleZh', e.target.value)}
+                    className={`mt-1 w-full ${glowInput}`}
+                    placeholder="可选"
+                  />
                 </div>
 
                 {/* 作者 */}

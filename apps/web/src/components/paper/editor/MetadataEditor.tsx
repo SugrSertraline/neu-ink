@@ -25,7 +25,6 @@ interface MetadataFormAuthor {
 interface MetadataFormState {
   title: string;
   titleZh: string;
-  shortTitle: string;
   abstractEn: string;
   abstractZh: string;
   keywords: string[];
@@ -82,7 +81,6 @@ const emptyAuthor = (): MetadataFormAuthor => ({
 const toFormState = (metadata: PaperMetadata, abstract?: { en?: string; zh?: string }, keywords?: string[]): MetadataFormState => ({
   title: metadata.title ?? '',
   titleZh: metadata.titleZh ?? '',
-  shortTitle: metadata.shortTitle ?? '',
   abstractEn: abstract?.en ?? '',
   abstractZh: abstract?.zh ?? '',
   keywords: keywords ? [...keywords] : [],
@@ -138,7 +136,6 @@ const toMetadata = (form: MetadataFormState): { metadata: PaperMetadata; abstrac
     metadata: {
       title: form.title.trim(),
       titleZh: form.titleZh.trim() || undefined,
-      shortTitle: form.shortTitle.trim() || undefined,
       authors: validAuthors,
       publication: form.publication.trim() || undefined,
       year,
@@ -474,30 +471,16 @@ export default function MetadataEditor({
           />
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-200">
-              标题（中文）
-            </label>
-            <input
-              value={form.titleZh}
-              onChange={event => handleBasicChange('titleZh', event.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"
-              placeholder="可选"
-            />
-          </div>
-
-          <div>
-            <label className="block text-sm font-medium text-gray-700 dark:text-slate-200">
-              短标题
-            </label>
-            <input
-              value={form.shortTitle}
-              onChange={event => handleBasicChange('shortTitle', event.target.value)}
-              className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"
-              placeholder="可选"
-            />
-          </div>
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-slate-200">
+            标题（中文）
+          </label>
+          <input
+            value={form.titleZh}
+            onChange={event => handleBasicChange('titleZh', event.target.value)}
+            className="mt-1 w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-50"
+            placeholder="可选"
+          />
         </div>
 
         <div>

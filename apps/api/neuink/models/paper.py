@@ -29,6 +29,8 @@ class PaperModel:
         self.collection.create_index("metadata.tags")
         self.collection.create_index("metadata.authors.name")
         self.collection.create_index("parseStatus.status")
+        self.collection.create_index("sections.content.type")
+        self.collection.create_index("sections.content.id")
 
     def create(self, paper_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -53,6 +55,15 @@ class PaperModel:
                     "status": "completed",
                     "progress": 100,
                     "message": "论文已就绪",
+                },
+            ),
+            "translationStatus": paper_data.get(
+                "translationStatus",
+                {
+                    "isComplete": False,
+                    "lastChecked": None,
+                    "missingFields": [],
+                    "updatedAt": None,
                 },
             ),
             "createdAt": current_time,
@@ -347,6 +358,7 @@ class PaperModel:
             "references": 1,
             "attachments": 1,
             "parseStatus": 1,
+            "translationStatus": 1,
             "createdAt": 1,
             "updatedAt": 1,
         }
@@ -357,3 +369,144 @@ class PaperModel:
     def find_admin_paper_by_id(self, paper_id: str) -> Optional[Dict[str, Any]]:
         """管理员获取论文详情；不限制公开状态"""
         return self.collection.find_one({"id": paper_id}, self._full_document_projection())
+
+    def find_loading_blocks(self, paper_id: str) -> List[Dict[str, Any]]:
+        """
+        查找论文中的所有加载块
+        
+        Args:
+            paper_id: 论文ID
+            
+        Returns:
+            加载块列表
+        """
+        paper = self.find_by_id(paper_id)
+        if not paper:
+            return []
+        
+        loading_blocks = []
+        sections = paper.get("sections", [])
+        
+        def find_loading_in_section(section):
+            """递归查找章节中的加载块"""
+            content = section.get("content", [])
+            for block in content:
+                if block.get("type") == "loading":
+                    loading_blocks.append({
+                        "blockId": block.get("id"),
+                        "sectionId": section.get("id"),
+                        "status": block.get("status"),
+                        "message": block.get("message"),
+                        "progress": block.get("progress"),
+                        "createdAt": block.get("createdAt"),
+                        "completedAt": block.get("completedAt")
+                    })
+            
+            # 递归检查子章节
+            subsections = section.get("subsections", [])
+            for subsection in subsections:
+                find_loading_in_section(subsection)
+        
+        # 遍历所有章节
+        for section in sections:
+            find_loading_in_section(section)
+        
+        return loading_blocks
+
+    def update_loading_block(self, paper_id: str, block_id: str, update_data: Dict[str, Any]) -> bool:
+        """
+        更新加载块的状态
+        
+        Args:
+            paper_id: 论文ID
+            block_id: 加载块ID
+            update_data: 更新数据
+            
+        Returns:
+            是否更新成功
+        """
+        paper = self.find_by_id(paper_id)
+        if not paper:
+            return False
+        
+        sections = paper.get("sections", [])
+        updated = False
+        
+        def update_in_section(section):
+            nonlocal updated
+            content = section.get("content", [])
+            for i, block in enumerate(content):
+                if block.get("id") == block_id and block.get("type") == "loading":
+                    # 更新加载块数据
+                    for key, value in update_data.items():
+                        block[key] = value
+                    updated = True
+                    return True
+            
+            # 递归检查子章节
+            subsections = section.get("subsections", [])
+            for subsection in subsections:
+                if update_in_section(subsection):
+                    return True
+            return False
+        
+        # 遍历所有章节
+        for section in sections:
+            if update_in_section(section):
+                break
+        
+        if updated:
+            return self.update(paper_id, {"sections": sections})
+        
+        return False
+
+    def remove_loading_block(self, paper_id: str, block_id: str, replacement_blocks: List[Dict[str, Any]] = None) -> bool:
+        """
+        移除加载块，可选择性地替换为其他块
+        
+        Args:
+            paper_id: 论文ID
+            block_id: 加载块ID
+            replacement_blocks: 替换的块列表，如果为None则只删除加载块
+            
+        Returns:
+            是否删除成功
+        """
+        paper = self.find_by_id(paper_id)
+        if not paper:
+            return False
+        
+        sections = paper.get("sections", [])
+        removed = False
+        
+        def remove_in_section(section):
+            nonlocal removed
+            content = section.get("content", [])
+            for i, block in enumerate(content):
+                if block.get("id") == block_id and block.get("type") == "loading":
+                    # 移除加载块
+                    content.pop(i)
+                    
+                    # 如果有替换块，插入到原位置
+                    if replacement_blocks:
+                        content[i:i] = replacement_blocks
+                    
+                    removed = True
+                    return True
+            
+            # 递归检查子章节
+            subsections = section.get("subsections", [])
+            for subsection in subsections:
+                if remove_in_section(subsection):
+                    return True
+            return False
+        
+        # 遍历所有章节
+        for section in sections:
+            if remove_in_section(section):
+                break
+        
+        if removed:
+            return self.update(paper_id, {"sections": sections})
+        
+        return False

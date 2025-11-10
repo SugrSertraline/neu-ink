@@ -120,7 +120,7 @@ function traverseSections(
   sections.forEach((section, index) => {
     const currentPath = [...path, index + 1];
     const sectionNumber = generateSectionNumber(currentPath);
-    const sectionTitle = section.title?.en || section.title?.zh || '未命名章节';
+    const sectionTitle = section.title || section.titleZh || '未命名章节';
     
     // 添加章节项
     const sectionItem: TOCItem = {
@@ -300,7 +300,7 @@ export default function PaperTableOfContents({ paperContent, onNavigate, contain
               )}
             </span>
           ) : (
-            <span className="w-3 h-3 flex-shrink-0" />
+            <span className="w-3 h-3 shrink-0" />
           )}
           
           {item.icon && <span className="shrink-0">{item.icon}</span>}
@@ -370,7 +370,7 @@ export default function PaperTableOfContents({ paperContent, onNavigate, contain
                 maxHeight: 'calc(50vh - 60px)', // 半高
               }}
             >
-              <div className="flex items-center justify-start p-3 bg-gradient-to-r from-gray-50 to-gray-100 dark:from-slate-800 dark:to-slate-800/80 border-b border-gray-200 dark:border-slate-700 relative">
+              <div className="flex items-center justify-start p-3 bg-linear-to-r from-gray-50 to-gray-100 dark:from-slate-800 dark:to-slate-800/80 border-b border-gray-200 dark:border-slate-700 relative">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 flex items-center gap-2">
                   <BookOpen className="w-4 h-4" />
                   目录

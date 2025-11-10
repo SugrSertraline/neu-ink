@@ -445,13 +445,13 @@ export default function InlineRenderer({
                 style={style}
                 className="rounded px-1 py-0.5 font-mono"
               >
-                {(node as any).content}
+                {String((node as any).content || '')}
               </code>
             );
           }
           return (
             <span key={key} style={style}>
-              {highlightText((node as any).content)}
+              {highlightText(String((node as any).content || ''))}
             </span>
           );
         }
@@ -459,12 +459,12 @@ export default function InlineRenderer({
         case 'link': {
           const children = (node as any).children?.map((ch: InlineContent, i: number) =>
             renderNode(ch, `${key}-c${i}`)
-          );
+          ) || [];
           return (
             <a
               key={key}
-              href={(node as any).url}
-              title={(node as any).title}
+              href={String((node as any).url || '')}
+              title={String((node as any).title || '')}
               className="text-blue-600 dark:text-blue-400 hover:underline"
               target="_blank"
               rel="noopener noreferrer"
@@ -475,7 +475,7 @@ export default function InlineRenderer({
         }
 
         case 'inline-math':
-          return <InlineMathSpan key={key} latex={(node as any).latex} />;
+          return <InlineMathSpan key={key} latex={String((node as any).latex || '')} />;
 
         case 'citation': {
           const n = node as any;
@@ -489,7 +489,7 @@ export default function InlineRenderer({
 
           const label =
             n.displayText && n.displayText.trim().length > 0
-              ? n.displayText
+              ? String(n.displayText)
               : nums.length
                 ? `[${nums.join(', ')}]`
                 : '[?]';
@@ -515,7 +515,7 @@ export default function InlineRenderer({
 
         case 'figure-ref': {
           const n = node as any;
-          const label = n.displayText || 'Fig.';
+          const label = String(n.displayText || 'Fig.');
           return (
             <button
               key={key}
@@ -536,7 +536,7 @@ export default function InlineRenderer({
 
         case 'table-ref': {
           const n = node as any;
-          const label = n.displayText || 'Table';
+          const label = String(n.displayText || 'Table');
           return (
             <button
               key={key}
@@ -557,7 +557,7 @@ export default function InlineRenderer({
 
         case 'section-ref': {
           const n = node as any;
-          const label = n.displayText || 'Section';
+          const label = String(n.displayText || 'Section');
           return (
             <button
               key={key}
@@ -578,7 +578,7 @@ export default function InlineRenderer({
 
         case 'equation-ref': {
           const n = node as any;
-          const label = n.displayText || 'Eq.';
+          const label = String(n.displayText || 'Eq.');
           return (
             <button
               key={key}
@@ -599,7 +599,7 @@ export default function InlineRenderer({
 
         case 'footnote': {
           const n = node as any;
-          const label = n.displayText || n.id;
+          const label = String(n.displayText || n.id || '');
           return (
             <button
               key={key}

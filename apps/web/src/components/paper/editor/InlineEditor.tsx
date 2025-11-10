@@ -223,7 +223,7 @@ export default function InlineEditor({
           id: section.id,
           type: 'section',
           displayText: `${section.number ? `${section.number} ` : ''}${
-            section.title.en ?? section.title.zh ?? section.id
+            section.title ?? section.id
           }`,
           number: section.number,
           data: section,

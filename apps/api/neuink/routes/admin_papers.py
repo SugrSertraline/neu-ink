@@ -157,7 +157,8 @@ def add_section(paper_id):
     请求体示例:
     {
         "sectionData": {
-            "title": {"en": "New Section", "zh": "新章节"},
+            "title": "New Section",
+            "titleZh": "新章节",
             "content": []
         },
         "parentSectionId": "section_123",  // 可选：父章节ID
@@ -398,7 +399,8 @@ def update_section(paper_id, section_id):
     
     请求体示例:
     {
-        "title": {"en": "Updated Section", "zh": "更新的章节"},
+        "title": "Updated Section",
+        "titleZh": "更新的章节",
         "content": [
             {
                 "id": "block_123",
@@ -585,6 +587,186 @@ def parse_references(paper_id):
             
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>/translation/check-and-complete", methods=["POST"])
+@login_required
+@admin_required
+def check_and_complete_translation(paper_id):
+    """
+    管理员检查论文的翻译完整性并补全缺失的翻译
+    
+    该接口会：
+    1. 检查论文各个字段的zh和en翻译是否完整
+    2. 对于缺失的翻译，使用LLM自动翻译补全
+    3. 更新论文数据和翻译状态
+    """
+    try:
+        service = get_paper_service()
+        result = service.check_and_complete_translation(paper_id)
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>/translation/status", methods=["GET"])
+@login_required
+@admin_required
+def get_translation_status(paper_id):
+    """
+    管理员获取论文的翻译状态
+    
+    返回翻译状态信息，包括：
+    - isComplete: 翻译是否完整
+    - lastChecked: 最后检查时间
+    - missingFields: 缺失的翻译字段列表
+    - updatedAt: 最后更新时间
+    """
+    try:
+        service = get_paper_service()
+        result = service.get_translation_status(paper_id)
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/migrate-title-format", methods=["POST"])
+@login_required
+@admin_required
+def migrate_title_format():
+    """
+    管理员迁移论文的标题格式，从旧的 {en: "...", zh: "..."} 格式转换为新的 title 和 titleZh 格式
+    
+    请求体示例:
+    {
+        "paperId": "paper_123"  // 可选：指定论文ID，不传则迁移所有论文
+    }
+    """
+    try:
+        data = request.get_json()
+        paper_id = data.get("paperId") if data else None
+        
+        service = get_paper_service()
+        result = service.migrate_title_format(paper_id)
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/migrate-abstract-format", methods=["POST"])
+@login_required
+@admin_required
+def migrate_abstract_format():
+    """
+    管理员迁移论文的摘要格式，确保使用字符串而不是数组
+    
+    请求体示例:
+    {
+        "paperId": "paper_123"  // 可选：指定论文ID，不传则迁移所有论文
+    }
+    """
+    try:
+        data = request.get_json()
+        paper_id = data.get("paperId") if data else None
+        
+        service = get_paper_service()
+        result = service.migrate_abstract_format(paper_id)
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/migrate-translation-status", methods=["POST"])
+@login_required
+@admin_required
+def migrate_translation_status():
+    """
+    管理员为论文添加或更新translationStatus字段
+    
+    请求体示例:
+    {
+        "paperId": "paper_123"  // 可选：指定论文ID，不传则迁移所有论文
+    }
+    """
+    try:
+        data = request.get_json()
+        paper_id = data.get("paperId") if data else None
+        
+        service = get_paper_service()
+        result = service.migrate_paper_translation_status(paper_id)
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>/sections/<section_id>/blocks/<block_id>/parsing-status", methods=["GET"])
+@login_required
+@admin_required
+def check_block_parsing_status(paper_id, section_id, block_id):
+    """
+    检查指定block的解析状态
+    
+    返回数据示例:
+    {
+        "status": "completed",  // "parsing", "completed", "failed"
+        "progress": 100,        // 0-100
+        "message": "解析完成",
+        "blocks": [...]         // 如果解析完成，返回解析后的blocks
+    }
+    """
+    try:
+        # 使用paperService检查解析状态
+        service = get_paper_service()
+        result = service.check_loading_block_status(
+            paper_id=paper_id,
+            section_id=section_id,
+            block_id=block_id,
+            user_id=g.current_user["user_id"],
+            is_admin=True
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            # 如果解析完成，清除缓存
+            if result["data"].get("status") == "completed":
+                service.clear_loading_block_cache(paper_id)
+            
+            return success_response(result["data"], result["message"])
+        
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+        
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+        return internal_error_response(f"检查解析状态失败: {exc}")
+
 
 @bp.route("/<paper_id>/sections/<section_id>/blocks/<block_id>", methods=["DELETE"])
 @login_required

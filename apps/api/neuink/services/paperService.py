@@ -8,6 +8,7 @@ from typing import Dict, Any, Optional, Tuple, List
 from ..models.paper import PaperModel
 from ..config.constants import BusinessCode
 from ..utils.llm_utils import get_llm_utils
+from ..utils.common import get_current_time
 
 
 class PaperService:
@@ -60,6 +61,10 @@ class PaperService:
                 return self._wrap_failure(
                     BusinessCode.PAPER_NOT_FOUND, "论文不存在或不可访问"
                 )
+            
+            # 自动检查并补全翻译
+            paper = self._auto_check_and_complete_translation(paper)
+            
             return self._wrap_success("获取论文成功", paper)
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"获取论文失败: {exc}")
@@ -122,6 +127,10 @@ class PaperService:
         paper = self.paper_model.find_admin_paper_by_id(paper_id)
         if not paper:
             return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+        
+        # 自动检查并补全翻译
+        paper = self._auto_check_and_complete_translation(paper)
+        
         return self._wrap_success("获取论文成功", paper)
 
     def create_paper(self, paper_data: Dict[str, Any], creator_id: str) -> Dict[str, Any]:
@@ -152,16 +161,41 @@ class PaperService:
             metadata = parsed_data.get("metadata", {})
             if not metadata.get("title"):
                 return self._wrap_error("解析结果中缺少标题信息，请尝试使用手动输入或重新格式化文本。")
+            
+            # 确保标题使用新的结构（title 和 titleZh）
+            if "title" in metadata and isinstance(metadata["title"], dict):
+                # 如果是旧格式 {en: "...", zh: "..."}，转换为新格式
+                title_obj = metadata["title"]
+                if "en" in title_obj:
+                    metadata["title"] = title_obj["en"]
+                if "zh" in title_obj:
+                    metadata["titleZh"] = title_obj["zh"]
 
             # 构建论文数据，只包含 metadata、abstract 和 keywords
+            # 确保 abstract 使用字符串格式
+            abstract_data = parsed_data.get("abstract", {})
+            if isinstance(abstract_data, dict):
+                abstract = {
+                    "en": str(abstract_data.get("en", "")),
+                    "zh": str(abstract_data.get("zh", ""))
+                }
+            else:
+                abstract = {"en": str(abstract_data), "zh": ""}
+            
             paper_data = {
                 "isPublic": is_public,
                 "metadata": metadata,
-                "abstract": parsed_data.get("abstract", {}),
+                "abstract": abstract,
                 "keywords": parsed_data.get("keywords", []),
                 "sections": [],  # 空的章节列表
                 "references": [],  # 空的参考文献列表
                 "attachments": {},  # 空的附件
+                "translationStatus": {
+                    "isComplete": False,
+                    "lastChecked": None,
+                    "missingFields": [],
+                    "updatedAt": get_current_time().isoformat()
+                },
                 "parseStatus": {
                     "status": "partial",
                     "progress": 30,
@@ -190,16 +224,40 @@ class PaperService:
             # 验证必填字段
             if not metadata or not metadata.get("title"):
                 return self._wrap_error("元数据不完整，标题不能为空")
+            
+            # 确保标题使用新的结构（title 和 titleZh）
+            if "title" in metadata and isinstance(metadata["title"], dict):
+                # 如果是旧格式 {en: "...", zh: "..."}，转换为新格式
+                title_obj = metadata["title"]
+                if "en" in title_obj:
+                    metadata["title"] = title_obj["en"]
+                if "zh" in title_obj:
+                    metadata["titleZh"] = title_obj["zh"]
 
-            # 构建论文数据
+            # 构建论文数据，确保 abstract 使用字符串格式
+            abstract_data = metadata.get("abstract", "")
+            if isinstance(abstract_data, dict):
+                abstract = {
+                    "en": str(abstract_data.get("en", "")),
+                    "zh": str(abstract_data.get("zh", ""))
+                }
+            else:
+                abstract = {"en": str(abstract_data), "zh": ""}
+            
             paper_data = {
                 "isPublic": is_public,
                 "metadata": metadata,
-                "abstract": metadata.get("abstract", ""),
+                "abstract": abstract,
                 "keywords": metadata.get("keywords", []),
                 "sections": [],  # 空的章节列表
                 "references": [],  # 空的参考文献列表
                 "attachments": {},  # 空的附件
+                "translationStatus": {
+                    "isComplete": False,
+                    "lastChecked": None,
+                    "missingFields": [],
+                    "updatedAt": get_current_time().isoformat()
+                },
                 "parseStatus": {
                     "status": "partial",
                     "progress": 20,
@@ -211,6 +269,40 @@ class PaperService:
             return self.create_paper(paper_data, creator_id)
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"从元数据创建论文失败: {exc}")
+
+    def _auto_check_and_complete_translation(self, paper: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        自动检查并补全论文的翻译
+        此方法在用户查看论文时自动调用，对用户透明
+        
+        Args:
+            paper: 论文数据
+            
+        Returns:
+            更新后的论文数据
+        """
+        try:
+            # 检查并补全翻译
+            updated_paper, _ = self._check_and_translate_paper(paper, get_llm_utils())
+            
+            if updated_paper and "id" in paper:
+                # 更新论文到数据库
+                update_data = {
+                    "metadata": updated_paper.get("metadata", {}),
+                    "abstract": updated_paper.get("abstract", {}),
+                    "sections": updated_paper.get("sections", [])
+                }
+                self.paper_model.update(paper["id"], update_data)
+                # 重新获取最新数据
+                updated_paper = self.paper_model.find_by_id(paper["id"])
+                return updated_paper
+            
+            return paper
+            
+        except Exception as e:
+            # 翻译过程中出错不影响论文的正常访问，只记录日志
+            print(f"自动翻译检查失败: {e}")
+            return paper
 
     def get_paper_by_id(
         self,
@@ -224,6 +316,9 @@ class PaperService:
 
         if not paper["isPublic"] and not is_admin and user_id and paper["createdBy"] != user_id:
             return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权访问此论文")
+
+        # 自动检查并补全翻译
+        paper = self._auto_check_and_complete_translation(paper)
 
         return self._wrap_success("获取论文成功", paper)
 
@@ -453,13 +548,26 @@ class PaperService:
             # 获取当前sections
             sections = paper.get("sections", [])
             
-            # 确保新章节有必要的字段
-            new_section = {
-                "id": section_data.get("id"),
-                "title": section_data.get("title", {"en": "Untitled Section", "zh": "未命名章节"}),
-                "content": section_data.get("content", []),
-                "subsections": section_data.get("subsections", [])
-            }
+            # 确保新章节有必要的字段（使用新的 title 和 titleZh 结构）
+            title_data = section_data.get("title", {})
+            if isinstance(title_data, dict) and "en" in title_data:
+                # 新格式：{en: "...", zh: "..."}
+                new_section = {
+                    "id": section_data.get("id"),
+                    "title": title_data.get("en", "Untitled Section"),
+                    "titleZh": title_data.get("zh", "未命名章节"),
+                    "content": section_data.get("content", []),
+                    "subsections": section_data.get("subsections", [])
+                }
+            else:
+                # 兼容旧格式或直接字符串
+                new_section = {
+                    "id": section_data.get("id"),
+                    "title": title_data if title_data else "Untitled Section",
+                    "titleZh": section_data.get("titleZh", "未命名章节"),
+                    "content": section_data.get("content", []),
+                    "subsections": section_data.get("subsections", [])
+                }
             
             # 如果没有提供ID，生成一个
             if not new_section["id"]:
@@ -543,7 +651,17 @@ class PaperService:
 
             # 更新section数据
             for key, value in update_data.items():
-                if key in ["title", "content", "subsections"]:
+                if key == "title":
+                    # 处理title字段，兼容新旧格式
+                    if isinstance(value, dict) and "en" in value:
+                        # 新格式：{en: "...", zh: "..."}
+                        target_section["title"] = value.get("en", "")
+                        if "zh" in value and value.get("zh"):
+                            target_section["titleZh"] = value.get("zh")
+                    else:
+                        # 旧格式：直接字符串
+                        target_section["title"] = value
+                elif key in ["content", "subsections"]:
                     target_section[key] = value
 
             # 重新更新sections结构
@@ -962,31 +1080,21 @@ class PaperService:
             if target_section is None:
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
 
-            # 获取section上下文信息
-            section_context = f"Section标题: {target_section.get('title', '未知')}"
-            if target_section.get('content'):
-                section_context += f", Section内容: {target_section['content'][:200]}..."
+            # 创建加载块
+            loading_block_id = f"loading_{int(time.time())}_{hash(text) % 10000}"
+            loading_block = {
+                "id": loading_block_id,
+                "type": "loading",
+                "status": "pending",
+                "message": "准备解析文本...",
+                "progress": 0,
+                "originalText": text,
+                "sectionId": section_id,
+                "afterBlockId": after_block_id,
+                "createdAt": get_current_time().isoformat()
+            }
 
-            # 使用LLM解析文本为blocks
-            try:
-                llm_utils = get_llm_utils()
-                new_blocks = llm_utils.parse_text_to_blocks(text, section_context)
-            except Exception as llm_exc:
-                # 捕获LLM解析异常并返回明确的错误信息
-                error_msg = str(llm_exc)
-                if "GLM_API_KEY" in error_msg:
-                    return self._wrap_error("LLM服务未正确配置：缺少有效的API密钥。请联系管理员配置GLM_API_KEY。")
-                elif "timeout" in error_msg.lower() or "超时" in error_msg:
-                    return self._wrap_error("文本解析超时：文本内容可能过多或服务器响应较慢，请减少文本量或稍后重试。")
-                elif "network" in error_msg.lower() or "网络" in error_msg:
-                    return self._wrap_error("网络连接错误：无法连接到LLM服务，请检查网络连接后重试。")
-                else:
-                    return self._wrap_error(f"文本解析失败：{error_msg}")
-
-            if not new_blocks:
-                return self._wrap_error("文本解析失败，无法生成有效的blocks。请检查文本内容是否合适。")
-
-            # 将新blocks添加到section中
+            # 将加载块添加到section中
             if "content" not in target_section:
                 target_section["content"] = []
             
@@ -1000,19 +1108,23 @@ class PaperService:
                         insert_index = i + 1  # 插入到指定block后面
                         break
             
-            # 插入新blocks - 使用切片插入所有blocks
-            current_blocks[insert_index:insert_index] = new_blocks
+            # 插入加载块
+            current_blocks.insert(insert_index, loading_block)
             target_section["content"] = current_blocks
             sections[section_index] = target_section
 
-            # 更新论文
+            # 更新论文，添加加载块
             update_data = {"sections": sections}
             if self.paper_model.update(paper_id, update_data):
+                # 启动异步解析任务
+                self._start_async_text_parsing(paper_id, loading_block_id, section_id, text, after_block_id)
+                
                 return self._wrap_success(
-                    f"成功向section添加了{len(new_blocks)}个blocks",
+                    "文本解析任务已启动",
                     {
-                        "addedBlocks": new_blocks,
-                        "sectionId": section_id
+                        "loadingBlockId": loading_block_id,
+                        "sectionId": section_id,
+                        "status": "pending"
                     }
                 )
             else:
@@ -1023,6 +1135,302 @@ class PaperService:
             import traceback
             error_details = f"从文本添加block到section失败: {exc}\n详细错误: {traceback.format_exc()}"
             return self._wrap_error(error_details)
+
+    def _start_async_text_parsing(
+        self,
+        paper_id: str,
+        loading_block_id: str,
+        section_id: str,
+        text: str,
+        after_block_id: Optional[str] = None,
+    ) -> None:
+        """
+        启动异步文本解析任务
+        
+        Args:
+            paper_id: 论文ID
+            loading_block_id: 加载块ID
+            section_id: 章节ID
+            text: 要解析的文本
+            after_block_id: 在指定block后插入
+        """
+        import threading
+        
+        def parse_text_task():
+            try:
+                # 更新状态为处理中
+                self.paper_model.update_loading_block(paper_id, loading_block_id, {
+                    "status": "processing",
+                    "message": "正在解析文本内容...",
+                    "progress": 10
+                })
+                
+                # 获取论文和section信息
+                paper = self.paper_model.find_by_id(paper_id)
+                if not paper:
+                    self.paper_model.update_loading_block(paper_id, loading_block_id, {
+                        "status": "failed",
+                        "message": "找不到论文信息",
+                        "completedAt": get_current_time().isoformat()
+                    })
+                    return
+                
+                sections = paper.get("sections", [])
+                target_section = None
+                section_index = -1
+                
+                for i, section in enumerate(sections):
+                    if section.get("id") == section_id:
+                        target_section = section
+                        section_index = i
+                        break
+                
+                if not target_section:
+                    self.paper_model.update_loading_block(paper_id, loading_block_id, {
+                        "status": "failed",
+                        "message": "找不到目标章节",
+                        "completedAt": get_current_time().isoformat()
+                    })
+                    return
+                
+                # 更新进度
+                self.paper_model.update_loading_block(paper_id, loading_block_id, {
+                    "progress": 30,
+                    "message": "正在调用AI服务解析文本..."
+                })
+                
+                # 获取section上下文信息
+                section_context = f"Section标题: {target_section.get('title', '未知')}"
+                if target_section.get('content'):
+                    section_context += f", Section内容: {str(target_section['content'])[:200]}..."
+
+                # 使用LLM解析文本为blocks
+                try:
+                    llm_utils = get_llm_utils()
+                    new_blocks = llm_utils.parse_text_to_blocks(text, section_context)
+                except Exception as llm_exc:
+                    # 捕获LLM解析异常
+                    error_msg = str(llm_exc)
+                    if "GLM_API_KEY" in error_msg:
+                        message = "LLM服务未正确配置：缺少有效的API密钥。请联系管理员配置GLM_API_KEY。"
+                    elif "timeout" in error_msg.lower() or "超时" in error_msg:
+                        message = "文本解析超时：文本内容可能过多或服务器响应较慢，请减少文本量或稍后重试。"
+                    elif "network" in error_msg.lower() or "网络" in error_msg:
+                        message = "网络连接错误：无法连接到LLM服务，请检查网络连接后重试。"
+                    else:
+                        message = f"文本解析失败：{error_msg}"
+                    
+                    self.paper_model.update_loading_block(paper_id, loading_block_id, {
+                        "status": "failed",
+                        "message": message,
+                        "completedAt": get_current_time().isoformat()
+                    })
+                    return
+
+                # 更新进度
+                self.paper_model.update_loading_block(paper_id, loading_block_id, {
+                    "progress": 80,
+                    "message": "正在保存解析结果..."
+                })
+
+                if not new_blocks:
+                    self.paper_model.update_loading_block(paper_id, loading_block_id, {
+                        "status": "failed",
+                        "message": "文本解析失败，无法生成有效的blocks。请检查文本内容是否合适。",
+                        "completedAt": get_current_time().isoformat()
+                    })
+                    return
+
+                # 移除加载块并添加解析后的blocks
+                if self.paper_model.remove_loading_block(paper_id, loading_block_id, new_blocks):
+                    self.paper_model.update_loading_block(paper_id, loading_block_id, {
+                        "status": "completed",
+                        "message": f"成功解析并添加了{len(new_blocks)}个段落",
+                        "progress": 100,
+                        "completedAt": get_current_time().isoformat()
+                    })
+                else:
+                    self.paper_model.update_loading_block(paper_id, loading_block_id, {
+                        "status": "failed",
+                        "message": "保存解析结果失败",
+                        "completedAt": get_current_time().isoformat()
+                    })
+                
+            except Exception as exc:
+                # 记录完整的异常信息以便调试
+                import traceback
+                error_details = f"异步文本解析失败: {exc}\n详细错误: {traceback.format_exc()}"
+                self.paper_model.update_loading_block(paper_id, loading_block_id, {
+                    "status": "failed",
+                    "message": f"解析过程中发生错误: {str(exc)}",
+                    "completedAt": get_current_time().isoformat()
+                })
+        
+        # 启动后台线程执行解析任务
+        thread = threading.Thread(target=parse_text_task)
+        thread.daemon = True
+        thread.start()
+
+    def get_loading_block_status(self, paper_id: str, loading_block_id: str) -> Dict[str, Any]:
+        """
+        获取加载块的状态
+        
+        Args:
+            paper_id: 论文ID
+            loading_block_id: 加载块ID
+            
+        Returns:
+            加载块状态信息
+        """
+        try:
+            loading_blocks = self.paper_model.find_loading_blocks(paper_id)
+            
+            for block in loading_blocks:
+                if block.get("blockId") == loading_block_id:
+                    return self._wrap_success("获取加载块状态成功", block)
+            
+            return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "找不到指定的加载块")
+        except Exception as exc:
+            return self._wrap_error(f"获取加载块状态失败: {exc}")
+
+    def get_all_loading_blocks_status(self, paper_id: str) -> Dict[str, Any]:
+        """
+        获取论文中所有加载块的状态
+        
+        Args:
+            paper_id: 论文ID
+            
+        Returns:
+            所有加载块的状态信息
+        """
+        try:
+            loading_blocks = self.paper_model.find_loading_blocks(paper_id)
+            return self._wrap_success("获取所有加载块状态成功", {
+                "loadingBlocks": loading_blocks,
+                "count": len(loading_blocks)
+            })
+        except Exception as exc:
+            return self._wrap_error(f"获取所有加载块状态失败: {exc}")
+
+    # 全局缓存，用于减少数据库查询
+    _loading_block_cache = {}
+    _cache_timestamps = {}
+    _cache_ttl = 5  # 缓存5秒
+    
+    def check_loading_block_status(
+        self,
+        paper_id: str,
+        section_id: str,
+        block_id: str,
+        user_id: str,
+        is_admin: bool = False,
+    ) -> Dict[str, Any]:
+        """
+        检查指定加载块的状态，使用缓存减少数据库查询
+        
+        Args:
+            paper_id: 论文ID
+            section_id: 章节ID
+            block_id: 加载块ID
+            user_id: 用户ID
+            is_admin: 是否为管理员
+            
+        Returns:
+            加载块状态信息
+        """
+        try:
+            # 检查缓存
+            cache_key = f"{paper_id}_{section_id}_{block_id}"
+            current_time = time.time()
+            
+            # 如果缓存存在且未过期，直接返回缓存结果
+            if (cache_key in self._loading_block_cache and
+                cache_key in self._cache_timestamps and
+                current_time - self._cache_timestamps[cache_key] < self._cache_ttl):
+                
+                cached_result = self._loading_block_cache[cache_key]
+                # 如果是已完成或失败状态，可以长期缓存
+                if cached_result.get("status") in ["completed", "failed"]:
+                    return cached_result
+            
+            # 检查论文是否存在及权限
+            paper = self.paper_model.find_by_id(paper_id)
+            if not paper:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+
+            if not is_admin and paper["createdBy"] != user_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权访问此论文")
+
+            # 查找加载块
+            loading_blocks = self.paper_model.find_loading_blocks(paper_id)
+            target_block = None
+            
+            for block in loading_blocks:
+                if block.get("blockId") == block_id and block.get("sectionId") == section_id:
+                    target_block = block
+                    break
+            
+            if not target_block:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "找不到指定的加载块")
+            
+            status = target_block.get("status", "unknown")
+            progress = target_block.get("progress", 0)
+            message = target_block.get("message", "")
+            
+            # 构建结果
+            result = None
+            
+            # 如果解析完成，返回更新后的论文数据
+            if status == "completed":
+                updated_paper = self.paper_model.find_by_id(paper_id)
+                result = self._wrap_success("解析已完成", {
+                    "status": status,
+                    "progress": progress,
+                    "message": message,
+                    "paper": updated_paper
+                })
+            # 如果解析失败，返回错误信息
+            elif status == "failed":
+                result = self._wrap_success("解析失败", {
+                    "status": status,
+                    "progress": progress,
+                    "message": message,
+                    "error": target_block.get("error", "未知错误")
+                })
+            # 如果仍在解析中，返回当前状态
+            else:
+                result = self._wrap_success("解析中", {
+                    "status": status,
+                    "progress": progress,
+                    "message": message
+                })
+            
+            # 更新缓存
+            self._loading_block_cache[cache_key] = result
+            self._cache_timestamps[cache_key] = current_time
+            
+            return result
+            
+        except Exception as exc:
+            return self._wrap_error(f"检查加载块状态失败: {exc}")
+    
+    def clear_loading_block_cache(self, paper_id: str = None) -> None:
+        """
+        清除加载块状态缓存
+        
+        Args:
+            paper_id: 如果提供，只清除指定论文的缓存；否则清除所有缓存
+        """
+        if paper_id:
+            # 清除指定论文的缓存
+            keys_to_remove = [key for key in self._loading_block_cache.keys() if key.startswith(f"{paper_id}_")]
+            for key in keys_to_remove:
+                self._loading_block_cache.pop(key, None)
+                self._cache_timestamps.pop(key, None)
+        else:
+            # 清除所有缓存
+            self._loading_block_cache.clear()
+            self._cache_timestamps.clear()
 
     def _insert_section_into_subsections(
         self,
@@ -1374,8 +1782,769 @@ class PaperService:
         except Exception as exc:
             return self._wrap_error(f"添加参考文献失败: {exc}")
 
-    def _wrap_error(self, message: str) -> Dict[str, Any]:
-        return self._wrap_failure(BusinessCode.UNKNOWN_ERROR, message)
+    def check_and_complete_translation(self, paper_id: str) -> Dict[str, Any]:
+        """
+        检查论文的翻译完整性并补全缺失的翻译
+        
+        Args:
+            paper_id: 论文ID
+            
+        Returns:
+            翻译检查和补全结果
+        """
+        try:
+            # 获取论文数据
+            paper = self.paper_model.find_by_id(paper_id)
+            if not paper:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+            
+            # 初始化LLM工具
+            llm_utils = get_llm_utils()
+            
+            # 检查和补全翻译
+            updated_paper, translation_result = self._check_and_translate_paper(paper, llm_utils)
+            
+            # 更新论文
+            if updated_paper:
+                update_data = {
+                    "metadata": updated_paper.get("metadata", {}),
+                    "abstract": updated_paper.get("abstract", {}),
+                    "sections": updated_paper.get("sections", []),
+                    "translationStatus": updated_paper.get("translationStatus", {})
+                }
+                
+                if self.paper_model.update(paper_id, update_data):
+                    final_paper = self.paper_model.find_by_id(paper_id)
+                    return self._wrap_success(
+                        "翻译检查和补全完成",
+                        {
+                            "paper": final_paper,
+                            "translationResult": translation_result
+                        }
+                    )
+                else:
+                    return self._wrap_error("更新论文失败")
+            else:
+                return self._wrap_error("翻译处理失败")
+                
+        except Exception as exc:
+            return self._wrap_error(f"翻译检查和补全失败: {exc}")
+    
+    def _check_and_translate_paper(self, paper: Dict[str, Any], llm_utils) -> Tuple[Optional[Dict[str, Any]], Dict[str, Any]]:
+        """
+        检查论文的翻译完整性并进行翻译补全
+        
+        Args:
+            paper: 论文数据
+            llm_utils: LLM工具实例
+            
+        Returns:
+            (更新后的论文, 翻译结果)
+        """
+        translation_result = {
+            "isComplete": True,
+            "missingFields": [],
+            "translatedFields": [],
+            "errors": []
+        }
+        
+        # 深拷贝论文数据以避免修改原数据
+        updated_paper = paper.copy()
+        updated_paper["metadata"] = paper.get("metadata", {}).copy()
+        updated_paper["abstract"] = paper.get("abstract", {}).copy() if paper.get("abstract") else {}
+        updated_paper["sections"] = [section.copy() for section in paper.get("sections", [])]
+        
+        # 检查metadata的翻译
+        metadata = updated_paper["metadata"]
+        
+        # 检查标题翻译（使用新的 title 和 titleZh 结构）
+        title = metadata.get("title", "")
+        title_zh = metadata.get("titleZh", "")
+        
+        # 检查是否有英文标题但没有中文标题
+        if title and not title_zh:
+            try:
+                translated_text = llm_utils.simple_text_chat(
+                    f"将以下英文标题翻译为中文，只返回翻译结果：\n\n{title}",
+                    "你是一个专业的学术翻译助手。只返回翻译后的标题字符串，不要添加任何解释、分析或额外内容。"
+                )
+                if translated_text:
+                    metadata["titleZh"] = translated_text.strip()
+                    translation_result["translatedFields"].append({
+                        "field": "metadata.titleZh",
+                        "from": "en",
+                        "to": "zh",
+                        "original": title,
+                        "translated": translated_text.strip()
+                    })
+            except Exception as e:
+                translation_result["errors"].append(f"翻译失败 metadata.titleZh: {str(e)}")
+        
+        # 检查是否有中文标题但没有英文标题
+        elif title_zh and not title:
+            try:
+                translated_text = llm_utils.simple_text_chat(
+                    f"将以下中文标题翻译为英文，只返回翻译结果：\n\n{title_zh}",
+                    "你是一个专业的学术翻译助手。只返回翻译后的标题字符串，不要添加任何解释、分析或额外内容。"
+                )
+                if translated_text:
+                    metadata["title"] = translated_text.strip()
+                    translation_result["translatedFields"].append({
+                        "field": "metadata.title",
+                        "from": "zh",
+                        "to": "en",
+                        "original": title_zh,
+                        "translated": translated_text.strip()
+                    })
+            except Exception as e:
+                translation_result["errors"].append(f"翻译失败 metadata.title: {str(e)}")
+        
+        # 检查作者信息翻译
+        if "authors" in metadata and isinstance(metadata["authors"], list):
+            for i, author in enumerate(metadata["authors"]):
+                if isinstance(author, dict) and "name" in author:
+                    author_name_translation = self._check_and_translate_field(
+                        author.get("name", {}),
+                        f"metadata.authors[{i}].name",
+                        llm_utils,
+                        translation_result
+                    )
+                    if author_name_translation:
+                        author["name"] = author_name_translation
+                    
+                    if "affiliation" in author:
+                        affiliation_translation = self._check_and_translate_field(
+                            author.get("affiliation", {}),
+                            f"metadata.authors[{i}].affiliation",
+                            llm_utils,
+                            translation_result
+                        )
+                        if affiliation_translation:
+                            author["affiliation"] = affiliation_translation
+        
+        # 检查abstract翻译（abstract的en/zh是字符串类型）
+        abstract = updated_paper["abstract"]
+        if abstract and isinstance(abstract, dict):
+            has_en = "en" in abstract and abstract["en"] and str(abstract["en"]).strip()
+            has_zh = "zh" in abstract and abstract["zh"] and str(abstract["zh"]).strip()
+            
+            if has_en and not has_zh:
+                # 英文存在，中文不存在，翻译英文为中文
+                existing_text = str(abstract["en"])
+                try:
+                    translated_text = llm_utils.simple_text_chat(
+                        f"将以下英文摘要翻译为中文，只返回翻译结果：\n\n{existing_text}",
+                        "你是一个专业的学术翻译助手。只返回翻译后的摘要字符串，不要添加任何解释、分析或额外内容。"
+                    )
+                    if translated_text:
+                        updated_paper["abstract"]["zh"] = translated_text.strip()
+                        translation_result["translatedFields"].append({
+                            "field": "abstract",
+                            "from": "en",
+                            "to": "zh",
+                            "original": existing_text,
+                            "translated": translated_text.strip()
+                        })
+                except Exception as e:
+                    translation_result["errors"].append(f"翻译失败 abstract: {str(e)}")
+            
+            elif has_zh and not has_en:
+                # 中文存在，英文不存在，翻译中文为英文
+                existing_text = str(abstract["zh"])
+                try:
+                    translated_text = llm_utils.simple_text_chat(
+                        f"将以下中文摘要翻译为英文，只返回翻译结果：\n\n{existing_text}",
+                        "你是一个专业的学术翻译助手。只返回翻译后的摘要字符串，不要添加任何解释、分析或额外内容。"
+                    )
+                    if translated_text:
+                        updated_paper["abstract"]["en"] = translated_text.strip()
+                        translation_result["translatedFields"].append({
+                            "field": "abstract",
+                            "from": "zh",
+                            "to": "en",
+                            "original": existing_text,
+                            "translated": translated_text.strip()
+                        })
+                except Exception as e:
+                    translation_result["errors"].append(f"翻译失败 abstract: {str(e)}")
+                    
+            elif has_en and has_zh:
+                # 两种语言都存在，检查是否需要补全空值
+                en_text = str(abstract.get("en", "")).strip()
+                zh_text = str(abstract.get("zh", "")).strip()
+                
+                if not en_text and zh_text:
+                    # 英文为空，中文有值，补充英文
+                    try:
+                        translated_text = llm_utils.simple_text_chat(
+                            f"将以下中文摘要翻译为英文，只返回翻译结果：\n\n{zh_text}",
+                            "你是一个专业的学术翻译助手。只返回翻译后的摘要字符串，不要添加任何解释、分析或额外内容。"
+                        )
+                        if translated_text:
+                            updated_paper["abstract"]["en"] = translated_text.strip()
+                    except Exception as e:
+                        translation_result["errors"].append(f"补全英文摘要失败: {str(e)}")
+                        
+                if not zh_text and en_text:
+                    # 中文为空，英文有值，补充中文
+                    try:
+                        translated_text = llm_utils.simple_text_chat(
+                            f"将以下英文摘要翻译为中文，只返回翻译结果：\n\n{en_text}",
+                            "你是一个专业的学术翻译助手。只返回翻译后的摘要字符串，不要添加任何解释、分析或额外内容。"
+                        )
+                        if translated_text:
+                            updated_paper["abstract"]["zh"] = translated_text.strip()
+                    except Exception as e:
+                        translation_result["errors"].append(f"补全中文摘要失败: {str(e)}")
+                        
+        elif isinstance(abstract, str):
+            # 如果是字符串格式，转换为标准格式
+            updated_paper["abstract"] = {"en": abstract, "zh": ""}
+        
+        # 检查sections翻译
+        for section_idx, section in enumerate(updated_paper["sections"]):
+            # 检查section标题翻译（使用新的 title 和 titleZh 结构）
+            section_title = section.get("title", "")
+            section_title_zh = section.get("titleZh", "")
+            
+            # 检查是否有英文标题但没有中文标题
+            if section_title and not section_title_zh:
+                try:
+                    translated_text = llm_utils.simple_text_chat(
+                        f"将以下英文章节标题翻译为中文，只返回翻译结果：\n\n{section_title}",
+                        "你是一个专业的学术翻译助手。只返回翻译后的标题字符串，不要添加任何解释、分析或额外内容。"
+                    )
+                    if translated_text:
+                        section["titleZh"] = translated_text.strip()
+                        translation_result["translatedFields"].append({
+                            "field": f"sections[{section_idx}].titleZh",
+                            "from": "en",
+                            "to": "zh",
+                            "original": section_title,
+                            "translated": translated_text.strip()
+                        })
+                except Exception as e:
+                    translation_result["errors"].append(f"翻译失败 sections[{section_idx}].titleZh: {str(e)}")
+            
+            # 检查是否有中文标题但没有英文标题
+            elif section_title_zh and not section_title:
+                try:
+                    translated_text = llm_utils.simple_text_chat(
+                        f"将以下中文章节标题翻译为英文，只返回翻译结果：\n\n{section_title_zh}",
+                        "你是一个专业的学术翻译助手。只返回翻译后的标题字符串，不要添加任何解释、分析或额外内容。"
+                    )
+                    if translated_text:
+                        section["title"] = translated_text.strip()
+                        translation_result["translatedFields"].append({
+                            "field": f"sections[{section_idx}].title",
+                            "from": "zh",
+                            "to": "en",
+                            "original": section_title_zh,
+                            "translated": translated_text.strip()
+                        })
+                except Exception as e:
+                    translation_result["errors"].append(f"翻译失败 sections[{section_idx}].title: {str(e)}")
+            
+            # 检查section内容翻译
+            if "content" in section and isinstance(section["content"], list):
+                for block_idx, block in enumerate(section["content"]):
+                    if "content" in block and isinstance(block["content"], dict):
+                        block_content_translation = self._check_and_translate_field(
+                            block.get("content", {}),
+                            f"sections[{section_idx}].content[{block_idx}].content",
+                            llm_utils,
+                            translation_result
+                        )
+                        if block_content_translation:
+                            block["content"] = block_content_translation
+                        
+                        # 处理特殊类型的block
+                        if block.get("type") == "figure" and "alt" in block:
+                            figure_alt_translation = self._check_and_translate_field(
+                                block.get("alt", {}),
+                                f"sections[{section_idx}].content[{block_idx}].alt",
+                                llm_utils,
+                                translation_result
+                            )
+                            if figure_alt_translation:
+                                block["alt"] = figure_alt_translation
+                        
+                        # 处理列表项翻译
+                        if block.get("type") in ["ordered-list", "unordered-list"] and "items" in block:
+                            for item_idx, item in enumerate(block.get("items", [])):
+                                if "content" in item:
+                                    item_content_translation = self._check_and_translate_field(
+                                        item.get("content", {}),
+                                        f"sections[{section_idx}].content[{block_idx}].items[{item_idx}].content",
+                                        llm_utils,
+                                        translation_result
+                                    )
+                                    if item_content_translation:
+                                        item["content"] = item_content_translation
+        
+        # 更新翻译状态
+        current_time = get_current_time()
+        updated_paper["translationStatus"] = {
+            "isComplete": len(translation_result["missingFields"]) == 0,
+            "lastChecked": current_time.isoformat(),
+            "missingFields": translation_result["missingFields"],
+            "updatedAt": current_time.isoformat()
+        }
+        
+        return updated_paper, translation_result
+    
+    def _check_and_translate_field(self, field_data: Any, field_path: str, llm_utils, translation_result: Dict[str, Any]) -> Optional[Any]:
+        """
+        检查并翻译单个字段
+        
+        Args:
+            field_data: 字段数据
+            field_path: 字段路径
+            llm_utils: LLM工具实例
+            translation_result: 翻译结果容器
+            
+        Returns:
+            更新后的字段数据
+        """
+        if not isinstance(field_data, dict):
+            # 如果不是字典格式，可能是字符串，直接返回
+            return field_data
+        
+        # 更健壮的字段存在性和内容检查
+        has_en = "en" in field_data and field_data["en"] and (
+            (isinstance(field_data["en"], str) and field_data["en"].strip()) or
+            (isinstance(field_data["en"], list) and field_data["en"])
+        )
+        has_zh = "zh" in field_data and field_data["zh"] and (
+            (isinstance(field_data["zh"], str) and field_data["zh"].strip()) or
+            (isinstance(field_data["zh"], list) and field_data["zh"])
+        )
+        
+        # 如果两种语言都存在且不为空，无需翻译
+        if has_en and has_zh:
+            return field_data
+        
+        # 记录缺失的翻译
+        if not has_en:
+            translation_result["missingFields"].append(f"{field_path}.en")
+        if not has_zh:
+            translation_result["missingFields"].append(f"{field_path}.zh")
+        
+        # 需要翻译的情况
+        source_text = ""
+        source_lang = ""
+        target_lang = ""
+        
+        if has_en and not has_zh:
+            # 有英文，翻译为中文
+            source_text = self._extract_text_from_content(field_data.get("en", []))
+            source_lang = "en"
+            target_lang = "zh"
+        elif has_zh and not has_en:
+            # 有中文，翻译为英文
+            source_text = self._extract_text_from_content(field_data.get("zh", []))
+            source_lang = "zh"
+            target_lang = "en"
+        elif has_en and has_zh:
+            # 两种语言都存在，但可能需要补全空内容
+            en_text = self._extract_text_from_content(field_data.get("en", []))
+            zh_text = self._extract_text_from_content(field_data.get("zh", []))
+            if not en_text.strip() and zh_text.strip():
+                # 英文为空，中文有内容，翻译中文为英文
+                source_text = zh_text
+                source_lang = "zh"
+                target_lang = "en"
+            elif not zh_text.strip() and en_text.strip():
+                # 中文为空，英文有内容，翻译英文为中文
+                source_text = en_text
+                source_lang = "en"
+                target_lang = "zh"
+            else:
+                # 两种语言都有内容，无需翻译
+                return field_data
+        else:
+            # 都没有，返回原数据
+            return field_data
+        
+        if not source_text.strip():
+            return field_data
+        
+        try:
+            # 调用LLM进行翻译
+            translated_text = llm_utils.simple_text_chat(
+                f"将以下{source_lang}文本翻译为{target_lang}，只返回翻译结果：\n\n{source_text}",
+                f"你是一个专业的学术翻译助手。只返回翻译后的文本字符串，不要添加任何解释、分析或额外内容。"
+            )
+            
+            if translated_text:
+                # 更新字段数据
+                updated_field_data = field_data.copy()
+                if source_lang == "en":
+                    # 保持原有的结构（数组或字符串），只补充缺失的语言
+                    if "en" not in updated_field_data:
+                        updated_field_data["en"] = field_data.get("en", [])
+                    if "zh" not in updated_field_data or not updated_field_data["zh"]:
+                        updated_field_data["zh"] = self._create_text_content(translated_text)
+                else:
+                    # 保持原有的结构（数组或字符串），只补充缺失的语言
+                    if "zh" not in updated_field_data:
+                        updated_field_data["zh"] = field_data.get("zh", [])
+                    if "en" not in updated_field_data or not updated_field_data["en"]:
+                        updated_field_data["en"] = self._create_text_content(translated_text)
+                
+                translation_result["translatedFields"].append({
+                    "field": field_path,
+                    "from": source_lang,
+                    "to": target_lang,
+                    "original": source_text,
+                    "translated": translated_text
+                })
+                
+                return updated_field_data
+        except Exception as e:
+            translation_result["errors"].append(f"翻译失败 {field_path}: {str(e)}")
+        
+        return field_data
+    
+    def _extract_text_from_content(self, content: Any) -> str:
+        """
+        从content数组中提取纯文本
+        
+        Args:
+            content: content数据
+            
+        Returns:
+            提取的纯文本
+        """
+        if isinstance(content, list):
+            text_parts = []
+            for item in content:
+                if isinstance(item, dict):
+                    if item.get("type") == "text" and item.get("text"):
+                        text_parts.append(item["text"])
+                    elif item.get("type") == "link" and item.get("label"):
+                        text_parts.append(item["label"])
+                    elif item.get("type") == "link" and item.get("text"):
+                        text_parts.append(item["text"])
+                elif isinstance(item, str):
+                    text_parts.append(item)
+            return " ".join(text_parts)
+        elif isinstance(content, str):
+            return content
+        return ""
+    
+    def _create_text_content(self, text: str) -> List[Dict[str, Any]]:
+        """
+        创建标准的text content数组
+        
+        Args:
+            text: 文本内容
+            
+        Returns:
+            content数组
+        """
+        text = str(text) if text else ""
+        return [{"type": "text", "text": text}] if text else []
+    
+    def get_translation_status(self, paper_id: str) -> Dict[str, Any]:
+        """
+        获取论文的翻译状态
+        
+        Args:
+            paper_id: 论文ID
+            
+        Returns:
+            翻译状态
+        """
+        try:
+            paper = self.paper_model.find_by_id(paper_id)
+            if not paper:
+                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+            
+            translation_status = paper.get("translationStatus", {
+                "isComplete": False,
+                "lastChecked": None,
+                "missingFields": [],
+                "updatedAt": None,
+            })
+            
+            return self._wrap_success("获取翻译状态成功", translation_status)
+        except Exception as exc:
+            return self._wrap_error(f"获取翻译状态失败: {exc}")
+
+    def migrate_paper_translation_status(self, paper_id: str = None) -> Dict[str, Any]:
+        """
+        为论文添加或更新translationStatus字段
+        
+        Args:
+            paper_id: 特定论文ID，如果为None则迁移所有论文
+            
+        Returns:
+            迁移结果
+        """
+        try:
+            if paper_id:
+                # 迁移单个论文
+                paper = self.paper_model.find_by_id(paper_id)
+                if not paper:
+                    return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+                
+                if "translationStatus" not in paper:
+                    translation_status = {
+                        "isComplete": False,
+                        "lastChecked": None,
+                        "missingFields": [],
+                        "updatedAt": get_current_time().isoformat()
+                    }
+                    self.paper_model.update(paper_id, {"translationStatus": translation_status})
+                    return self._wrap_success("论文translationStatus字段添加成功", {"paperId": paper_id})
+                else:
+                    return self._wrap_success("论文已有translationStatus字段", {"paperId": paper_id})
+            else:
+                # 迁移所有论文
+                all_papers = list(self.paper_model.collection.find({}, {"_id": 0, "id": 1, "translationStatus": 1}))
+                migrated_count = 0
+                
+                for paper in all_papers:
+                    paper_id = paper["id"]
+                    if "translationStatus" not in paper:
+                        translation_status = {
+                            "isComplete": False,
+                            "lastChecked": None,
+                            "missingFields": [],
+                            "updatedAt": get_current_time().isoformat()
+                        }
+                        self.paper_model.update(paper_id, {"translationStatus": translation_status})
+                        migrated_count += 1
+                
+                return self._wrap_success(f"成功迁移{migrated_count}篇论文的translationStatus字段", {
+                    "totalPapers": len(all_papers),
+                    "migratedCount": migrated_count
+                })
+        except Exception as exc:
+            return self._wrap_error(f"迁移translationStatus字段失败: {exc}")
+
+    def migrate_abstract_format(self, paper_id: str = None) -> Dict[str, Any]:
+        """
+        迁移论文的abstract格式，确保使用字符串而不是数组
+        
+        Args:
+            paper_id: 特定论文ID，如果为None则迁移所有论文
+            
+        Returns:
+            迁移结果
+        """
+        try:
+            if paper_id:
+                # 迁移单个论文
+                paper = self.paper_model.find_by_id(paper_id)
+                if not paper:
+                    return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+                
+                updated_count = self._migrate_single_abstract_format(paper)
+                return self._wrap_success(f"论文abstract格式迁移完成，更新了{updated_count}个字段", {
+                    "paperId": paper_id,
+                    "updatedFields": updated_count
+                })
+            else:
+                # 迁移所有论文
+                all_papers = list(self.paper_model.collection.find({}, {"_id": 0, "id": 1, "abstract": 1}))
+                total_updated = 0
+                migrated_papers = 0
+                
+                for paper in all_papers:
+                    paper_id = paper["id"]
+                    updated_count = self._migrate_single_abstract_format(paper)
+                    if updated_count > 0:
+                        total_updated += updated_count
+                        migrated_papers += 1
+                
+                return self._wrap_success(f"完成abstract格式迁移", {
+                    "totalPapers": len(all_papers),
+                    "migratedPapers": migrated_papers,
+                    "totalUpdatedFields": total_updated
+                })
+        except Exception as exc:
+            return self._wrap_error(f"迁移abstract格式失败: {exc}")
+
+    def _migrate_single_abstract_format(self, paper: Dict[str, Any]) -> int:
+        """
+        迁移单个论文的abstract格式
+        
+        Args:
+            paper: 论文数据
+            
+        Returns:
+            更新的字段数量
+        """
+        updated_count = 0
+        paper_id = paper.get("id")
+        if not paper_id:
+            return 0
+        
+        # 处理abstract格式
+        abstract = paper.get("abstract")
+        if abstract:
+            if isinstance(abstract, dict) and ("en" in abstract or "zh" in abstract):
+                # 确保en和zh都是字符串格式
+                new_abstract = {}
+                if "en" in abstract:
+                    en_value = abstract["en"]
+                    if isinstance(en_value, list):
+                        new_abstract["en"] = self._extract_text_from_content(en_value)
+                    else:
+                        new_abstract["en"] = str(en_value)
+                    updated_count += 1
+                
+                if "zh" in abstract:
+                    zh_value = abstract["zh"]
+                    if isinstance(zh_value, list):
+                        new_abstract["zh"] = self._extract_text_from_content(zh_value)
+                    else:
+                        new_abstract["zh"] = str(zh_value)
+                    updated_count += 1
+                
+                if new_abstract:
+                    self.paper_model.update(paper_id, {"abstract": new_abstract})
+            
+            elif isinstance(abstract, str):
+                # 如果是纯字符串，转换为标准格式
+                new_abstract = {"en": abstract, "zh": ""}
+                self.paper_model.update(paper_id, {"abstract": new_abstract})
+                updated_count += 1
+        
+        return updated_count
+
+    def migrate_title_format(self, paper_id: str = None) -> Dict[str, Any]:
+        """
+        迁移论文的标题格式，从旧的 {en: "...", zh: "..."} 格式转换为新的 title 和 titleZh 格式
+        
+        Args:
+            paper_id: 特定论文ID，如果为None则迁移所有论文
+            
+        Returns:
+            迁移结果
+        """
+        try:
+            if paper_id:
+                # 迁移单个论文
+                paper = self.paper_model.find_by_id(paper_id)
+                if not paper:
+                    return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+                
+                updated_count = self._migrate_single_title_format(paper)
+                return self._wrap_success(f"论文标题格式迁移完成，更新了{updated_count}个字段", {
+                    "paperId": paper_id,
+                    "updatedFields": updated_count
+                })
+            else:
+                # 迁移所有论文
+                all_papers = list(self.paper_model.collection.find({}, {"_id": 0, "id": 1, "metadata": 1, "sections": 1}))
+                total_updated = 0
+                migrated_papers = 0
+                
+                for paper in all_papers:
+                    paper_id = paper["id"]
+                    updated_count = self._migrate_single_title_format(paper)
+                    if updated_count > 0:
+                        total_updated += updated_count
+                        migrated_papers += 1
+                
+                return self._wrap_success(f"完成标题格式迁移", {
+                    "totalPapers": len(all_papers),
+                    "migratedPapers": migrated_papers,
+                    "totalUpdatedFields": total_updated
+                })
+        except Exception as exc:
+            return self._wrap_error(f"迁移标题格式失败: {exc}")
+
+    def _migrate_single_title_format(self, paper: Dict[str, Any]) -> int:
+        """
+        迁移单个论文的标题格式
+        
+        Args:
+            paper: 论文数据
+            
+        Returns:
+            更新的字段数量
+        """
+        updated_count = 0
+        paper_id = paper.get("id")
+        if not paper_id:
+            return 0
+        
+        # 处理metadata中的标题
+        metadata = paper.get("metadata", {})
+        if "title" in metadata and isinstance(metadata["title"], dict):
+            title_obj = metadata["title"]
+            new_metadata = metadata.copy()
+            
+            # 提取英文和中文标题
+            if "en" in title_obj:
+                new_metadata["title"] = title_obj["en"]
+                updated_count += 1
+            
+            if "zh" in title_obj:
+                new_metadata["titleZh"] = title_obj["zh"]
+                updated_count += 1
+            
+            # 更新metadata
+            if updated_count > 0:
+                self.paper_model.update(paper_id, {"metadata": new_metadata})
+        
+        # 处理sections中的标题
+        sections = paper.get("sections", [])
+        updated_sections = []
+        sections_updated = False
+        
+        for section in sections:
+            updated_section = section.copy()
+            
+            # 检查section标题
+            if "title" in section and isinstance(section["title"], dict):
+                title_obj = section["title"]
+                
+                # 提取英文和中文标题
+                if "en" in title_obj:
+                    updated_section["title"] = title_obj["en"]
+                    updated_count += 1
+                
+                if "zh" in title_obj:
+                    updated_section["titleZh"] = title_obj["zh"]
+                    updated_count += 1
+                
+                sections_updated = True
+            
+            # 递归处理子章节
+            if "subsections" in section and section["subsections"]:
+                updated_subsections = []
+                for subsection in section["subsections"]:
+                    updated_subsection = subsection.copy()
+                    
+                    if "title" in subsection and isinstance(subsection["title"], dict):
+                        title_obj = subsection["title"]
+                        
+                        if "en" in title_obj:
+                            updated_subsection["title"] = title_obj["en"]
+                            updated_count += 1
+                        
+                        if "zh" in title_obj:
+                            updated_subsection["titleZh"] = title_obj["zh"]
+                            updated_count += 1
+                        
+                        sections_updated = True
+                    
+                    updated_subsections.append(updated_subsection)
+                
+                updated_section["subsections"] = updated_subsections
+            
+            updated_sections.append(updated_section)
+        
+        # 更新sections
+        if sections_updated:
+            self.paper_model.update(paper_id, {"sections": updated_sections})
+        
+        return updated_count
 
 
 _paper_service: Optional[PaperService] = None

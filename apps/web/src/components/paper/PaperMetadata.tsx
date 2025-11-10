@@ -45,11 +45,11 @@ const renderAuthors = (authors: PaperMetadata['authors']) => (
               {/* 如果有作者头像 URL，可以在这里使用 AvatarImage */}
               {/* <AvatarImage src={author.avatarUrl} /> */}
               <AvatarFallback className="bg-slate-200 dark:bg-slate-700">
-                {author.name?.charAt(0).toUpperCase()}
+                {String(author.name || '').charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
             <span className="text-sm font-medium text-slate-800 dark:text-slate-200">
-              {author.name}
+              {String(author.name || '')}
             </span>
           </div>
         </HoverCardTrigger>
@@ -60,19 +60,19 @@ const renderAuthors = (authors: PaperMetadata['authors']) => (
                 <AvatarFallback>{author.name?.charAt(0).toUpperCase()}</AvatarFallback>
               </Avatar>
               <div className="space-y-1">
-                <h4 className="text-sm font-semibold">{author.name}</h4>
+                <h4 className="text-sm font-semibold">{String(author.name || '')}</h4>
               </div>
             </div>
             {author.affiliation && (
               <div className="flex items-center pt-2">
                 <Building className="mr-2 h-4 w-4 opacity-70" />
-                <span className="text-xs text-muted-foreground">{author.affiliation}</span>
+                <span className="text-xs text-muted-foreground">{String(author.affiliation || '')}</span>
               </div>
             )}
             {author.email && (
               <div className="flex items-center">
                 <Mail className="mr-2 h-4 w-4 opacity-70" />
-                <span className="text-xs text-muted-foreground">{author.email}</span>
+                <span className="text-xs text-muted-foreground">{String(author.email || '')}</span>
               </div>
             )}
           </div>
@@ -117,11 +117,11 @@ function MetadataDisplay({
     >
       <CardHeader>
         <CardTitle className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
-          {metadata.title}
+          {String(metadata.title || '无标题')}
         </CardTitle>
         {metadata.titleZh && (
           <CardDescription className="pt-1 text-lg text-slate-600 dark:text-slate-400">
-            {metadata.titleZh}
+            {String(metadata.titleZh || '')}
           </CardDescription>
         )}
       </CardHeader>
@@ -142,19 +142,19 @@ function MetadataDisplay({
           {metadata.publication && (
             <div className="flex items-center gap-3">
               <FileText className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400" />
-              <span className="text-sm text-slate-700 dark:text-slate-300">{metadata.publication}</span>
+              <span className="text-sm text-slate-700 dark:text-slate-300">{String(metadata.publication || '')}</span>
             </div>
           )}
           {(metadata.date || metadata.year) && (
             <div className="flex items-center gap-3">
               <Calendar className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400" />
-              <span className="text-sm text-slate-700 dark:text-slate-300">{metadata.date || metadata.year}</span>
+              <span className="text-sm text-slate-700 dark:text-slate-300">{String(metadata.date || metadata.year || '')}</span>
             </div>
           )}
           {metadata.articleType && (
             <div className="flex items-center gap-3">
               <BookOpen className="h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400" />
-              <span className="text-sm capitalize text-slate-700 dark:text-slate-300">{metadata.articleType}</span>
+              <span className="text-sm capitalize text-slate-700 dark:text-slate-300">{String(metadata.articleType || '')}</span>
             </div>
           )}
           {metadata.doi && (
@@ -166,7 +166,7 @@ function MetadataDisplay({
                   rel="noopener noreferrer"
                   className="text-sm text-blue-600 hover:underline dark:text-blue-400"
                 >
-                  {metadata.doi}
+                  {String(metadata.doi || '')}
                 </a>
             </div>
           )}
@@ -178,13 +178,13 @@ function MetadataDisplay({
             <Award className="mt-1 h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400" />
             <div className="flex flex-wrap gap-2">
               {metadata.sciQuartile && metadata.sciQuartile !== '无' && (
-                <Badge variant="outline" className={badgeVariants.sci}>SCI {metadata.sciQuartile}</Badge>
+                <Badge variant="outline" className={badgeVariants.sci}>SCI {String(metadata.sciQuartile || '')}</Badge>
               )}
               {metadata.casQuartile && metadata.casQuartile !== '无' && (
-                <Badge variant="outline" className={badgeVariants.cas}>CAS {metadata.casQuartile}</Badge>
+                <Badge variant="outline" className={badgeVariants.cas}>CAS {String(metadata.casQuartile || '')}</Badge>
               )}
               {metadata.ccfRank && metadata.ccfRank !== '无' && (
-                <Badge variant="outline" className={badgeVariants.ccf}>CCF {metadata.ccfRank}</Badge>
+                <Badge variant="outline" className={badgeVariants.ccf}>CCF {String(metadata.ccfRank || '')}</Badge>
               )}
               {typeof metadata.impactFactor === 'number' && (
                 <Badge variant="outline" className={badgeVariants.if}>IF: {metadata.impactFactor}</Badge>
@@ -198,7 +198,7 @@ function MetadataDisplay({
           <Tag className="mt-1 h-5 w-5 shrink-0 text-slate-500 dark:text-slate-400" />
           <div className="flex flex-wrap gap-2">
             {metadata.tags?.length ? (
-              metadata.tags.map(tag => <Badge key={tag} variant="secondary">{tag}</Badge>)
+              metadata.tags.map(tag => <Badge key={String(tag)} variant="secondary">{String(tag)}</Badge>)
             ) : (
               <span className="text-sm text-slate-500 dark:text-slate-400">暂无标签</span>
             )}

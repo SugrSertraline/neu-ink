@@ -281,6 +281,33 @@ export const userPaperService = {
     );
   },
 
+  /**
+   * 检查指定加载块的解析状态
+   */
+  checkBlockParsingStatus(
+    userPaperId: string,
+    sectionId: string,
+    blockId: string
+  ): Promise<UnifiedResult<{
+    status: 'pending' | 'processing' | 'completed' | 'failed';
+    progress: number;
+    message: string;
+    paper?: Paper;
+    error?: string;
+    addedBlocks?: import('@/types/paper/content').BlockContent[];
+  }>> {
+    return callAndNormalize<{
+      status: 'pending' | 'processing' | 'completed' | 'failed';
+      progress: number;
+      message: string;
+      paper?: Paper;
+      error?: string;
+      addedBlocks?: import('@/types/paper/content').BlockContent[];
+    }>(
+      apiClient.get(`/user/papers/${userPaperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
+    );
+  },
+
 };
 
 // —— 笔记服务 —— //
@@ -581,6 +608,33 @@ export const adminPaperService = {
   ): Promise<UnifiedResult<AddReferencesToPaperResult>> {
     return callAndNormalize<AddReferencesToPaperResult>(
       apiClient.post(`/admin/papers/${paperId}/add-references`, request)
+    );
+  },
+
+  /**
+   * 检查指定加载块的解析状态
+   */
+  checkBlockParsingStatus(
+    paperId: string,
+    sectionId: string,
+    blockId: string
+  ): Promise<UnifiedResult<{
+    status: 'pending' | 'processing' | 'completed' | 'failed';
+    progress: number;
+    message: string;
+    paper?: Paper;
+    error?: string;
+    addedBlocks?: import('@/types/paper/content').BlockContent[];
+  }>> {
+    return callAndNormalize<{
+      status: 'pending' | 'processing' | 'completed' | 'failed';
+      progress: number;
+      message: string;
+      paper?: Paper;
+      error?: string;
+      addedBlocks?: import('@/types/paper/content').BlockContent[];
+    }>(
+      apiClient.get(`/admin/papers/${paperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
     );
   },
 };

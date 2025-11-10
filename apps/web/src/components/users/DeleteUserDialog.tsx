@@ -44,7 +44,7 @@ export default function DeleteUserDialog({
 
         <div className="p-6">
           <div className="flex items-center gap-4 mb-4">
-            <div className="flex-shrink-0">
+            <div className="shrink-0">
               <AlertTriangle className="h-12 w-12 text-red-500" />
             </div>
             <div>

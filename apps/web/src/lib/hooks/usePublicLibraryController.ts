@@ -79,7 +79,6 @@ function transformPaperToListItem(paper: Paper): PaperListItem {
     parseStatus: paper.parseStatus,
     title: metadata.title ?? '未命名论文',
     titleZh: metadata.titleZh,
-    shortTitle: metadata.shortTitle,
     authors: metadata.authors ?? [],
     publication: metadata.publication,
     year: metadata.year,
@@ -139,6 +138,7 @@ export function usePublicLibraryController() {
   const [pageSize, setPageSize] = useState(20);
 
   const [showLoginHint, setShowLoginHint] = useState(false);
+  const [openingPaperId, setOpeningPaperId] = useState<string | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => setDebouncedSearchTerm(searchTerm), 500);
@@ -277,6 +277,9 @@ export function usePublicLibraryController() {
         return;
       }
 
+      // 设置加载状态
+      setOpeningPaperId(paper.id);
+
       const viewerSource: ViewerSource = isAdmin ? 'public-admin' : 'public-guest';
       const tabId = `paper:${paper.id}`;
       const path = `/paper/${paper.id}?source=${viewerSource}`;
@@ -319,6 +322,9 @@ export function usePublicLibraryController() {
       } catch (error) {
         const message = error instanceof Error ? error.message : '网络错误';
         toast.error(`获取论文详情失败：${message}`);
+      } finally {
+        // 清除加载状态
+        setOpeningPaperId(null);
       }
     },
     [
@@ -462,6 +468,9 @@ export function usePublicLibraryController() {
     handleAddToLibrary,
     resetFilters,
     reload: loadPapers,
+    
+    // 加载状态
+    openingPaperId,
     
     // 确认对话框组件
     ConfirmDialog,

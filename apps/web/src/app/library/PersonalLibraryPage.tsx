@@ -1,7 +1,8 @@
 'use client';
 
 import React from 'react';
-import { BookOpen, Tag, SlidersHorizontal, BookmarkMinus, Plus, Clock, Edit } from 'lucide-react';
+import { BookOpen, Tag, SlidersHorizontal, BookmarkMinus, Plus, Clock, Edit, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/button';
@@ -62,7 +63,7 @@ function buildCreatePayload(form: {
   } as any; // 若你有 CreatePaperFromMetadataRequest 类型，可把 any 替换为该类型
 }
 
-export default function PersonalLibraryView() {
+export default function PersonalLibraryPage() {
   const { user } = useAuth();
   const {
     items,
@@ -86,6 +87,7 @@ export default function PersonalLibraryView() {
     reload,
     currentPage,
     setCurrentPage,
+    openingPaperId,
     ConfirmDialog,
   } = usePersonalLibraryController();
 
@@ -235,6 +237,7 @@ export default function PersonalLibraryView() {
                         onClick={() => handleOpen({ paper, personalMeta })}
                         onRemoveFromLibrary={() => handleRemove(personalMeta.userPaperId)}
                         onEdit={() => handleEditPaper({ paper, personalMeta })}
+                        isLoading={openingPaperId === personalMeta.userPaperId}
                       />
                     </div>
                   ))}
@@ -253,7 +256,12 @@ export default function PersonalLibraryView() {
                       <div
                         key={personalMeta.userPaperId}
                         onClick={() => handleOpen({ paper, personalMeta })}
-                        className="group flex cursor-pointer items-center justify-between rounded-2xl border border-white/70 bg-white/78 px-5 py-4 shadow backdrop-blur-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_46px_rgba(28,45,96,0.18)]"
+                        className={cn(
+                          "group flex items-center justify-between rounded-2xl border border-white/70 bg-white/78 px-5 py-4 shadow backdrop-blur-2xl transition-all duration-300",
+                          openingPaperId === personalMeta.userPaperId
+                            ? "cursor-not-allowed opacity-70"
+                            : "cursor-pointer hover:-translate-y-1 hover:shadow-[0_22px_46px_rgba(28,45,96,0.18)]"
+                        )}
                       >
                         <div className="min-w-0 flex-1">
                           <h3 className="truncate text-sm font-medium text-slate-900">{paper.title}</h3>
@@ -300,28 +308,38 @@ export default function PersonalLibraryView() {
                           </div>
                         </div>
                         <div className="ml-4 flex items-center gap-2">
-                          <button
-                            type="button"
-                            onClick={event => {
-                              event.stopPropagation();
-                              handleEditPaper({ paper, personalMeta });
-                            }}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-transparent bg-white/80 text-[#28418A] shadow transition hover:border-[#28418A33] hover:bg-[#28418A12]"
-                            aria-label="编辑论文"
-                          >
-                            <Edit className="h-4 w-4" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={event => {
-                              event.stopPropagation();
-                              handleRemove(personalMeta.userPaperId);
-                            }}
-                            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-transparent bg-white/80 text-[#28418A] shadow transition hover:border-[#28418A33] hover:bg-[#28418A12]"
-                            aria-label="移除收藏"
-                          >
-                            <BookmarkMinus className="h-4 w-4" />
-                          </button>
+                          {openingPaperId === personalMeta.userPaperId && (
+                            <div className="flex items-center gap-2">
+                              <Loader2 className="h-4 w-4 animate-spin text-[#28418A]" />
+                              <span className="text-xs text-[#28418A]">打开中...</span>
+                            </div>
+                          )}
+                          {openingPaperId !== personalMeta.userPaperId && (
+                            <>
+                              <button
+                                type="button"
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  handleEditPaper({ paper, personalMeta });
+                                }}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-transparent bg-white/80 text-[#28418A] shadow transition hover:border-[#28418A33] hover:bg-[#28418A12]"
+                                aria-label="编辑论文"
+                              >
+                                <Edit className="h-4 w-4" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  handleRemove(personalMeta.userPaperId);
+                                }}
+                                className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-transparent bg-white/80 text-[#28418A] shadow transition hover:border-[#28418A33] hover:bg-[#28418A12]"
+                                aria-label="移除收藏"
+                              >
+                                <BookmarkMinus className="h-4 w-4" />
+                              </button>
+                            </>
+                          )}
                         </div>
                       </div>
                     );

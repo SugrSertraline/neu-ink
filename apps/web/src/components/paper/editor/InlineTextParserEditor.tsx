@@ -12,7 +12,7 @@ interface InlineTextParserEditorProps {
   blockId?: string;
   onParseText: (text: string, afterBlockId?: string) => Promise<{
     success: boolean;
-    addedBlocks?: BlockContent[];
+    loadingBlockId?: string;
     error?: string;
   }>;
   onCancel: () => void;
@@ -50,7 +50,8 @@ export default function InlineTextParserEditor({
         setText('');
         setError(null);
         setHasUnsavedChanges(false);
-        // 成功添加了段落
+        // 成功创建了加载块，关闭编辑器
+        // 解析过程将在后台进行，并通过轮询更新UI
         onCancel();
       } else {
         setError(result.error || '解析失败，请重试');

@@ -234,7 +234,7 @@ export function usePaperSections(
 
   const handleSectionTitleUpdate = useCallback(async (
     sectionId: string,
-    nextTitle: Section['title'],
+    nextTitle: { en: string; zh: string },
     paperId: string,
     userPaperId: string | null,
     isPersonalOwner: boolean,
@@ -247,15 +247,13 @@ export function usePaperSections(
       // 先本地更新UI
       updateSectionTree(sectionId, section => ({
         ...section,
-        title: { ...section.title, ...nextTitle },
+        title: nextTitle.en || '',
+        titleZh: nextTitle.zh || '',
       }));
       
       // 然后调用API保存
       const updateData = {
-        title: {
-          en: nextTitle.en || '',
-          zh: nextTitle.zh || ''
-        }
+        title: nextTitle
       };
       
       const result = await handleSectionUpdateWithAPI(
@@ -306,8 +304,8 @@ export function usePaperSections(
       // 调用API保存
       const sectionData = {
         title: {
-          en: newSection.title.en || '',
-          zh: newSection.title.zh || ''
+          en: newSection.title || '',
+          zh: newSection.titleZh || ''
         },
         content: newSection.content || []
       };
@@ -417,8 +415,8 @@ export function usePaperSections(
       // 调用API
       const sectionData = {
         title: {
-          en: newSection.title.en || '',
-          zh: newSection.title.zh || ''
+          en: newSection.title || '',
+          zh: newSection.titleZh || ''
         },
         content: newSection.content || []
       };
@@ -807,44 +805,10 @@ export function usePaperSections(
     isPersonalOwner: boolean,
     afterBlockId?: string
   ) => {
-    // 先添加一个"正在解析"的占位block
-    const placeholderId = `parsing_${Date.now()}`;
-    const placeholderBlock = {
-      id: placeholderId,
-      type: 'paragraph' as const,
-      content: {
-        en: [{ type: 'text' as const, content: '正在解析文本，请稍候...' }],
-        zh: [{ type: 'text' as const, content: '正在解析文本，请稍候...' }]
-      }
-    };
-
-    // 立即更新本地状态，添加占位block
-    updateSectionTree(sectionId, section => {
-      const currentBlocks = section.content || [];
-      let insertIndex = currentBlocks.length; // 默认在末尾
-     
-      if (afterBlockId) {
-        for (let i = 0; i < currentBlocks.length; i++) {
-          if (currentBlocks[i].id === afterBlockId) {
-            insertIndex = i + 1;
-            break;
-          }
-        }
-      }
-     
-      const newBlocks = [...currentBlocks];
-      newBlocks.splice(insertIndex, 0, placeholderBlock);
-     
-      return {
-        ...section,
-        content: newBlocks
-      };
-    });
-
-    // 显示加载状态
-    toast.loading('正在解析文本内容...', { id: 'parse-text' });
-
+    let loadingBlockId: string | null = null;
+    
     try {
+      // 调用API创建加载块并开始异步解析
       if (isPersonalOwner && userPaperId) {
         const { userPaperService } = await import('@/lib/services/paper');
         const result = await userPaperService.addBlockFromTextToSection(userPaperId, sectionId, {
@@ -853,47 +817,107 @@ export function usePaperSections(
         });
         
         if (result.bizCode === 0) {
-          // 移除占位block，添加返回的blocks
-          updateSectionTree(sectionId, section => {
-            const currentBlocks = section.content || [];
-            let insertIndex = currentBlocks.length; // 默认在末尾
-           
-            if (afterBlockId) {
-              for (let i = 0; i < currentBlocks.length; i++) {
-                if (currentBlocks[i].id === afterBlockId) {
-                  insertIndex = i + 1;
-                  break;
-                }
-              }
+          loadingBlockId = result.data.loadingBlockId;
+          
+          // 显示加载状态
+          toast.loading('正在解析文本内容...', { id: 'parse-text' });
+          
+          // 开始轮询检查解析状态，使用指数退避策略
+          let pollInterval = 2000; // 初始2秒
+          const maxPollInterval = 30000; // 最大30秒
+          let pollCount = 0;
+          
+          const checkStatus = async () => {
+            // 只在页面可见时检查状态
+            if (document.hidden) {
+              setTimeout(checkStatus, pollInterval);
+              return;
             }
-           
-            // 移除占位block
-            const filteredBlocks = currentBlocks.filter(block => block.id !== placeholderId);
             
-            // 添加解析后的blocks
-            const newBlocks = [...filteredBlocks];
-            newBlocks.splice(insertIndex, 0, ...result.data.addedBlocks);
-           
-            return {
-              ...section,
-              content: newBlocks
-            };
-          });
+            try {
+              const statusResult = await userPaperService.checkBlockParsingStatus(
+                userPaperId,
+                sectionId,
+                loadingBlockId!
+              );
+              
+              if (statusResult.bizCode === 0) {
+                const { status, addedBlocks, error } = statusResult.data;
+                
+                if (status === 'completed') {
+                  // 解析完成，移除加载块，添加解析后的blocks
+                  updateSectionTree(sectionId, section => {
+                    const currentBlocks = section.content || [];
+                    let insertIndex = currentBlocks.length; // 默认在末尾
+                   
+                    if (afterBlockId) {
+                      for (let i = 0; i < currentBlocks.length; i++) {
+                        if (currentBlocks[i].id === afterBlockId) {
+                          insertIndex = i + 1;
+                          break;
+                        }
+                      }
+                    }
+                   
+                    // 移除加载块
+                    const filteredBlocks = currentBlocks.filter(block => block.id !== loadingBlockId);
+                   
+                    // 添加解析后的blocks
+                    const newBlocks = [...filteredBlocks];
+                    if (addedBlocks && addedBlocks.length > 0) {
+                      newBlocks.splice(insertIndex, 0, ...addedBlocks);
+                    }
+                   
+                    return {
+                      ...section,
+                      content: newBlocks
+                    };
+                  });
+                   
+                  toast.success(`成功解析并添加了${addedBlocks?.length || 0}个段落`, { id: 'parse-text' });
+                  // 解析完成，清除轮询
+                  return;
+                } else if (status === 'failed') {
+                  // 移除加载块
+                  updateSectionTree(sectionId, section => ({
+                    ...section,
+                    content: (section.content || []).filter(block => block.id !== loadingBlockId)
+                  }));
+                   
+                  toast.error('文本解析失败', {
+                    id: 'parse-text',
+                    description: error || '服务器错误'
+                  });
+                  // 解析失败，清除轮询
+                  return;
+                }
+                // 如果状态是 'parsing'，继续轮询
+              }
+            } catch (error) {
+              console.error('检查解析状态时出错:', error);
+              // 不清除轮询，继续尝试
+            }
+            
+            // 增加轮询间隔（指数退避）
+            pollCount++;
+            if (pollCount > 3) { // 前3次保持2秒间隔
+              pollInterval = Math.min(pollInterval * 1.5, maxPollInterval);
+            }
+            
+            // 继续下一次轮询
+            setTimeout(checkStatus, pollInterval);
+          };
           
-          toast.success(`成功解析并添加了${result.data.addedBlocks.length}个段落`, { id: 'parse-text' });
-          return { success: true, addedBlocks: result.data.addedBlocks };
+          // 开始轮询
+          setTimeout(checkStatus, pollInterval);
+          
+          return { success: true, loadingBlockId };
         } else {
-          // 移除占位block
-          updateSectionTree(sectionId, section => ({
-            ...section,
-            content: (section.content || []).filter(block => block.id !== placeholderId)
-          }));
-          
-          toast.error('文本解析失败', {
+          toast.error('创建解析任务失败', {
             id: 'parse-text',
             description: result.bizMessage || '服务器错误'
           });
-          return { success: false, error: result.bizMessage || '添加段落失败' };
+          return { success: false, error: result.bizMessage || '创建解析任务失败' };
         }
       } else {
         const { adminPaperService } = await import('@/lib/services/paper');
@@ -903,58 +927,112 @@ export function usePaperSections(
         });
         
         if (result.bizCode === 0) {
-          // 移除占位block，添加返回的blocks
-          updateSectionTree(sectionId, section => {
-            const currentBlocks = section.content || [];
-            let insertIndex = currentBlocks.length; // 默认在末尾
-           
-            if (afterBlockId) {
-              for (let i = 0; i < currentBlocks.length; i++) {
-                if (currentBlocks[i].id === afterBlockId) {
-                  insertIndex = i + 1;
-                  break;
-                }
-              }
+          loadingBlockId = result.data.loadingBlockId;
+          
+          // 显示加载状态
+          toast.loading('正在解析文本内容...', { id: 'parse-text' });
+          
+          // 开始轮询检查解析状态，使用指数退避策略
+          let pollInterval = 2000; // 初始2秒
+          const maxPollInterval = 30000; // 最大30秒
+          let pollCount = 0;
+          
+          const checkStatus = async () => {
+            // 只在页面可见时检查状态
+            if (document.hidden) {
+              setTimeout(checkStatus, pollInterval);
+              return;
             }
-           
-            // 移除占位block
-            const filteredBlocks = currentBlocks.filter(block => block.id !== placeholderId);
             
-            // 添加解析后的blocks
-            const newBlocks = [...filteredBlocks];
-            newBlocks.splice(insertIndex, 0, ...result.data.addedBlocks);
-           
-            return {
-              ...section,
-              content: newBlocks
-            };
-          });
+            try {
+              const statusResult = await adminPaperService.checkBlockParsingStatus(
+                paperId,
+                sectionId,
+                loadingBlockId!
+              );
+              
+              if (statusResult.bizCode === 0) {
+                const { status, addedBlocks, error } = statusResult.data;
+                
+                if (status === 'completed') {
+                  // 解析完成，移除加载块，添加解析后的blocks
+                  updateSectionTree(sectionId, section => {
+                    const currentBlocks = section.content || [];
+                    let insertIndex = currentBlocks.length; // 默认在末尾
+                   
+                    if (afterBlockId) {
+                      for (let i = 0; i < currentBlocks.length; i++) {
+                        if (currentBlocks[i].id === afterBlockId) {
+                          insertIndex = i + 1;
+                          break;
+                        }
+                      }
+                    }
+                   
+                    // 移除加载块
+                    const filteredBlocks = currentBlocks.filter(block => block.id !== loadingBlockId);
+                   
+                    // 添加解析后的blocks
+                    const newBlocks = [...filteredBlocks];
+                    if (addedBlocks && addedBlocks.length > 0) {
+                      newBlocks.splice(insertIndex, 0, ...addedBlocks);
+                    }
+                   
+                    return {
+                      ...section,
+                      content: newBlocks
+                    };
+                  });
+                   
+                  toast.success(`成功解析并添加了${addedBlocks?.length || 0}个段落`, { id: 'parse-text' });
+                  // 解析完成，清除轮询
+                  return;
+                } else if (status === 'failed') {
+                  // 移除加载块
+                  updateSectionTree(sectionId, section => ({
+                    ...section,
+                    content: (section.content || []).filter(block => block.id !== loadingBlockId)
+                  }));
+                   
+                  toast.error('文本解析失败', {
+                    id: 'parse-text',
+                    description: error || '服务器错误'
+                  });
+                  // 解析失败，清除轮询
+                  return;
+                }
+                // 如果状态是 'parsing'，继续轮询
+              }
+            } catch (error) {
+              console.error('检查解析状态时出错:', error);
+              // 不清除轮询，继续尝试
+            }
+            
+            // 增加轮询间隔（指数退避）
+            pollCount++;
+            if (pollCount > 3) { // 前3次保持2秒间隔
+              pollInterval = Math.min(pollInterval * 1.5, maxPollInterval);
+            }
+            
+            // 继续下一次轮询
+            setTimeout(checkStatus, pollInterval);
+          };
           
-          toast.success(`成功解析并添加了${result.data.addedBlocks.length}个段落`, { id: 'parse-text' });
-          return { success: true, addedBlocks: result.data.addedBlocks };
+          // 开始轮询
+          setTimeout(checkStatus, pollInterval);
+          
+          return { success: true, loadingBlockId };
         } else {
-          // 移除占位block
-          updateSectionTree(sectionId, section => ({
-            ...section,
-            content: (section.content || []).filter(block => block.id !== placeholderId)
-          }));
-          
-          toast.error('文本解析失败', {
+          toast.error('创建解析任务失败', {
             id: 'parse-text',
             description: result.bizMessage || '服务器错误'
           });
-          return { success: false, error: result.bizMessage || '添加段落失败' };
+          return { success: false, error: result.bizMessage || '创建解析任务失败' };
         }
       }
     } catch (error) {
-      // 移除占位block
-      updateSectionTree(sectionId, section => ({
-        ...section,
-        content: (section.content || []).filter(block => block.id !== placeholderId)
-      }));
-      
-      const message = error instanceof Error ? error.message : '添加段落时发生未知错误';
-      toast.error('文本解析失败', {
+      const message = error instanceof Error ? error.message : '创建解析任务时发生未知错误';
+      toast.error('创建解析任务失败', {
         id: 'parse-text',
         description: message
       });

@@ -191,7 +191,20 @@ export interface DividerBlock {
   type: 'divider';
 }
 
-export type BlockContent = 
+export interface LoadingBlock {
+  id: string;
+  type: 'loading';
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  message?: string;
+  progress?: number;
+  originalText?: string;
+  sectionId?: string;
+  afterBlockId?: string;
+  createdAt?: string;
+  completedAt?: string;
+}
+
+export type BlockContent =
   | HeadingBlock
   | ParagraphBlock
   | MathBlock
@@ -201,4 +214,5 @@ export type BlockContent =
   | OrderedListBlock
   | UnorderedListBlock
   | QuoteBlock
-  | DividerBlock;
+  | DividerBlock
+  | LoadingBlock;

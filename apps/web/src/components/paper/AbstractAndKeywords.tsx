@@ -51,6 +51,7 @@ export default function AbstractAndKeywords({
   const { canEditContent } = usePaperEditPermissionsContext();
   const allowEdit = canEditContent && Boolean(onEditRequest);
 
+  // 简洁的摘要检查，直接假设 abstract.en 和 abstract.zh 是字符串
   const hasEN = !!abstract?.en?.trim();
   const hasZH = !!abstract?.zh?.trim();
   const kwList = (keywords ?? []).filter(Boolean).map(String);
@@ -96,7 +97,7 @@ export default function AbstractAndKeywords({
                       <h4 className="text-sm font-semibold text-slate-700">English</h4>
                     </div>
                   )}
-                  <p className="text-sm leading-relaxed text-slate-800">{abstract!.en}</p>
+                  <p className="text-sm leading-relaxed text-slate-800">{String(abstract!.en || '')}</p>
                 </article>
               )}
 
@@ -108,7 +109,7 @@ export default function AbstractAndKeywords({
                     <h4 className="text-sm font-semibold text-slate-700">中文</h4>
                   </div>
                   {hasZH ? (
-                    <p className="text-sm leading-relaxed text-slate-800">{abstract!.zh}</p>
+                    <p className="text-sm leading-relaxed text-slate-800">{String(abstract!.zh || '')}</p>
                   ) : (
                     <p className="text-sm leading-relaxed italic text-slate-500">未配置中文</p>
                   )}

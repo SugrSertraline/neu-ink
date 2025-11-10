@@ -2,7 +2,8 @@
 'use client';
 
 import React from 'react';
-import { Library, Plus } from 'lucide-react';
+import { Library, Plus, Loader2 } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
 import LibraryFilters from '@/components/library/LibraryFilters';
@@ -97,6 +98,7 @@ export default function PublicLibraryPage() {
     handleAddToLibrary,
     resetFilters,
     reload,
+    openingPaperId,
     ConfirmDialog,
   } = usePublicLibraryController();
 
@@ -262,6 +264,7 @@ export default function PublicLibraryPage() {
                         onAddToLibrary={isAuthenticated ? () => handleAddToLibrary(paper.id) : undefined}
                         showLoginRequired={!isAuthenticated}
                         isAdmin={isAdmin}
+                        isLoading={openingPaperId === paper.id}
                       />
                     </div>
                   ))}
@@ -274,7 +277,12 @@ export default function PublicLibraryPage() {
                     <div
                       key={paper.id}
                       onClick={() => openPaper(paper)}
-                      className="group flex cursor-pointer items-center justify-between rounded-2xl border border-white/70 bg-white/78 px-5 py-3 shadow backdrop-blur-2xl transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_22px_46px_rgba(28,45,96,0.18)]"
+                      className={cn(
+                        "group flex items-center justify-between rounded-2xl border border-white/70 bg-white/78 px-5 py-3 shadow backdrop-blur-2xl transition-all duration-300",
+                        openingPaperId === paper.id
+                          ? "cursor-not-allowed opacity-70"
+                          : "cursor-pointer hover:-translate-y-1 hover:shadow-[0_22px_46px_rgba(28,45,96,0.18)]"
+                      )}
                     >
                       <div className="min-w-0 flex-1">
                         <h3 className="truncate text-sm font-medium text-slate-900">{paper.title}</h3>
@@ -284,19 +292,25 @@ export default function PublicLibraryPage() {
                         </p>
                       </div>
                       <div className="ml-4 flex items-center gap-2">
-                        {!isAuthenticated && (
+                        {openingPaperId === paper.id && (
+                          <div className="flex items-center gap-2">
+                            <Loader2 className="h-4 w-4 animate-spin text-[#28418A]" />
+                            <span className="text-xs text-[#28418A]">打开中...</span>
+                          </div>
+                        )}
+                        {!isAuthenticated && openingPaperId !== paper.id && (
                           <span className="opacity-0 transition-opacity duration-200 group-hover:opacity-100">
                             <span className="rounded-full border border-white/70 bg-white/75 px-2 py-[5px] text-[11px] text-[#28418A] shadow backdrop-blur-xl">
                               登录后查看详情
                             </span>
                           </span>
                         )}
-                        {paper.sciQuartile && paper.sciQuartile !== '无' && (
+                        {paper.sciQuartile && paper.sciQuartile !== '无' && openingPaperId !== paper.id && (
                           <span className="rounded-full bg-red-50/85 px-2 py-1 text-xs text-red-600 shadow backdrop-blur-xl">
                             {paper.sciQuartile}
                           </span>
                         )}
-                        {paper.impactFactor && (
+                        {paper.impactFactor && openingPaperId !== paper.id && (
                           <span className="text-xs text-slate-500">IF: {paper.impactFactor}</span>
                         )}
                       </div>

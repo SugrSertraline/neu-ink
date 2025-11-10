@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { BookOpen, Lock, ShieldCheck, User } from 'lucide-react';
 
 import PublicLibraryPage from './PublicLibraryPage';
-import PersonalLibraryView from './PersonalLibraryView';
+import PersonalLibraryPage from './PersonalLibraryPage';
 import { useAuth } from '@/contexts/AuthContext';
 import { useTabStore } from '@/stores/useTabStore';
 import { Button } from '@/components/ui/button';
@@ -136,7 +136,7 @@ export default function LibraryPage() {
         />
       );
     }
-    return <PersonalLibraryView />;
+    return <PersonalLibraryPage />;
   }
 
   return <PublicLibraryPage />;

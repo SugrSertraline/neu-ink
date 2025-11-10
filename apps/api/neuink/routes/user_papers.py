@@ -255,7 +255,8 @@ def add_section_to_user_paper(entry_id):
     请求体示例:
     {
         "sectionData": {
-            "title": {"en": "New Section", "zh": "新章节"},
+            "title": "New Section",
+            "titleZh": "新章节",
             "content": []
         },
         "parentSectionId": "section_123",  // 可选：父章节ID
@@ -735,7 +736,8 @@ def update_section_in_user_paper(entry_id, section_id):
     
     请求体示例:
     {
-        "title": {"en": "Updated Section", "zh": "更新的章节"},
+        "title": "Updated Section",
+        "titleZh": "更新的章节",
         "content": [
             {
                 "id": "block_123",
@@ -1328,3 +1330,91 @@ def test_parse_text():
         return internal_error_response(f"服务器错误: {exc}")
         return internal_error_response(f"测试解析失败: {exc}")
         return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<entry_id>/sections/<section_id>/blocks/<block_id>/parsing-status", methods=["GET"])
+@login_required
+def check_block_parsing_status(entry_id, section_id, block_id):
+    """
+    检查指定block的解析状态
+    
+    返回数据示例:
+    {
+        "status": "completed",  // "parsing", "completed", "failed"
+        "progress": 100,        // 0-100
+        "message": "解析完成",
+        "blocks": [...]         // 如果解析完成，返回解析后的blocks
+    }
+    """
+    try:
+        # 首先获取用户论文详情，确保用户有权限
+        service = get_user_paper_service()
+        user_paper_result = service.get_user_paper_detail(
+            user_paper_id=entry_id,
+            user_id=g.current_user["user_id"]
+        )
+        
+        if user_paper_result["code"] != BusinessCode.SUCCESS:
+            # 区分不同类型的错误
+            if user_paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+                return bad_request_response(user_paper_result["message"])
+            elif user_paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+                from flask import jsonify
+                return jsonify({
+                    "code": ResponseCode.FORBIDDEN,
+                    "message": user_paper_result["message"],
+                    "data": None
+                }), ResponseCode.FORBIDDEN
+            else:
+                return bad_request_response(user_paper_result["message"])
+        
+        user_paper = user_paper_result["data"]
+        paper_data = user_paper.get("paperData")
+        
+        if not paper_data:
+            return bad_request_response("论文数据不存在")
+        
+        # 获取实际的paper_id
+        paper_id = paper_data.get("id")
+        if not paper_id:
+            return bad_request_response("无效的论文ID")
+        
+        # 使用paperService检查解析状态
+        from ..services.paperService import get_paper_service
+        paper_service = get_paper_service()
+        result = paper_service.check_loading_block_status(
+            paper_id=paper_id,
+            section_id=section_id,
+            block_id=block_id,
+            user_id=g.current_user["user_id"],
+            is_admin=False
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            # 如果解析完成，需要更新用户论文库中的paperData
+            if result["data"].get("status") == "completed":
+                updated_paper = result["data"].get("paper")
+                if updated_paper:
+                    update_result = service.update_user_paper(
+                        entry_id=entry_id,
+                        user_id=g.current_user["user_id"],
+                        update_data={"paperData": updated_paper}
+                    )
+                    
+                    if update_result["code"] != BusinessCode.SUCCESS:
+                        return internal_error_response("更新用户论文库失败")
+                    
+                    # 清除缓存，确保下次获取最新数据
+                    paper_service.clear_loading_block_cache(paper_id)
+            
+            return success_response(result["data"], result["message"])
+        
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return bad_request_response(result["message"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return bad_request_response(result["message"])
+        return internal_error_response(result["message"])
+        
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+        return internal_error_response(f"检查解析状态失败: {exc}")

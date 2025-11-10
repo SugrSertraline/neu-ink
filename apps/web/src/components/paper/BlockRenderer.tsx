@@ -83,6 +83,7 @@ const COMPONENT_LABEL_MAP: Record<
   'unordered-list': '列表',
   quote: '引用',
   divider: '分割线',
+  loading: '加载中',
   tableHeader: '表格',
   tableCell: '表格',
   figureCaption: '图片',
@@ -140,13 +141,17 @@ const renderInlineValue = (
           </span>
         );
       }
-      return <span className="rounded px-1 bg-gray-50">{preferred as any}</span>;
+      // 确保不直接渲染对象，而是转换为字符串
+      return <span className="rounded px-1 bg-gray-50">
+        {typeof preferred === 'object' ? JSON.stringify(preferred) : String(preferred)}
+      </span>;
     }
 
     if (Array.isArray(preferred)) {
       return <InlineRenderer nodes={preferred as InlineContent[]} {...baseProps} />;
     }
-    return preferred as any;
+    // 确保不直接渲染对象，而是转换为字符串
+    return typeof preferred === 'object' ? JSON.stringify(preferred) : String(preferred);
   }
 
   if (typeof value === 'string' || typeof value === 'number') {
@@ -154,6 +159,11 @@ const renderInlineValue = (
       return <span className="rounded px-1 bg-gray-50">{String(value)}</span>;
     }
     return value;
+  }
+
+  // 确保不直接渲染对象，而是转换为字符串
+  if (typeof value === 'object') {
+    return JSON.stringify(value);
   }
 
   return null;
@@ -227,7 +237,7 @@ export default function BlockRenderer({
   const previewLang: 'en' | 'zh' | 'both' = lang;
 
   const [showToolbar, setShowToolbar] = useState(false);
-  const [toolbarPos, setToolbarPos] = useState({ x: 0, y: 0 });
+  const [toolbarPos, setToolbarPos] = useState<{ x: number; y: number } | null>(null);
   const [selectedText, setSelectedText] = useState('');
   const [isEditing, setIsEditing] = useState(false);
   const [draftBlock, setDraftBlock] = useState<BlockContent>(() => cloneBlock(block));
@@ -267,6 +277,8 @@ export default function BlockRenderer({
   useEffect(() => {
     if (isEditing && showToolbar) {
       setShowToolbar(false);
+      setToolbarPos(null);
+      setSelectedText('');
     }
   }, [isEditing, showToolbar]);
 
@@ -380,31 +392,91 @@ export default function BlockRenderer({
 
         if (!text) {
           setShowToolbar(false);
+          setToolbarPos(null);
+          setSelectedText('');
           return;
         }
 
         const range = selection?.getRangeAt(0);
-        if (!range) return;
+        if (!range) {
+          setShowToolbar(false);
+          setToolbarPos(null);
+          setSelectedText('');
+          return;
+        }
 
         const element = blockRef.current;
         if (!element || !element.contains(range.commonAncestorContainer)) {
           setShowToolbar(false);
+          setToolbarPos(null);
+          setSelectedText('');
           return;
         }
 
-        const rect = range.getBoundingClientRect();
-        if (!rect) return;
-
-        setSelectedText(text);
-        setToolbarPos({
-          x: rect.left + rect.width / 2,
-          y: rect.top - 10,
-        });
-        setShowToolbar(true);
+        // 使用光标位置而不是选区位置
+        if (selection && selection.rangeCount > 0) {
+          const currentRange = selection.getRangeAt(0);
+          const rect = currentRange.getBoundingClientRect();
+          if (rect) {
+            setSelectedText(text);
+            setToolbarPos({
+              x: rect.right, // 光标在选区的右端
+              y: rect.top,   // 光标位置
+            });
+            setShowToolbar(true);
+          }
+        }
       }, 10);
     },
     [block, inlineEditingEnabled, onBlockUpdate, isEditing]
   );
+
+  const handleToolbarClose = useCallback(() => {
+    setShowToolbar(false);
+    setToolbarPos(null);
+    setSelectedText('');
+  }, []);
+
+  // 全局点击事件监听
+  useEffect(() => {
+    if (!showToolbar) return;
+
+    const handleGlobalClick = (event: Event) => {
+      const mouseEvent = event as unknown as MouseEvent;
+      const target = mouseEvent.target as HTMLElement;
+      
+      // 如果点击的不是工具栏或工具栏内的元素，则关闭工具栏
+      if (target.closest('[data-text-selection-toolbar]')) {
+        return; // 点击工具栏本身，不关闭
+      }
+      
+      // 如果点击的是相同区域的选择，则不关闭（留给新选择处理）
+      const selection = window.getSelection();
+      const currentText = selection?.toString().trim();
+      if (currentText && currentText === selectedText) {
+        return;
+      }
+      
+      // 其他情况关闭工具栏
+      handleToolbarClose();
+    };
+
+    const handleGlobalKeydown = (event: Event) => {
+      const keyEvent = event as unknown as KeyboardEvent;
+      if (keyEvent.key === 'Escape') {
+        handleToolbarClose();
+      }
+    };
+
+    // 添加事件监听
+    document.addEventListener('mousedown', handleGlobalClick);
+    document.addEventListener('keydown', handleGlobalKeydown);
+
+    return () => {
+      document.removeEventListener('mousedown', handleGlobalClick);
+      document.removeEventListener('keydown', handleGlobalKeydown);
+    };
+  }, [showToolbar, selectedText, handleToolbarClose]);
 
   const applyStyle = useCallback(
     (
@@ -456,12 +528,13 @@ export default function BlockRenderer({
 
       onBlockUpdate(updatedBlock);
 
+      // 关闭工具栏并清除选择
       setTimeout(() => {
-        setShowToolbar(false);
+        handleToolbarClose();
         window.getSelection()?.removeAllRanges();
       }, 100);
     },
-    [block, inlineEditingEnabled, previewLang, onBlockUpdate, selectedText]
+    [block, inlineEditingEnabled, previewLang, onBlockUpdate, selectedText, handleToolbarClose]
   );
 
   const renderBilingualHeading = (headingBlock: HeadingBlock) => {
@@ -911,7 +984,10 @@ export default function BlockRenderer({
             } else if (Array.isArray(value)) {
               return <InlineRenderer nodes={value} {...inlineRendererBaseProps} />;
             } else {
-              return value;
+              // 确保不直接渲染对象，而是转换为字符串
+              return typeof value === 'object' && value !== null ?
+                JSON.stringify(value) :
+                String(value || '');
             }
           } else if (lang === 'zh') {
             // 中文模式：只显示中文
@@ -925,7 +1001,10 @@ export default function BlockRenderer({
             } else if (Array.isArray(value)) {
               return <InlineRenderer nodes={value} {...inlineRendererBaseProps} />;
             } else {
-              return value;
+              // 确保不直接渲染对象，而是转换为字符串
+              return typeof value === 'object' && value !== null ?
+                JSON.stringify(value) :
+                String(value || '');
             }
           } else {
             // 英文模式：只显示英文
@@ -935,7 +1014,10 @@ export default function BlockRenderer({
             } else if (Array.isArray(value)) {
               return <InlineRenderer nodes={value} {...inlineRendererBaseProps} />;
             } else {
-              return value;
+              // 确保不直接渲染对象，而是转换为字符串
+              return typeof value === 'object' && value !== null ?
+                JSON.stringify(value) :
+                String(value || '');
             }
           }
         };
@@ -1237,6 +1319,79 @@ export default function BlockRenderer({
       case 'divider':
         return <hr className="my-6 border-t-2 border-gray-300" />;
 
+      case 'loading': {
+        const getStatusColor = () => {
+          switch (block.status) {
+            case 'pending': return 'text-gray-500';
+            case 'processing': return 'text-blue-500';
+            case 'completed': return 'text-green-500';
+            case 'failed': return 'text-red-500';
+            default: return 'text-gray-500';
+          }
+        };
+
+        const getStatusText = () => {
+          switch (block.status) {
+            case 'pending': return '等待中';
+            case 'processing': return '解析中';
+            case 'completed': return '已完成';
+            case 'failed': return '解析失败';
+            default: return '未知状态';
+          }
+        };
+
+        return (
+          <div className="my-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+            <div className="flex items-center gap-3">
+              {block.status === 'processing' && (
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"></div>
+              )}
+              {block.status === 'completed' && (
+                <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
+                  <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
+                  </svg>
+                </div>
+              )}
+              {block.status === 'failed' && (
+                <div className="h-5 w-5 rounded-full bg-red-500 flex items-center justify-center">
+                  <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
+                  </svg>
+                </div>
+              )}
+              {block.status === 'pending' && (
+                <div className="h-5 w-5 rounded-full border-2 border-gray-400"></div>
+              )}
+              
+              <div className="flex-1">
+                <div className={`font-medium ${getStatusColor()}`}>
+                  {getStatusText()}
+                </div>
+                {block.message && (
+                  <div className="text-sm text-gray-600 mt-1">
+                    {block.message}
+                  </div>
+                )}
+                {block.progress !== undefined && block.status === 'processing' && (
+                  <div className="mt-2">
+                    <div className="w-full bg-gray-200 rounded-full h-2">
+                      <div
+                        className="bg-blue-500 h-2 rounded-full transition-all duration-300"
+                        style={{ width: `${block.progress}%` }}
+                      ></div>
+                    </div>
+                    <div className="text-xs text-gray-500 mt-1">
+                      {block.progress}%
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       default:
         return null;
     }
@@ -1337,7 +1492,7 @@ export default function BlockRenderer({
         )}
       </div>
 
-      {showToolbar && inlineEditingEnabled && (
+      {showToolbar && inlineEditingEnabled && toolbarPos && (
         <TextSelectionToolbar
           onBold={() => applyStyle('bold')}
           onItalic={() => applyStyle('italic')}
@@ -1346,7 +1501,7 @@ export default function BlockRenderer({
           onBackgroundColor={(bg) => applyStyle('bg', bg)}
           onClearStyles={() => applyStyle('clear')}
           position={toolbarPos}
-          onClose={() => setShowToolbar(false)}
+          onClose={handleToolbarClose}
         />
       )}
     </>
