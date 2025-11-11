@@ -282,6 +282,18 @@ export const userPaperService = {
   },
 
   /**
+   * 解析参考文献并添加到用户论文（一步完成）
+   */
+  parseReferencesForUserPaper(
+    userPaperId: string,
+    request: ParseReferencesRequest
+  ): Promise<UnifiedResult<AddReferencesToPaperResult>> {
+    return callAndNormalize<AddReferencesToPaperResult>(
+      apiClient.post(`/user/papers/${userPaperId}/parse-references`, request)
+    );
+  },
+
+  /**
    * 检查指定加载块的解析状态
    */
   checkBlockParsingStatus(
@@ -596,6 +608,18 @@ export const adminPaperService = {
   ): Promise<UnifiedResult<ParseReferencesResult>> {
     return callAndNormalize<ParseReferencesResult>(
       apiClient.post('/admin/papers/parse-references', request)
+    );
+  },
+
+  /**
+   * 解析参考文献并添加到论文（一步完成）
+   */
+  parseReferencesForPaper(
+    paperId: string,
+    request: ParseReferencesRequest
+  ): Promise<UnifiedResult<AddReferencesToPaperResult>> {
+    return callAndNormalize<AddReferencesToPaperResult>(
+      apiClient.post(`/admin/papers/${paperId}/parse-references`, request)
     );
   },
 

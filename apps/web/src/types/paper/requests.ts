@@ -250,6 +250,12 @@ export interface ParseReferencesRequest {
 // —— 响应：解析参考文献结果 ——
 export interface ParseReferencesResult {
   references: import('./models').Reference[];
+  count: number;
+  errors: Array<{
+    index: number | null;
+    raw: string;
+    message: string;
+  }>;
 }
 
 // —— 请求：添加参考文献到论文 ——
@@ -261,4 +267,17 @@ export interface AddReferencesToPaperRequest {
 export interface AddReferencesToPaperResult {
   paper: Paper;
   addedReferences: import('./models').Reference[];
+  updatedReferences?: import('./models').Reference[];
+  duplicateCount?: number;
+  totalProcessed?: number;
+  totalReferences?: number;
+  parseResult?: {
+    references: import('./models').Reference[];
+    count: number;
+    errors: Array<{
+      index: number | null;
+      raw: string;
+      message: string;
+    }>;
+  };
 }

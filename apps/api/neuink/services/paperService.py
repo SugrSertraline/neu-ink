@@ -3,8 +3,10 @@ Paper 业务逻辑服务
 处理论文相关的业务逻辑
 """
 import time
+import uuid
+import random
 from typing import Dict, Any, Optional, Tuple, List
-
+import re
 from ..models.paper import PaperModel
 from ..config.constants import BusinessCode
 from ..utils.llm_utils import get_llm_utils
@@ -472,7 +474,11 @@ class PaperService:
 
             # 使用LLM解析文本为blocks
             llm_utils = get_llm_utils()
-            new_blocks = llm_utils.parse_text_to_blocks(text, section_context)
+            try:
+                new_blocks = llm_utils.parse_text_to_blocks(text, section_context)
+            except Exception as llm_exc:
+                # 直接抛出异常，不使用降级方案
+                raise Exception(f"LLM文本解析失败: {llm_exc}")
 
             if not new_blocks:
                 return self._wrap_error("文本解析失败，无法生成有效的blocks")
@@ -1695,6 +1701,14 @@ class PaperService:
             "data": None,
         }
 
+    @staticmethod
+    def _wrap_error(message: str) -> Dict[str, Any]:
+        return {
+            "code": BusinessCode.INTERNAL_ERROR,
+            "message": message,
+            "data": None,
+        }
+
     def parse_references(self, text: str) -> Dict[str, Any]:
         """
         解析参考文献文本，返回结构化的参考文献列表
@@ -1703,25 +1717,299 @@ class PaperService:
             text: 参考文献文本，可能包含多条参考文献
             
         Returns:
-            解析后的参考文献列表
+            解析后的参考文献列表，包含成功解析的参考文献和错误信息
         """
         try:
-            # 使用LLM工具解析参考文献
-            llm_utils = get_llm_utils()
-            parsed_references = llm_utils.parse_references(text)
+            # 使用parse_reference_text方法解析参考文献
+            result = PaperService.parse_reference_text(text)
             
-            if not parsed_references:
+            # 检查是否有任何成功解析的参考文献
+            if not result["references"] and not result["errors"]:
                 return self._wrap_error("参考文献解析失败，无法提取有效的参考文献")
             
+            # 返回包含成功解析的参考文献和错误信息的结果
             return self._wrap_success(
-                "参考文献解析成功",
+                "参考文献解析完成",
                 {
-                    "references": parsed_references,
-                    "count": len(parsed_references)
+                    "references": result["references"],
+                    "count": result["count"],
+                    "errors": result["errors"]
                 }
             )
         except Exception as exc:
             return self._wrap_error(f"参考文献解析失败: {exc}")
+
+
+    def parse_reference_text(text: str) -> Dict[str, Any]:
+        """
+        纯规则/正则解析参考文献文本（顺序编码制）。
+        支持常见 IEEE/GB/T 写法：
+        - [1] A. Author and B. Author, "Title", Journal, vol. X, no. Y, pp. 1-10, 2020.
+        - [2] A. Author et al., "Title", Conference, in Proceedings of ..., pp. 1-2, 2021.
+        - [3] 作者. 题名[J]. 刊名, 年, 卷(期): 页码.
+        解析失败的条目会记录到 errors。
+        返回：
+        {
+            "references": [ {...}, ... ],
+            "count": int,
+            "errors": [ {"index": int|None, "raw": str, "message": str}, ... ]
+        }
+        参考规范（要素与字段命名）来自：
+        - IEEE Editorial Style Manual / References（作者、题名、期刊、卷/期/页、年份/DOI）；
+        - GB/T 7714-2015 要素结构与文献类型标识；
+        - APA 对“期刊文章含文章号/页码”的要素说明。
+        """
+
+        def normalize_text(s: str) -> str:
+            # 统一空白与引号/破折号等常见字符
+            s = s.replace('“', '"').replace('”', '"').replace('’', "'").replace('‘', "'")
+            s = s.replace('—', '-').replace('–', '-').replace('−', '-')
+            # 全角逗号/冒号简单规整（尽量不破坏英文结构）
+            s = s.replace('，', ',').replace('：', ':').replace('（', '(').replace('）', ')')
+            # 合并多余空白
+            s = re.sub(r'[ \t]+', ' ', s)
+            # 统一换行 -> 空格，避免条目跨行
+            s = re.sub(r'\s*\n\s*', ' ', s).strip()
+            return s
+
+        def split_entries(s: str) -> List[Tuple[Optional[int], str]]:
+            """
+            把整段文本按 [n] 分条；返回 (index, raw_item) 列表。
+            """
+            s = normalize_text(s)
+            items = []
+            matches = list(re.finditer(r'\[(\d+)\]\s*', s))
+            if not matches:
+                # 没有顺序编码，也作为一个整体尝试解析
+                return [(None, s)]
+            for i, m in enumerate(matches):
+                idx = int(m.group(1))
+                start = m.end()
+                end = matches[i + 1].start() if i + 1 < len(matches) else len(s)
+                raw = s[start:end].strip().rstrip('.').strip()
+                items.append((idx, raw))
+            return items
+
+        def split_authors(authors_str: str) -> Tuple[List[str], bool]:
+            """
+            解析作者列表；兼容英文 'and'、逗号分隔、以及 'et al.'。
+            返回 (authors, has_et_al)
+            """
+            a = authors_str.strip().strip(',')
+            # 统一 and -> 逗号，便于 split
+            a = re.sub(r'\s+and\s+', ', ', a, flags=re.IGNORECASE)
+            # 避免把缩写里的点当分隔；直接按逗号切足够稳妥（示例格式都可）
+            parts = [p.strip() for p in a.split(',') if p.strip()]
+            has_more = any('et al.' in p.lower() for p in parts)
+            # 去掉 'et al.' 标记中的多余空白
+            cleaned = []
+            for p in parts:
+                cleaned.append(re.sub(r'\bet\s+al\.?$', '', p, flags=re.IGNORECASE).strip())
+            # 过滤空
+            cleaned = [p for p in cleaned if p]
+            return cleaned, has_more
+
+        # ---------- 针对常见结构的多个正则（按“严->松”顺序逐个尝试） ----------
+        # 1) IEEE 期刊（含 "题名"、vol./no./pp./p./art. no./doi、年份）
+        rx_ieee_journal = re.compile(
+            r"""^
+                (?P<authors>.+?)\s*,\s*
+                " (?P<title>.+?) "\s*,\s*
+                (?P<venue>[^,]+)\s*,\s*
+                (?:
+                    vol\.\s*(?P<volume>[^,]+)\s*,\s*
+                )?
+                (?:
+                    no\.\s*(?P<number>[^,]+)\s*,\s*
+                )?
+                (?:
+                    pp\.\s*(?P<pages>[^,]+)\s*,\s*
+                |
+                    p\.\s*(?P<page_single>[^,]+)\s*,\s*
+                )?
+                (?:
+                    (?:art\.?\s*no\.?|article)\s*(?P<article_no>[^,]+)\s*,\s*
+                )?
+                (?:
+                    doi:\s*(?P<doi>[^,]+)\s*,\s*
+                )?
+                (?P<year>\d{4})
+                \.?
+            $""",
+            re.IGNORECASE | re.VERBOSE
+        )
+
+        # 2) IEEE 会议（in Proceedings ...，可带页码/doi/年份）
+        rx_ieee_conf = re.compile(
+            r"""^
+                (?P<authors>.+?)\s*,\s*
+                " (?P<title>.+?) "\s*,\s*
+                in\s+(?P<venue>.+?)(?:,|\.)\s*
+                (?:
+                    pp\.\s*(?P<pages>[^,\.]+)\s*(?:,|\.)\s*
+                )?
+                (?:
+                    doi:\s*(?P<doi>[^,\.]+)\s*(?:,|\.)\s*
+                )?
+                (?P<year>\d{4})
+                \.?
+            $""",
+            re.IGNORECASE | re.VERBOSE
+        )
+
+        # 3) 国标常见期刊（作者. 题名[J]. 刊名, 年, 卷(期): 页码.）
+        rx_gbt_journal = re.compile(
+            r"""^
+                (?P<authors>.+?)\.\s+
+                (?P<title>.+?)
+                (?:\s*\[\s*[Jj]\s*\])?\.\s+
+                (?P<venue>[^,]+)\s*,\s*
+                (?P<year>\d{4})
+                (?:\s*,\s*(?P<volume>[\dA-Za-z\-]+)
+                    (?:\(\s*(?P<number>[^)]+)\s*\))?
+                )?
+                (?::\s*(?P<pages>[\d\-–]+))?
+                \.?
+            $""",
+            re.VERBOSE
+        )
+
+        # 4) 宽松期刊兜底（作者,"题名", 期刊, 年[, 卷][, no. 期][, pp. 页]）
+        rx_loose_journal = re.compile(
+            r"""^
+                (?P<authors>.+?)\s*,\s*
+                " (?P<title>.+?) "\s*,\s*
+                (?P<venue>[^,]+)\s*,\s*
+                (?P<year>\d{4})
+                (?:\s*,\s*vol\.\s*(?P<volume>[^,\.]+))?
+                (?:\s*,\s*no\.\s*(?P<number>[^,\.]+))?
+                (?:\s*,\s*pp\.\s*(?P<pages>[^,\.]+))?
+                \.?
+            $""",
+            re.IGNORECASE | re.VERBOSE
+        )
+
+        # DOI/文章号兜底（出现于标题后或末尾）
+        rx_doi = re.compile(r'\bdoi:\s*([^\s,]+)', re.IGNORECASE)
+        rx_article = re.compile(r'\b(?:art\.?\s*no\.?|article)\s+([A-Za-z0-9\-]+)', re.IGNORECASE)
+        rx_pages = re.compile(r'\bpp?\.\s*([0-9]+[-–][0-9]+)', re.IGNORECASE)
+
+        def guess_type(venue: str, matched_name: str) -> str:
+            v = (venue or '').lower()
+            if matched_name == 'conf' or v.startswith('proc') or 'proceedings' in v:
+                return 'conference'
+            if any(k in v for k in ['journal', 'review', 'transactions', 'letters']):
+                return 'journal'
+            return 'journal'
+
+        def parse_one(raw: str, idx: Optional[int]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
+            """
+            解析单条；成功返回 (record, None)，失败返回 (None, error)
+            对于解析不规范的参考文献，保留编号和ID，但内容为空
+            """
+            s = normalize_text(raw)
+
+            for name, rx in [('journal', rx_ieee_journal), ('conf', rx_ieee_conf), ('gbt_journal', rx_gbt_journal), ('loose', rx_loose_journal)]:
+                m = rx.match(s)
+                if not m:
+                    continue
+                g = m.groupdict()
+
+                authors_raw = (g.get('authors') or '').strip()
+                authors, has_et_al = split_authors(authors_raw)
+
+                title = (g.get('title') or '').strip().strip('"')
+                venue = (g.get('venue') or '').strip().rstrip('.').strip()
+
+                volume = (g.get('volume') or '').strip() or None
+                number = (g.get('number') or '').strip() or None
+                pages = (g.get('pages') or '').strip() or None
+                if not pages:
+                    ps = (g.get('page_single') or '').strip()
+                    pages = ps if ps else None
+
+                article_no = (g.get('article_no') or '').strip() or None
+                doi = (g.get('doi') or '').strip() or None
+                year = None
+                if g.get('year'):
+                    try:
+                        year = int(g['year'])
+                    except Exception:
+                        year = None
+
+                # 兜底再扫一次 DOI / 文章号 / 页码
+                if not doi:
+                    m_doi = rx_doi.search(s)
+                    if m_doi:
+                        doi = m_doi.group(1)
+                if not article_no:
+                    m_art = rx_article.search(s)
+                    if m_art:
+                        article_no = m_art.group(1)
+                if not pages:
+                    m_pg = rx_pages.search(s)
+                    if m_pg:
+                        pages = m_pg.group(1)
+
+                # 检查解析结果的质量，title是必须字段，作者可以为空
+                is_incomplete = not title
+                
+                rec = {
+                    "index": idx,
+                    "type": guess_type(venue, name),
+                    "authors": authors,  # 作者可以为空
+                    "has_et_al": has_et_al,
+                    "title": title if not is_incomplete else "解析失败",  # title必须，失败时设为"解析失败"
+                    "venue": venue,
+                    "volume": volume,
+                    "number": number,
+                    "pages": pages,
+                    "article_no": article_no,
+                    "year": year,
+                    "doi": doi,
+                    "raw": raw.strip(),
+                    "is_incomplete": is_incomplete  # 标记是否为不完整解析
+                }
+                
+                # 如果是不完整解析，修改错误消息
+                if is_incomplete:
+                    return rec, {
+                        "index": idx,
+                        "raw": raw.strip(),
+                        "message": "参考文献格式不完整或不规范，已保留编号，请手动编辑完善内容"
+                    }
+                
+                return rec, None
+
+            # 未匹配到任何模式 -> 返回错误
+            err = {
+                "index": idx,
+                "raw": raw.strip(),
+                "message": "未能按规范解析（请检查作者/题名/期刊/卷期页/年份等要素是否完整，或是否符合 IEEE/GB/T 常见写法）"
+            }
+            return None, err
+
+        refs: List[Dict[str, Any]] = []
+        errors: List[Dict[str, Any]] = []
+
+        for idx, raw in split_entries(text):
+            rec, err = parse_one(raw, idx)
+            if rec:
+                refs.append(rec)
+                # 如果是不完整解析，也记录为错误，但保留参考文献
+                if rec.get("is_incomplete", False):
+                    errors.append(err)
+            else:
+                errors.append(err)
+
+        return {
+            "references": refs,
+            "count": len(refs),
+            "errors": errors
+        }
+
+
+
 
     def add_references_to_paper(
         self,
@@ -1731,7 +2019,7 @@ class PaperService:
         is_admin: bool = False,
     ) -> Dict[str, Any]:
         """
-        将解析后的参考文献添加到论文中
+        将解析后的参考文献添加到论文中，自动检测并更新重复的参考文献
         
         Args:
             paper_id: 论文ID
@@ -1754,26 +2042,76 @@ class PaperService:
             # 获取当前参考文献列表
             current_references = paper.get("references", [])
             
-            # 为新参考文献添加编号
-            next_number = len(current_references) + 1
-            for ref in references:
-                if "number" not in ref:
-                    ref["number"] = next_number
-                    next_number += 1
+            # 按照解析出的index字段排序，确保参考文献按照原始编号顺序添加
+            sorted_references = sorted(references, key=lambda x: x.get("index", 0))
             
-            # 合并参考文献列表
-            updated_references = current_references + references
+            # 处理参考文献：检测重复并更新
+            added_references = []
+            updated_references = []
+            duplicate_count = 0
+            
+            for ref in sorted_references:
+                # 直接使用解析出的index作为number，不再自动分配
+                ref_number = ref.get("index")
+                
+                # 创建符合前端Reference接口的参考文献对象
+                # 使用解析出的序号作为ID的一部分，确保唯一性
+                ref_index = ref.get("index", len(added_references) + len(updated_references))
+                new_ref = {
+                    "id": f"ref_{ref_index}_{len(added_references) + len(updated_references)}",
+                    "number": ref_number,
+                    "authors": ref.get("authors", []),
+                    "title": ref.get("title", ""),
+                    "publication": ref.get("venue"),  # venue -> publication
+                    "year": ref.get("year"),
+                    "doi": ref.get("doi"),
+                    "url": None,  # 解析结果中没有url字段
+                    "pages": ref.get("pages"),
+                    "volume": ref.get("volume"),
+                    "issue": ref.get("number")  # number -> issue
+                }
+                
+                # 移除空值字段
+                new_ref = {k: v for k, v in new_ref.items() if v is not None}
+                
+                # 检测重复参考文献
+                duplicate_index = self._find_duplicate_reference(new_ref, current_references)
+                
+                if duplicate_index is not None:
+                    # 发现重复，更新现有参考文献
+                    existing_ref = current_references[duplicate_index].copy()
+                    # 保留原始ID和number，更新其他字段
+                    new_ref["id"] = existing_ref["id"]
+                    new_ref["number"] = existing_ref["number"]
+                    current_references[duplicate_index] = new_ref
+                    updated_references.append(new_ref)
+                    duplicate_count += 1
+                else:
+                    # 没有重复，添加新参考文献
+                    added_references.append(new_ref)
+                    current_references.append(new_ref)
             
             # 更新论文
-            update_data = {"references": updated_references}
+            update_data = {"references": current_references}
             if self.paper_model.update(paper_id, update_data):
                 updated_paper = self.paper_model.find_by_id(paper_id)
+                
+                # 构建详细的结果信息
+                result_message = f"成功处理{len(sorted_references)}条参考文献"
+                if added_references:
+                    result_message += f"，新增{len(added_references)}条"
+                if updated_references:
+                    result_message += f"，更新{len(updated_references)}条重复文献"
+                
                 return self._wrap_success(
-                    f"成功添加{len(references)}条参考文献",
+                    result_message,
                     {
                         "paper": updated_paper,
-                        "addedReferences": references,
-                        "totalReferences": len(updated_references)
+                        "addedReferences": added_references,
+                        "updatedReferences": updated_references,
+                        "duplicateCount": duplicate_count,
+                        "totalProcessed": len(sorted_references),
+                        "totalReferences": len(current_references)
                     }
                 )
             else:
@@ -1781,6 +2119,123 @@ class PaperService:
                 
         except Exception as exc:
             return self._wrap_error(f"添加参考文献失败: {exc}")
+    
+    def _find_duplicate_reference(self, new_ref: Dict[str, Any], existing_refs: List[Dict[str, Any]]) -> Optional[int]:
+        """
+        查找重复的参考文献
+        
+        Args:
+            new_ref: 新参考文献
+            existing_refs: 现有参考文献列表
+            
+        Returns:
+            重复参考文献的索引，如果没有找到重复则返回None
+        """
+        def normalize_text(text: str) -> str:
+            """标准化文本：小写、去除多余空格和标点"""
+            if not text:
+                return ""
+            # 转换为小写
+            text = text.lower()
+            # 去除多余空格
+            text = re.sub(r'\s+', ' ', text)
+            # 去除常见标点符号
+            text = re.sub(r'[^\w\s]', '', text)
+            return text.strip()
+        
+        def normalize_authors(authors: List[str]) -> str:
+            """标准化作者列表：提取姓氏并排序"""
+            if not authors:
+                return ""
+            # 提取每个作者的姓氏（假设格式为 "First Last" 或 "Last, F"）
+            surnames = []
+            for author in authors:
+                # 处理 "Last, F" 格式
+                if ',' in author:
+                    surname = author.split(',')[0].strip()
+                # 处理 "First Last" 格式
+                elif ' ' in author:
+                    surname = author.split()[-1].strip()
+                else:
+                    surname = author.strip()
+                
+                if surname:
+                    surnames.append(normalize_text(surname))
+            
+            # 排序并连接
+            surnames.sort()
+            return ' '.join(surnames)
+        
+        # 提取新参考文献的关键信息
+        new_title = normalize_text(new_ref.get("title", ""))
+        new_authors = normalize_authors(new_ref.get("authors", []))
+        new_year = str(new_ref.get("year", ""))
+        new_doi = normalize_text(new_ref.get("doi", ""))
+        
+        # 如果DOI存在，优先使用DOI匹配
+        if new_doi:
+            for i, existing_ref in enumerate(existing_refs):
+                existing_doi = normalize_text(existing_ref.get("doi", ""))
+                if existing_doi and existing_doi == new_doi:
+                    return i
+        
+        # 如果标题和作者都存在，使用标题+作者匹配
+        if new_title and new_authors:
+            for i, existing_ref in enumerate(existing_refs):
+                existing_title = normalize_text(existing_ref.get("title", ""))
+                existing_authors = normalize_authors(existing_ref.get("authors", []))
+                
+                # 标题相似度检查（使用简单的包含关系）
+                title_match = False
+                if len(new_title) > 10 and len(existing_title) > 10:
+                    # 较长标题使用包含关系检查
+                    if new_title in existing_title or existing_title in new_title:
+                        title_match = True
+                else:
+                    # 较短标题使用精确匹配
+                    title_match = new_title == existing_title
+                
+                # 作者匹配（至少有一个共同作者）
+                authors_match = False
+                if new_authors and existing_authors:
+                    new_author_parts = set(new_authors.split())
+                    existing_author_parts = set(existing_authors.split())
+                    # 检查是否有共同的部分（姓氏）
+                    common_parts = new_author_parts.intersection(existing_author_parts)
+                    authors_match = len(common_parts) > 0
+                
+                # 如果标题和作者都匹配，认为是重复
+                if title_match and authors_match:
+                    return i
+        
+        # 如果只有标题存在，使用标题匹配
+        if new_title:
+            for i, existing_ref in enumerate(existing_refs):
+                existing_title = normalize_text(existing_ref.get("title", ""))
+                if len(new_title) > 10 and len(existing_title) > 10:
+                    if new_title in existing_title or existing_title in new_title:
+                        return i
+                elif new_title == existing_title:
+                    return i
+        
+        # 如果只有作者和年份存在，使用作者+年份匹配
+        if new_authors and new_year:
+            for i, existing_ref in enumerate(existing_refs):
+                existing_authors = normalize_authors(existing_ref.get("authors", []))
+                existing_year = str(existing_ref.get("year", ""))
+                
+                if existing_authors and existing_year == new_year:
+                    # 检查作者相似度
+                    new_author_parts = set(new_authors.split())
+                    existing_author_parts = set(existing_authors.split())
+                    common_parts = new_author_parts.intersection(existing_author_parts)
+                    
+                    # 如果有至少一半的作者匹配，认为是重复
+                    if len(common_parts) >= min(len(new_author_parts), len(existing_author_parts)) / 2:
+                        return i
+        
+        # 没有找到重复
+        return None
 
     def check_and_complete_translation(self, paper_id: str) -> Dict[str, Any]:
         """

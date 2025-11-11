@@ -259,6 +259,7 @@ class LLMUtils:
 
 1. metadata（元数据）:
    - title: 论文标题
+   - titleZh: 论文标题的中文翻译
    - authors: 作者列表，格式：[{"name": "作者姓名", "affiliation": "所属机构"}]
    - year: 发表年份
    - journal: 期刊名称
@@ -727,725 +728,695 @@ class LLMUtils:
         return block
 
     def _extract_blocks_with_llm(self, text: str, section_context: str) -> List[Dict[str, Any]]:
+        """
+        使用LLM解析Markdown格式的学术论文文本，转换为结构化的block数组
+        
+        Args:
+            text: 要解析的Markdown文本
+            section_context: 当前section的上下文信息
+            
+        Returns:
+            List[Dict[str, Any]]: 解析后的block列表
+        """
         import json
         import re
+        from typing import List, Dict, Any
 
-        PARSER_SYSTEM_PROMPT = """你是一个专业的学术论文内容结构化助手，专注于将文本内容解析为标准化的block数组。
+        PARSER_SYSTEM_PROMPT = """你是一个专业的学术论文Markdown解析助手，负责将Markdown格式的论文文本转换为结构化的JSON数据。
 
-**核心任务：**
-将输入的文本内容解析为符合学术论文编辑系统的block结构，每个block必须包含中英文内容。
+    ## 核心任务
+    解析Markdown格式的学术论文，输出符合规范的JSON数组，每个元素代表一个内容块(block)。
 
-**严格输出要求：**
-1. **必须输出纯JSON数组格式** - 以[开头，]结尾，不允许任何其他文字或格式
-2. **每个block的content必须同时包含en和zh两个语言数组**
-3. **即使原始文本是纯中文，也要生成对应的英文翻译；反之亦然**
-4. **不允许任何字段缺失或为空**
+    ## 输出格式要求
+    1. **必须输出纯JSON数组**，以[开头，以]结尾
+    2. **不包含任何额外文字、注释或markdown代码块标记**
+    3. **所有文本内容使用InlineContent数组格式**
 
-**Block类型及字段规范：**
-- heading: 标题 (需要level字段1-6)
-- paragraph: 段落 (content: {en: [...], zh: [...]})
-- ordered-list: 有序列表 (items数组，每项包含content双语言)
-- unordered-list: 无序列表 (items数组，每项包含content双语言)
-- quote: 引用 (需要author字段，content双语言)
-- math: 数学公式 (latex字段保留原始公式，要去掉左右的双$$符号，并且去掉例如\tag的编号，content为解释文字)
-- code: 代码 (language字段，code字段保留原始代码)
-- figure: 图片 (src, alt, caption双语言)
-- table: 表格 (headers, rows, align)
-- divider: 分割线
+    ## Markdown识别规则
 
-**InlineContent类型：**
-- text: 普通文本，可包含样式
-- link: 链接
-- inline-math: 行内数学公式 (必须使用latex字段存储公式内容，不要使用content字段)
-
-**翻译要求：**
-- 如果原始内容是中文，zh数组放原文，en数组放准确英文翻译
-- 如果原始内容是英文，en数组放原文，zh数组放准确中文翻译
-- 保持学术术语的准确性和专业性
-- 保持数学公式、代码等特殊内容的格式
-
-**重要提醒：**
-- 每个block的content.en和content.zh都必须是数组，不能为空
-- 如果无法翻译，复制原文到目标语言数组
-- 严格遵循JSON格式，不能有注释或额外文字"""
-
-        TRANSLATION_SYSTEM_PROMPT = """You are a professional academic translator specializing in scholarly content.
-
-**Translation Requirements:**
-- Preserve academic terminology and precision
-- Maintain mathematical formulas, code, and technical terms exactly as they appear
-- For Chinese to English: Use formal academic English appropriate for research papers
-- For English to Chinese: Use standard academic Chinese terminology
-- Keep references, and special formatting intact
-- Output ONLY the translated text without any additional explanation or formatting markers"""
-
-        chinese_char = re.compile(r"[\u4e00-\u9fff]")
-
-        def _parse_markdown():
-            safe_print("🚀 开始使用LLM解析文本")
-            section_title = section_context.splitlines()[0].strip() if section_context else ""
-            context_info = f"当前section标题：{section_title}" if section_title else "无特定section标题"
-            
-            # 限制文本长度以避免超出token限制
-            truncated_text = text[:40000] if len(text) > 40000 else text
-            safe_print(f"🔍 原始文本长度: {len(text)} 字符")
-            safe_print(f"📝 解析文本长度: {len(truncated_text)} 字符")
-            if len(text) > 40000:
-                safe_print("⚠️  文本被截断，前40,000字符将被解析")
-                safe_print(f"📋 截断的文本预览: {truncated_text[:200]}...")
-            safe_print(f"📊 文本内容统计: 总行数={len(text.split(chr(10)))}")
-            
-            user_prompt = f"""请将以下文本内容解析为标准化的block数组。
-
-{context_info}
-
-需要解析的文本内容：
-{truncated_text}
-
-**重要要求：**
-1. 每个block的content必须同时包含en和zh两个语言数组
-2. 如果原文本是中文，zh放原文，en放英文翻译
-3. 如果原文本是英文，en放原文，zh放中文翻译
-4. 保持学术内容的专业性和准确性
-5. 严格输出JSON数组格式，不要其他任何文字"""
-
-            messages = [
-                {"role": "system", "content": PARSER_SYSTEM_PROMPT},
-                {"role": "user", "content": user_prompt},
-            ]
-            
-            safe_print("📤 发送解析请求到LLM...")
-            response = self.call_llm(messages, temperature=0.2, max_tokens=100000)
-            
-            if not response or "choices" not in response:
-                safe_print("❌ LLM响应格式错误")
-                raise Exception("LLM响应格式错误")
-                
-            content = response["choices"][0]["message"]["content"]
-            safe_print(f"💬 LLM原始响应: {content[:500]}...")
-            
-            # 提取JSON内容
-            if "```json" in content:
-                fence = "```json"
-                start = content.find(fence) + len(fence)
-                end = content.find("```", start)
-                content = content[start:end].strip()
-            elif "```" in content:
-                fence = "```"
-                start = content.find(fence) + len(fence)
-                end = content.find("```", start)
-                content = content[start:end].strip()
-            
-            # 清理可能的特殊字符
-            content = content.strip()
-            if content.startswith('json'):
-                content = content[4:].strip()
-            
-            safe_print(f"🔄 解析JSON内容: {content[:200]}...")
-            return json.loads(content)
-
-        def _normalize_inline(items):
-            """标准化InlineContent数组"""
-            normalized = []
-            for item in items or []:
-                if isinstance(item, dict):
-                    normalized.append(item)
-                elif isinstance(item, str):
-                    normalized.append({"type": "text", "text": item})
-            return normalized
-
-        def _inline_plain_text(items):
-            """提取纯文本内容用于翻译"""
-            fragments = []
-            for item in items or []:
-                if not isinstance(item, dict):
-                    continue
-                if item.get("type") == "text" and item.get("text"):
-                    fragments.append(item["text"])
-                elif item.get("type") == "link":
-                    label = item.get("label") or item.get("text")
-                    if label:
-                        fragments.append(label)
-            return " ".join(fragments).strip()
-
-        def _rebuild_inline_from_text(text_value):
-            """从纯文本重建InlineContent"""
-            text_value = (text_value or "").strip()
-            return [{"type": "text", "text": text_value}] if text_value else []
-
-        def _translate_content(source_items, target_lang):
-            """翻译InlineContent内容"""
-            plain_text = _inline_plain_text(source_items)
-            if not plain_text:
-                return []
-            
-            source_lang = "zh" if chinese_char.search(plain_text) else "en"
-            if source_lang == target_lang:
-                # 同语言，直接返回
-                return [dict(item) for item in source_items]
-            
-            messages = [
-                {"role": "system", "content": TRANSLATION_SYSTEM_PROMPT},
-                {
-                    "role": "user",
-                    "content": f"Source language: {source_lang}\nTarget language: {target_lang}\n\nSource text:\n{plain_text}\n\nReturn only the translated text.",
-                },
-            ]
-            
-            try:
-                safe_print(f"🔄 翻译内容 ({source_lang} -> {target_lang}): {plain_text[:50]}...")
-                resp = self.call_llm(messages, temperature=0.1, max_tokens=100000)
-                
-                if resp and "choices" in resp:
-                    translated = resp["choices"][0]["message"]["content"].strip()
-                    safe_print(f"✅ 翻译完成: {translated[:50]}...")
-                    return _rebuild_inline_from_text(translated)
-                else:
-                    safe_print("❌ 翻译响应格式错误，使用原文")
-                    return [dict(item) for item in source_items]
-            except Exception as exc:
-                safe_print(f"❌ 翻译失败 ({source_lang}->{target_lang}): {exc}")
-                return [dict(item) for item in source_items]
-
-        def _fix_inline_math_in_paragraph(block):
-            """修复paragraph中inline-math的字段问题，将content字段改为latex字段"""
-            if block.get("type") != "paragraph":
-                return block
-                
-            content = block.get("content", {})
-            if not isinstance(content, dict):
-                return block
-                
-            # 修复英文内容
-            en_content = content.get("en", [])
-            if isinstance(en_content, list):
-                for item in en_content:
-                    if isinstance(item, dict) and item.get("type") == "inline-math":
-                        if "content" in item and "latex" not in item:
-                            item["latex"] = item.pop("content")
-                            safe_print(f"🔧 修复inline-math: content -> latex")
-                            
-            # 修复中文内容
-            zh_content = content.get("zh", [])
-            if isinstance(zh_content, list):
-                for item in zh_content:
-                    if isinstance(item, dict) and item.get("type") == "inline-math":
-                        if "content" in item and "latex" not in item:
-                            item["latex"] = item.pop("content")
-                            safe_print(f"🔧 修复inline-math: content -> latex")
-                            
-            return block
-
-        def _ensure_bilingual_content(block):
-            """确保block的content包含双语言内容"""
-            content = block.get("content")
-            if not isinstance(content, dict):
-                return block
-
-            # 获取现有内容
-            en_items = _normalize_inline(content.get("en", []))
-            zh_items = _normalize_inline(content.get("zh", []))
-
-            # 如果缺少某种语言，进行翻译
-            if not en_items and zh_items:
-                en_items = _translate_content(zh_items, "en")
-            if not zh_items and en_items:
-                zh_items = _translate_content(en_items, "zh")
-
-            # 确保两种语言都有内容
-            if not en_items:
-                en_items = [dict(item) for item in zh_items] if zh_items else []
-            if not zh_items:
-                zh_items = [dict(item) for item in en_items] if en_items else []
-
-            block["content"] = {"en": en_items, "zh": zh_items}
-            return block
-
-        try:
-            safe_print("🔄 开始LLM解析流程")
-            blocks = _parse_markdown()
-            
-        except Exception as exc:
-            safe_print(f"❌ LLM解析失败: {exc}")
-            safe_print("🔙 回退到简单解析")
-            return self._simple_text_to_blocks(text)
-
-        if not isinstance(blocks, list):
-            safe_print("❌ LLM返回的不是block列表")
-            return self._simple_text_to_blocks(text)
-
-        safe_print(f"✅ 验证和标准化{len(blocks)}个blocks...")
-        from ..utils.common import generate_id, get_current_time
-
-        validated_blocks = []
-        for i, block in enumerate(blocks):
-            try:
-                if not isinstance(block, dict) or "type" not in block:
-                    safe_print(f"⏭️  跳过无效block: {block}")
-                    continue
-
-                # 修复inline-math的字段问题
-                if block.get("type") == "paragraph":
-                    block = _fix_inline_math_in_paragraph(block)
-                
-                # 确保content是字典
-                if "content" not in block or not isinstance(block["content"], dict):
-                    block["content"] = {"en": [], "zh": []}
-                
-                # 确保双语言内容
-                block = _ensure_bilingual_content(block)
-                
-                # 添加必要字段
-                block["id"] = generate_id()
-                block["createdAt"] = get_current_time().isoformat()  # 转换为ISO格式字符串
-                
-                validated_blocks.append(block)
-                safe_print(f"✅ 验证block {i+1}: {block.get('type')}")
-                
-            except Exception as exc:
-                safe_print(f"❌ 验证block失败: {exc}")
-                continue
-
-        safe_print(f"🎉 完成验证，生成{len(validated_blocks)}个有效blocks")
-        return validated_blocks
-
-    
-
-    def _simple_text_to_blocks(self, text: str) -> List[Dict[str, Any]]:
-        """使用大语言模型解析文本为blocks的方法"""
-        from ..utils.common import generate_id, get_current_time
-        import json
-        
-        safe_print("🔄 开始LLM文本解析")
-        safe_print(f"文本长度: {len(text)} 字符")
-        
-        # 初始化LLM工具
-        llm_utils = LLMUtils()
-        
-        # 构建系统提示词
-        system_prompt = """你是一个专业的学术文档结构化解析专家。你的任务是将输入的文本解析为结构化的JSON对象，包含 blocks 数组。
-
-【总体原则】
-1. 不改变原文内容的文字与顺序；但允许基于规则“有条件省略”：可跳过引用块、脚注段落、参考文献等整段内容（见下）。
-2. 自动检测中文(zh)/英文(en)；每个文本内容放入对应语言字段。若主要为英文，可补全 zh 的对应翻译字段（不影响 en 原文）。
-3. 结构优先：正确识别标题、段落、列表、表格、代码、公式等类型；无法判断时，回退为 paragraph。
-4. 返回格式必须是：{"blocks":[ ... ]}
-
-【标题识别（从严）】
-- 只对“短行、明显标题”的行使用 type=heading。
-- 仅当行以一个或多个 # 开头时才考虑为 heading；若不是 # 语法，通常视为 paragraph。
-- **一级标题（level=1）非常克制**：仅当满足全部条件时使用：
-  a) 位于文档开头的第一段非空行；b) 明显是文档主标题（简短、无句号/分号、非列表风格）；c) 全文仅此一个 H1。
-- 其余标题使用 level=2..6；如不确定是否是标题，**一律用 paragraph**。
-
-【块类型定义】
-1. heading：{type:"heading", level:1..6, content:{en|zh:[inline...]}}
-2. paragraph：{type:"paragraph", content:{en|zh:[inline...]}}
-3. math（块级公式）：{type:"math", latex:"\\[ ... \\]"}  
-   - 允许来源：$$...$$、\[…\]、\begin{equation/align/gather}...\end{...} 等。
-   - **统一转换为 \[...\]**；并**去除所有编号相关内容**：包括 \tag{...}、\tag*{...}、\label{...}、\ref{...}、\eqno、\leqno、\numberthis、行首/行尾的纯数字或(数字)式样的编号。
-   - equation/align/gather 等环境需去环境名，仅保留数学主体；多行对齐可保留 \begin{aligned}...\end{aligned} 包在 \[...\] 内。
-4. code：三反引号或缩进代码块 → {type:"code", code:"..."}
-5. ordered-list：形如 "1. 2. 3." → {type:"ordered-list", items:[{content:{...}},...]}（不支持嵌套，展平）
-6. unordered-list："-"、"*"、"+" 开头 → {type:"unordered-list", items:[...]}（不支持嵌套，展平）
-7. quote（引用块）：**整段忽略，不生成 block**（以 ">" 开头的段落或连续行）
-8. table：Markdown 表格 → {type:"table", rows:[[...],[...],...]}
-9. divider：三连字符 "---" 或 "***" → {type:"divider"}
-10. figure：Markdown 图片 → {type:"figure", src:"URL"}
-
-【行内元素（inlineContent）】
-- text：{type:"text", content:"..."}；可选 style：bold/italic/code/underline/strikethrough
-- link：{type:"link", url:"...", children:[inline...], title?}
-- inline-math（**重点、慎判**）：{type:"inline-math", latex:"..."}（不含美元符号）
-  解析条件（需同时满足）：
-  1) 成对单美元 `$...$`，不是 `$$...$$`；
-  2) 不在代码块/行内代码反引号、链接/URL 中；
-  3) 内容包含至少一个数学信号如 `\`, `^`, `_`, `{}`, `\frac`, `\sum`, `=`, `+`, `-`, `\alpha` 等；
-  4) **排除货币/金额**（如 `$10`, `$1,299.00`，`USD $100`）、**排除shell变量**（如 `$PATH`、`$HOME`）、**排除正则/占位符**（如 `$0`, `$1`）——这些均当作普通 text。
-  若不满足以上条件或存在歧义，**不要解析为 inline-math**，按 text 原样保留。
-
-【可省略（忽略）内容】
-- 引用块：以 `>` 开头的段落（含连续行）——整段跳过不产出 block。
-- 脚注段落：脚注定义行（如 `[^1]: ...`、`[1] ...`、"脚注"/"Footnotes"/"Notes" 小节下以编号开头的行）——整段跳过。
-- 参考文献章节：检测到 "References"、"参考文献" 等标题及其内容可忽略。
-- 仅当整段/整块属于上述类型时才忽略；普通段落中出现的脚注引用标记（如 `[^1]`）保留为普通文本。
-
-【文本样式与混合语言】
-- 粗体：`**` 或 `__` → style.bold=true；其余样式可按常见Markdown习惯识别，但不强制。
-- 中英混排时识别主语言并置于对应字段；必要时可在另一语言字段补充译文。
-
-【列表处理】
-- 不支持嵌套列表；发现嵌套则展平为同级条目。
-- 列表项内容放入 items[i].content 的 en/zh 数组。
-
-【空白与分段】
-- 空行表示段落分隔；不生成空白 block。
-- 其他无法识别的结构优先解析为 paragraph。
-
-【输出要求】
-- 仅输出一个 JSON 对象：{"blocks":[ ... ]}，不得包含额外解释或注释。
-- 行内公式元素使用 {type:"inline-math", latex:"..."}；块级公式使用 {type:"math", latex:"\\[...\\]"}。
-
-    返回格式要求：
-
-    必须返回一个JSON对象，包含blocks数组字段。
-
-    示例结构：
+    ### 标题 (heading)
+    - # 开头为一级标题 (level: 1)
+    - ## 开头为二级标题 (level: 2)
+    - 以此类推至六级标题
+    - 输出格式示例：
     {
-    "blocks": [
-        {
-        "type": "heading",
-        "level": 1,
-        "content": {
-            "en": [{"type": "text", "content": "Introduction"}]
-        }
-        },
-        {
-        "type": "paragraph",
-        "content": {
-            "en": [
-            {"type": "text", "content": "This is "},
-            {"type": "text", "content": "bold text", "style": {"bold": true}},
-            {"type": "text", "content": " with "},
-            {"type": "inline-math", "latex": "x^2"},
-            {"type": "text", "content": "."}
-            ]
-        }
-        },
-        {
-        "type": "math",
-        "latex": "E = mc^2"
-        },
-        {
-        "type": "unordered-list",
-        "items": [
-            {
-            "content": {
-                "en": [{"type": "text", "content": "First item"}]
-                "zh":[{"type":"text","content":"第一个元素"}]
-            }
-            },
-            {
-            "content": {
-                "en": [{"type": "text", "content": "Second item"}]
-            }
-            }
-        ]
-        }
+    "type": "heading",
+    "level": 2,
+    "content": {
+        "en": [{"type": "text", "content": "Introduction"}]
+    }
+    }
+
+    ### 段落 (paragraph)
+    - 非特殊格式的连续文本行
+    - 空行分隔不同段落
+    - 输出格式示例：
+    {
+    "type": "paragraph",
+    "content": {
+        "en": [{"type": "text", "content": "This is a paragraph."}]
+    }
+    }
+
+    ### 行间公式 (math)
+    - 独立成行的 $$...$$ 或 \\[...\\] 格式
+    - **重要**：去除\\tag{...}等编号，只保留公式本体
+    - 输出格式示例：
+    {
+    "type": "math",
+    "latex": "E = mc^2"
+    }
+
+    ### 行内公式 (inline-math)
+    - 文本中的 $...$ 或 \\(...\\) 格式
+    - **必须使用latex字段，不能使用content字段**
+    - 输出格式示例：
+    {"type": "inline-math", "latex": "x^2 + y^2 = z^2"}
+
+    ### 有序列表 (ordered-list)
+    - 以 1. , 2. 等数字开头
+    - 输出格式示例：
+    {
+    "type": "ordered-list",
+    "items": [
+        {"content": {"en": [{"type": "text", "content": "First item"}]}},
+        {"content": {"en": [{"type": "text", "content": "Second item"}]}}
     ]
     }
 
-    特殊处理规则：
+    ### 无序列表 (unordered-list)
+    - 以 - , * , + 开头
+    - 输出格式同有序列表，type为"unordered-list"
 
-    1. 数学公式识别
-    行内：单美元符号包裹转为inline-math类型，必须使用latex字段存储公式内容，不要使用content字段
-    行间：双美元符号或反斜杠方括号转为math block类型
+    ### 代码块 (code)
+    - 三个反引号包围的代码块
+    - 识别语言标记（如python）
+    - 输出格式示例：
+    {
+    "type": "code",
+    "language": "python",
+    "code": "def hello():\\n    print('Hello')"
+    }
 
-    2. 文本样式识别
-    双星号或双下划线为粗体
+    ### 表格 (table)
+    - Markdown表格格式：|列1|列2| 
+    - HTML表格格式：<table>...</table>
+    - 输出格式示例：
+    {
+    "type": "table",
+    "headers": ["Column 1", "Column 2"],
+    "rows": [
+        ["Cell 1", "Cell 2"],
+        ["Cell 3", "Cell 4"]
+    ]
+    }
 
-    3. 列表处理
-    不支持嵌套列表，将嵌套项展平处理
+    ### 引用 (quote)
+    - 以 > 开头的行
+    - 输出格式示例：
+    {
+    "type": "quote",
+    "content": {
+        "en": [{"type": "text", "content": "This is a quote"}]
+    }
+    }
 
-    4. 混合语言处理
-    如果段落包含中英文混合，检测主要语言并放入对应字段
+    ### 分割线 (divider)
+    - ---, ***, ___ 等
+    - 输出格式示例：
+    {"type": "divider"}
 
-    5. 空白保留
-    段落间空行作为段落分隔，不需创建空白block
+    ## 特殊处理规则
 
-    6. 错误处理
-    无法识别的结构优先解析为paragraph类型
+    ### 引用删除
+    **完全删除**以下内容，不要包含在输出中：
+    - 参考文献引用：如 [1], [2,3], [Smith et al., 2020]
+    - 图片引用：如 Fig. 1, Figure 2, 图1
+    - 表格引用：如 Table 1, Tab. 2, 表1
+    - 公式引用：如 Eq. (1), Equation 2, 式(1)
+    - 脚注标记：如 [^1], [^note]
+    - 交叉引用：如 see Section 2, as shown in Chapter 3
 
-    现在请将输入的文本解析为blocks数组。记住：不要修改任何原文内容，只需识别结构并转换为JSON格式。"""
+    ### 文本处理
+    混合文本和公式时，将公式识别为inline-math类型。例如：
+    输入："The equation $x^2 + y^2 = z^2$ represents..."
+    输出：[
+    {"type": "text", "content": "The equation "},
+    {"type": "inline-math", "latex": "x^2 + y^2 = z^2"},
+    {"type": "text", "content": " represents..."}
+    ]
 
-        try:
-            # 准备消息
+    ## 完整示例
+
+    输入Markdown：
+    ## Introduction
+
+    Machine learning has revolutionized many fields. The basic equation $y = wx + b$ represents a linear model.
+
+    $$
+    L = \\frac{1}{n}\\sum_{i=1}^{n}(y_i - \\hat{y}_i)^2 \\tag{1}
+    $$
+
+    Key advantages include:
+    - High accuracy
+    - Fast processing
+
+    | Method | Accuracy |
+    |--------|----------|
+    | SVM    | 95%      |
+    | CNN    | 98%      |
+
+    输出JSON：
+    [
+    {
+        "type": "heading",
+        "level": 2,
+        "content": {
+        "en": [{"type": "text", "content": "Introduction"}]
+        }
+    },
+    {
+        "type": "paragraph",
+        "content": {
+        "en": [
+            {"type": "text", "content": "Machine learning has revolutionized many fields. The basic equation "},
+            {"type": "inline-math", "latex": "y = wx + b"},
+            {"type": "text", "content": " represents a linear model."}
+        ]
+        }
+    },
+    {
+        "type": "math",
+        "latex": "L = \\\\frac{1}{n}\\\\sum_{i=1}^{n}(y_i - \\\\hat{y}_i)^2"
+    },
+    {
+        "type": "paragraph",
+        "content": {
+        "en": [{"type": "text", "content": "Key advantages include:"}]
+        }
+    },
+    {
+        "type": "unordered-list",
+        "items": [
+        {"content": {"en": [{"type": "text", "content": "High accuracy"}]}},
+        {"content": {"en": [{"type": "text", "content": "Fast processing"}]}}
+        ]
+    },
+    {
+        "type": "table",
+        "headers": ["Method", "Accuracy"],
+        "rows": [
+        ["SVM", "95%"],
+        ["CNN", "98%"]
+        ]
+    }
+    ]
+
+    ## 重要提醒
+    1. **只输出JSON数组，不要任何其他内容**
+    2. **inline-math必须用latex字段，不能用content字段**
+    3. **删除所有引用标记**
+    4. **保持学术术语的准确性**"""
+
+        TRANSLATION_PROMPT = """你是一个专业的学术翻译专家。
+
+    ## 任务
+    将提供的JSON数组中的英文内容翻译为中文，添加到zh字段中。
+
+    ## 翻译要求
+    1. 保持学术术语的专业性和准确性
+    2. 数学公式、代码、变量名等保持原样
+    3. 使用规范的学术中文表达
+    4. 保持原文的语义和逻辑结构
+
+    ## 输入格式
+    你会收到一个包含英文内容的JSON数组。
+
+    ## 输出格式
+    返回完整的JSON数组，其中每个包含content字段的对象都应该同时包含en和zh两个字段。
+
+    ## 示例
+
+    输入：
+    [
+    {
+        "type": "paragraph",
+        "content": {
+        "en": [
+            {"type": "text", "content": "Deep learning models have achieved remarkable success in computer vision tasks."}
+        ]
+        }
+    }
+    ]
+
+    输出：
+    [
+    {
+        "type": "paragraph",
+        "content": {
+        "en": [
+            {"type": "text", "content": "Deep learning models have achieved remarkable success in computer vision tasks."}
+        ],
+        "zh": [
+            {"type": "text", "content": "深度学习模型在计算机视觉任务中取得了显著的成功。"}
+        ]
+        }
+    }
+    ]
+
+    **重要**：只输出JSON数组，不要任何额外文字。"""
+
+        def safe_print(msg):
+            """安全打印函数，避免编码错误"""
+            try:
+                print(msg)
+            except:
+                print(msg.encode('utf-8', 'ignore').decode('utf-8'))
+
+        def _parse_markdown():
+            """使用LLM解析Markdown文本"""
+            safe_print("🚀 开始解析Markdown文本")
+            
+            # 预处理：清理文本
+            cleaned_text = text.strip()
+            
+            # 替换行内公式格式 $...$ -> \(...\)
+            cleaned_text = re.sub(r'\$([^$]+)\$', r'\\(\1\\)', cleaned_text)
+            
+            # 替换行间公式格式 $$...$$ -> \[...\]
+            cleaned_text = re.sub(r'\$\$([^$]+)\$\$', r'\\[\1\\]', cleaned_text, flags=re.DOTALL)
+            
+            # 限制文本长度
+            if len(cleaned_text) > 30000:
+                safe_print(f"⚠️ 文本过长({len(cleaned_text)}字符)，截断至30000字符")
+                cleaned_text = cleaned_text[:30000]
+            
+            user_prompt = f"""请解析以下Markdown格式的学术论文文本，输出JSON数组：
+
+    {cleaned_text}
+
+    记住：
+    1. 只输出JSON数组
+    2. 删除所有引用
+    3. inline-math使用latex字段
+    4. 去除公式编号如\\tag{{}}"""
+
             messages = [
-                {
-                    "role": "system",
-                    "content": system_prompt
-                },
-                {
-                    "role": "user",
-                    "content": f"请解析以下文本：\n\n{text}"
-                }
+                {"role": "system", "content": PARSER_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt}
             ]
             
-            # 调用LLM
-            safe_print("📡 正在调用GLM API...")
-            result = llm_utils.call_llm(
-                messages=messages,
-                model=LLMModel.GLM_4_6,
-                temperature=0.1,
-                max_tokens=100000
-            )
-            
-            if not result:
-                safe_print("❌ LLM调用失败，使用降级方案")
-                return self._fallback_simple_parse(text)
-            
-            # 提取响应内容
-            if 'choices' not in result or not result['choices']:
-                safe_print("❌ LLM响应格式错误，使用降级方案")
-                return self._fallback_simple_parse(text)
-            
-            content = result['choices'][0]['message']['content']
-            safe_print(f"📥 收到响应，长度: {len(content)} 字符")
-            safe_print(f"响应内容预览: {content[:500]}...")
-            
-            # 解析JSON
-            try:
-                # 尝试直接解析
-                parsed_result = json.loads(content)
-            except json.JSONDecodeError:
-                # 如果失败，尝试提取JSON部分
-                safe_print("⚠️ 直接解析失败，尝试提取JSON部分")
-                import re
-                json_match = re.search(r'\{[\s\S]*\}', content)
-                if json_match:
-                    parsed_result = json.loads(json_match.group())
-                else:
-                    safe_print("❌ 无法提取JSON，使用降级方案")
-                    return self._fallback_simple_parse(text)
-            
-            # 获取blocks数组
-            blocks = parsed_result.get("blocks", [])
-            
-            if not blocks:
-                safe_print("⚠️ 未找到blocks数组，使用降级方案")
-                return self._fallback_simple_parse(text)
-            
-            # 为每个block添加id和createdAt
-            for block in blocks:
-                if 'id' not in block:
-                    block['id'] = generate_id()
-                if 'createdAt' not in block:
-                    block['createdAt'] = get_current_time().isoformat()  # 转换为ISO格式字符串
-            
-            safe_print(f"🎉 LLM解析完成，生成 {len(blocks)} 个blocks")
-            
-            # 打印前几个block的类型
-            if blocks:
-                safe_print("📋 前5个blocks类型：")
-                for i, block in enumerate(blocks[:5]):
-                    safe_print(f"  {i+1}. {block.get('type', 'unknown')}")
-            
-            return blocks
-            
-        except Exception as e:
-            safe_print(f"❌ LLM解析过程出错: {str(e)}")
-            import traceback
-            safe_print(f"错误详情: {traceback.format_exc()}")
-            return self._fallback_simple_parse(text)
-
-
-    def _fallback_simple_parse(self, text: str) -> List[Dict[str, Any]]:
-        """降级方案：简单解析"""
-        from ..utils.common import generate_id, get_current_time
-        import re
-        
-        safe_print("⚠️ 使用降级解析方案")
-        
-        blocks = []
-        chinese_char = re.compile(r"[\u4e00-\u9fff]")
-        
-        # 按双换行符分割段落
-        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
-        
-        safe_print(f"📊 识别到 {len(paragraphs)} 个段落")
-        
-        for i, paragraph in enumerate(paragraphs):
-            # 检测语言
-            is_chinese = bool(chinese_char.search(paragraph))
-            lang_key = "zh" if is_chinese else "en"
-            
-            # 检查是否是标题
-            if paragraph.startswith('#'):
-                level = len(paragraph) - len(paragraph.lstrip('#'))
-                level = min(level, 6)
-                content_text = paragraph.lstrip('#').strip()
-                
-                block = {
-                    'id': generate_id(),
-                    'type': 'heading',
-                    'level': level,
-                    'content': {
-                        lang_key: [{"type": "text", "content": content_text}]
-                    },
-                    'createdAt': get_current_time().isoformat()  # 转换为ISO格式字符串
-                }
-            else:
-                # 创建基本的paragraph block
-                block = {
-                    'id': generate_id(),
-                    'type': 'paragraph',
-                    'content': {
-                        lang_key: [{"type": "text", "content": paragraph}]
-                    },
-                    'createdAt': get_current_time().isoformat()  # 转换为ISO格式字符串
-                }
-            
-            blocks.append(block)
-            safe_print(f"📝 生成block {i+1}: {block['type']}")
-        
-        safe_print(f"✅ 降级解析完成，生成 {len(blocks)} 个blocks")
-        return blocks
-
-    def parse_references(self, text: str) -> List[Dict[str, Any]]:
-        """
-        解析参考文献文本，返回结构化的参考文献列表
-        
-        Args:
-            text: 参考文献文本，可能包含多条参考文献
-            
-        Returns:
-            解析后的参考文献列表，每条参考文献包含标准字段
-        """
-        safe_print("=" * 60)
-        safe_print("开始解析参考文献")
-        safe_print(f"文本长度: {len(text)} 字符")
-        safe_print("=" * 60)
-        
-        # 检查API密钥
-        if not self.glm_api_key or self.glm_api_key == "your_glm_api_key_here":
-            error_msg = "LLM服务不可用：未配置GLM_API_KEY或使用了占位符值。请在.env文件中设置有效的GLM API密钥。"
-            safe_print(error_msg)
-            raise RuntimeError(error_msg)
-        
-        try:
-            return self._parse_references_with_llm(text)
-        except Exception as e:
-            error_msg = f"参考文献解析失败: {e}。请检查API密钥是否有效，或稍后重试。"
-            safe_print(error_msg)
-            raise RuntimeError(error_msg)
-    
-    def _parse_references_with_llm(self, text: str) -> List[Dict[str, Any]]:
-        """使用LLM解析参考文献"""
-        import json
-        import re
-        
-        # 限制文本长度以避免超出token限制
-        truncated_text = text[:50000] if len(text) > 50000 else text
-        safe_print(f"🔍 原始文本长度: {len(text)} 字符")
-        safe_print(f"📝 解析文本长度: {len(truncated_text)} 字符")
-        if len(text) > 50000:
-            safe_print("⚠️  文本被截断，前50,000字符将被解析")
-        
-        system_prompt = """你是一个专业的学术参考文献解析助手。请从给定的参考文献文本中解析出每一条参考文献，并以JSON格式返回。
-
-**任务要求：**
-1. 识别并分离每一条参考文献
-2. 提取每条参考文献的以下信息：
-   - authors: 作者列表（字符串数组）
-   - title: 论文标题
-   - publication: 发表期刊/会议名称
-   - year: 发表年份（整数）
-   - volume: 卷号（如果有）
-   - issue: 期号（如果有）
-   - pages: 页码（如果有）
-   - doi: DOI（如果有）
-   - url: URL链接（如果有）
-   - type: 文献类型（journal/conference/preprint/book/thesis等）
-
-**输出格式要求：**
-1. 必须返回一个有效的JSON数组，每个元素代表一条参考文献
-2. 如果某些字段无法提取，请设置为null或省略
-3. 确保所有字符串值都经过适当的trim处理
-4. 保持原始数据的准确性，不要添加或修改内容
-
-**参考文献格式示例：**
-- [1] J. Smith, "Title of paper," Journal Name, vol. 10, no. 2, pp. 123-145, 2020.
-- [2] K. Johnson et al., "Another paper title," Conference Name, 2019.
-- [3] L. Wang, "Book title," Publisher, 2018.
-
-请确保返回的是有效的JSON数组格式，不要包含任何额外的解释或注释。"""
-
-        user_prompt = f"""请解析以下参考文献文本，提取每条参考文献的详细信息：
-
-{truncated_text}
-
-请返回一个JSON数组，每个元素代表一条解析后的参考文献。"""
-
-        messages = [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ]
-        
-        try:
-            safe_print("📤 发送参考文献解析请求到LLM...")
-            response = self.call_llm(messages, temperature=0.1, max_tokens=100000)
+            safe_print("📤 发送解析请求...")
+            response = self.call_llm(messages, temperature=0.1, max_tokens=50000)
             
             if not response or "choices" not in response:
-                safe_print("❌ LLM响应格式错误")
-                raise Exception("LLM响应格式错误")
-                
+                raise Exception("LLM响应无效")
+            
             content = response["choices"][0]["message"]["content"]
-            safe_print(f"💬 LLM原始响应: {content[:500]}...")
             
-            # 提取JSON内容
-            if "```json" in content:
-                fence = "```json"
-                start = content.find(fence) + len(fence)
-                end = content.find("```", start)
-                content = content[start:end].strip()
-            elif "```" in content:
-                fence = "```"
-                start = content.find(fence) + len(fence)
-                end = content.find("```", start)
-                content = content[start:end].strip()
-            
-            # 清理可能的特殊字符
+            # 清理响应内容
             content = content.strip()
-            if content.startswith('json'):
-                content = content[4:].strip()
+            if "```json" in content:
+                start = content.find("```json") + 7
+                end = content.find("```", start)
+                if end != -1:
+                    content = content[start:end].strip()
+            elif "```" in content:
+                start = content.find("```") + 3
+                end = content.find("```", start)
+                if end != -1:
+                    content = content[start:end].strip()
             
-            safe_print(f"🔄 解析JSON内容: {content[:200]}...")
-            parsed_references = json.loads(content)
+            try:
+                return json.loads(content)
+            except json.JSONDecodeError as e:
+                safe_print(f"❌ JSON解析失败: {e}")
+                safe_print(f"响应内容: {content[:500]}...")
+                raise
+
+        def _add_translations(blocks):
+            """为blocks添加中文翻译"""
+            safe_print("🌐 开始添加中文翻译")
             
-            # 确保返回的是数组
-            if not isinstance(parsed_references, list):
-                safe_print("❌ LLM返回的不是数组格式")
-                raise Exception("LLM返回的不是数组格式")
+            # 检查是否需要翻译
+            needs_translation = False
+            for block in blocks:
+                if "content" in block and isinstance(block["content"], dict):
+                    if "en" in block["content"] and "zh" not in block["content"]:
+                        needs_translation = True
+                        break
             
-            # 为每条参考文献添加ID并验证格式
-            from ..utils.common import generate_id
-            validated_references = []
+            if not needs_translation:
+                safe_print("✅ 所有内容已有中文翻译，跳过翻译步骤")
+                return blocks
             
-            for i, ref in enumerate(parsed_references):
-                if not isinstance(ref, dict):
-                    safe_print(f"⏭️  跳过无效参考文献: {ref}")
+            # 批量处理，每次处理10个block
+            batch_size = 10
+            for i in range(0, len(blocks), batch_size):
+                batch = blocks[i:i+batch_size]
+                
+                # 只选择需要翻译的blocks
+                batch_to_translate = []
+                for block in batch:
+                    if "content" in block or (block["type"] in ["ordered-list", "unordered-list"] and "items" in block):
+                        batch_to_translate.append(block)
+                
+                if not batch_to_translate:
                     continue
                 
-                # 确保有标题
-                if not ref.get("title"):
-                    safe_print(f"⏭️  跳过无标题参考文献: {ref}")
+                user_prompt = f"""请为以下JSON数组中的英文内容添加中文翻译：
+
+    {json.dumps(batch_to_translate, ensure_ascii=False, indent=2)}
+
+    只输出完整的JSON数组。"""
+
+                messages = [
+                    {"role": "system", "content": TRANSLATION_PROMPT},
+                    {"role": "user", "content": user_prompt}
+                ]
+                
+                try:
+                    response = self.call_llm(messages, temperature=0.1, max_tokens=50000)
+                    if response and "choices" in response:
+                        content = response["choices"][0]["message"]["content"]
+                        
+                        # 清理响应
+                        content = content.strip()
+                        if "```json" in content:
+                            start = content.find("```json") + 7
+                            end = content.find("```", start)
+                            if end != -1:
+                                content = content[start:end].strip()
+                        elif "```" in content:
+                            start = content.find("```") + 3
+                            end = content.find("```", start)
+                            if end != -1:
+                                content = content[start:end].strip()
+                        
+                        translated_batch = json.loads(content)
+                        
+                        # 更新原始blocks中对应的内容
+                        translated_idx = 0
+                        for j in range(len(batch)):
+                            if i+j < len(blocks):
+                                block = blocks[i+j]
+                                # 只更新被翻译的blocks
+                                if "content" in block or (block["type"] in ["ordered-list", "unordered-list"] and "items" in block):
+                                    if translated_idx < len(translated_batch):
+                                        blocks[i+j] = translated_batch[translated_idx]
+                                        translated_idx += 1
+                        
+                        safe_print(f"✅ 完成批次 {i//batch_size + 1} 的翻译")
+                        
+                except Exception as e:
+                    safe_print(f"❌ 翻译批次 {i//batch_size + 1} 失败: {e}")
                     continue
-                
-                # 添加ID
-                ref["id"] = generate_id()
-                
-                # 确保authors是数组
-                if "authors" in ref and not isinstance(ref["authors"], list):
-                    if isinstance(ref["authors"], str):
-                        # 如果是字符串，尝试分割
-                        ref["authors"] = [author.strip() for author in ref["authors"].split(",")]
-                    else:
-                        ref["authors"] = [str(ref["authors"])]
-                
-                validated_references.append(ref)
-                safe_print(f"✅ 验证参考文献 {i+1}: {ref.get('title', 'Unknown')}")
             
-            safe_print(f"🎉 完成验证，生成{len(validated_references)}条有效参考文献")
-            return validated_references
+            return blocks
+
+        def _fix_and_validate(blocks):
+            """修复和验证blocks"""
+            # 导入必要的工具函数
+            try:
+                from ..utils.common import generate_id, get_current_time
+            except ImportError:
+                # 如果导入失败，使用备用方案
+                import uuid
+                from datetime import datetime
+                
+                def generate_id():
+                    return str(uuid.uuid4())
+                
+                def get_current_time():
+                    return datetime.now()
             
-        except json.JSONDecodeError as e:
-            safe_print(f"❌ JSON解析失败: {e}")
-            safe_print(f"原始内容: {content}")
-            raise Exception(f"参考文献解析失败，无法解析JSON: {e}")
+            validated_blocks = []
+            
+            for idx, block in enumerate(blocks):
+                try:
+                    if not isinstance(block, dict) or "type" not in block:
+                        safe_print(f"⏭️ 跳过无效block {idx}: 缺少type字段")
+                        continue
+                    
+                    # 添加必需字段
+                    if "id" not in block:
+                        block["id"] = generate_id()
+                    if "createdAt" not in block:
+                        block["createdAt"] = get_current_time().isoformat()
+                    
+                    # 确保content字段格式正确
+                    if "content" in block:
+                        content = block["content"]
+                        if isinstance(content, dict):
+                            # 确保有en和zh字段
+                            if "en" not in content:
+                                content["en"] = []
+                            if "zh" not in content:
+                                # 如果没有zh字段，复制en的内容
+                                content["zh"] = content.get("en", []).copy()
+                            
+                            # 修复inline-math字段
+                            for lang in ["en", "zh"]:
+                                if lang in content and isinstance(content[lang], list):
+                                    for item in content[lang]:
+                                        if isinstance(item, dict) and item.get("type") == "inline-math":
+                                            # 确保使用latex字段而不是content字段
+                                            if "content" in item and "latex" not in item:
+                                                item["latex"] = item.pop("content")
+                                                safe_print(f"🔧 修复block {idx} 的inline-math字段")
+                    
+                    # 处理列表项
+                    if block["type"] in ["ordered-list", "unordered-list"]:
+                        if "items" in block and isinstance(block["items"], list):
+                            for item_idx, item in enumerate(block["items"]):
+                                if "content" in item and isinstance(item["content"], dict):
+                                    # 确保列表项也有双语内容
+                                    if "en" not in item["content"]:
+                                        item["content"]["en"] = []
+                                    if "zh" not in item["content"]:
+                                        item["content"]["zh"] = item["content"].get("en", []).copy()
+                                    
+                                    # 修复列表项中的inline-math
+                                    for lang in ["en", "zh"]:
+                                        if lang in item["content"] and isinstance(item["content"][lang], list):
+                                            for content_item in item["content"][lang]:
+                                                if isinstance(content_item, dict) and content_item.get("type") == "inline-math":
+                                                    if "content" in content_item and "latex" not in content_item:
+                                                        content_item["latex"] = content_item.pop("content")
+                    
+                    # 处理表格
+                    if block["type"] == "table":
+                        # 确保表格有必要的字段
+                        if "headers" not in block:
+                            block["headers"] = []
+                        if "rows" not in block:
+                            block["rows"] = []
+                        # 表格的caption也需要双语
+                        if "caption" in block and isinstance(block["caption"], dict):
+                            if "en" not in block["caption"]:
+                                block["caption"]["en"] = []
+                            if "zh" not in block["caption"]:
+                                block["caption"]["zh"] = block["caption"].get("en", []).copy()
+                    
+                    # 处理数学公式块
+                    if block["type"] == "math":
+                        if "latex" in block:
+                            # 去除\tag{}编号
+                            latex = block["latex"]
+                            latex = re.sub(r'\\tag\{[^}]*\}', '', latex)
+                            # 去除多余的空格
+                            latex = re.sub(r'\s+', ' ', latex).strip()
+                            block["latex"] = latex
+                    
+                    validated_blocks.append(block)
+                    safe_print(f"✅ 验证block {idx}: type={block['type']}")
+                    
+                except Exception as e:
+                    safe_print(f"❌ 验证block {idx} 失败: {e}")
+                    continue
+            
+            return validated_blocks
+
+        # 主执行流程
+        try:
+            # 步骤1：解析Markdown
+            blocks = _parse_markdown()
+            safe_print(f"✅ 解析完成，得到 {len(blocks)} 个blocks")
+            
+            # 步骤2：添加翻译
+            blocks = _add_translations(blocks)
+            safe_print(f"✅ 翻译完成")
+            
+            # 步骤3：修复和验证
+            validated_blocks = _fix_and_validate(blocks)
+            safe_print(f"✅ 最终生成 {len(validated_blocks)} 个有效blocks")
+            
+            return validated_blocks
+            
         except Exception as e:
-            safe_print(f"❌ 参考文献解析失败: {e}")
-            raise Exception(f"参考文献解析失败: {e}")
-    
+            safe_print(f"❌ 处理失败: {e}")
+            import traceback
+            safe_print(traceback.format_exc())
+            raise Exception(f"LLM解析失败: {e}")
+
+
+
+
+        def parse_references(self, text: str) -> List[Dict[str, Any]]:
+            """
+            解析参考文献文本，返回结构化的参考文献列表
+            
+            Args:
+                text: 参考文献文本，可能包含多条参考文献
+                
+            Returns:
+                解析后的参考文献列表，每条参考文献包含标准字段
+            """
+            safe_print("=" * 60)
+            safe_print("开始解析参考文献")
+            safe_print(f"文本长度: {len(text)} 字符")
+            safe_print("=" * 60)
+            
+            # 检查API密钥
+            if not self.glm_api_key or self.glm_api_key == "your_glm_api_key_here":
+                error_msg = "LLM服务不可用：未配置GLM_API_KEY或使用了占位符值。请在.env文件中设置有效的GLM API密钥。"
+                safe_print(error_msg)
+                raise RuntimeError(error_msg)
+            
+            try:
+                return self._parse_references_with_llm(text)
+            except Exception as e:
+                error_msg = f"参考文献解析失败: {e}。请检查API密钥是否有效，或稍后重试。"
+                safe_print(error_msg)
+                raise RuntimeError(error_msg)
+        
+        def _parse_references_with_llm(self, text: str) -> List[Dict[str, Any]]:
+            """使用LLM解析参考文献"""
+            import json
+            import re
+            
+            # 限制文本长度以避免超出token限制
+            truncated_text = text[:50000] if len(text) > 50000 else text
+            safe_print(f"🔍 原始文本长度: {len(text)} 字符")
+            safe_print(f"📝 解析文本长度: {len(truncated_text)} 字符")
+            if len(text) > 50000:
+                safe_print("⚠️  文本被截断，前50,000字符将被解析")
+            
+            system_prompt = """你是一个专业的学术参考文献解析助手。请从给定的参考文献文本中解析出每一条参考文献，并以JSON格式返回。
+
+    **任务要求：**
+    1. 识别并分离每一条参考文献
+    2. 提取每条参考文献的以下信息：
+    - authors: 作者列表（字符串数组）
+    - title: 论文标题
+    - publication: 发表期刊/会议名称
+    - year: 发表年份（整数）
+    - volume: 卷号（如果有）
+    - issue: 期号（如果有）
+    - pages: 页码（如果有）
+    - doi: DOI（如果有）
+    - url: URL链接（如果有）
+    - type: 文献类型（journal/conference/preprint/book/thesis等）
+
+    **输出格式要求：**
+    1. 必须返回一个有效的JSON数组，每个元素代表一条参考文献
+    2. 如果某些字段无法提取，请设置为null或省略
+    3. 确保所有字符串值都经过适当的trim处理
+    4. 保持原始数据的准确性，不要添加或修改内容
+
+    **参考文献格式示例：**
+    - [1] J. Smith, "Title of paper," Journal Name, vol. 10, no. 2, pp. 123-145, 2020.
+    - [2] K. Johnson et al., "Another paper title," Conference Name, 2019.
+    - [3] L. Wang, "Book title," Publisher, 2018.
+
+    请确保返回的是有效的JSON数组格式，不要包含任何额外的解释或注释。"""
+
+            user_prompt = f"""请解析以下参考文献文本，提取每条参考文献的详细信息：
+
+    {truncated_text}
+
+    请返回一个JSON数组，每个元素代表一条解析后的参考文献。"""
+
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+            
+            try:
+                safe_print("📤 发送参考文献解析请求到LLM...")
+                response = self.call_llm(messages, temperature=0.1, max_tokens=100000)
+                
+                if not response or "choices" not in response:
+                    safe_print("❌ LLM响应格式错误")
+                    raise Exception("LLM响应格式错误")
+                    
+                content = response["choices"][0]["message"]["content"]
+                safe_print(f"💬 LLM原始响应: {content[:500]}...")
+                
+                # 提取JSON内容
+                if "```json" in content:
+                    fence = "```json"
+                    start = content.find(fence) + len(fence)
+                    end = content.find("```", start)
+                    content = content[start:end].strip()
+                elif "```" in content:
+                    fence = "```"
+                    start = content.find(fence) + len(fence)
+                    end = content.find("```", start)
+                    content = content[start:end].strip()
+                
+                # 清理可能的特殊字符
+                content = content.strip()
+                if content.startswith('json'):
+                    content = content[4:].strip()
+                
+                safe_print(f"🔄 解析JSON内容: {content[:200]}...")
+                parsed_references = json.loads(content)
+                
+                # 确保返回的是数组
+                if not isinstance(parsed_references, list):
+                    safe_print("❌ LLM返回的不是数组格式")
+                    raise Exception("LLM返回的不是数组格式")
+                
+                # 为每条参考文献添加ID并验证格式
+                from ..utils.common import generate_id
+                validated_references = []
+                
+                for i, ref in enumerate(parsed_references):
+                    if not isinstance(ref, dict):
+                        safe_print(f"⏭️  跳过无效参考文献: {ref}")
+                        continue
+                    
+                    # 确保有标题
+                    if not ref.get("title"):
+                        safe_print(f"⏭️  跳过无标题参考文献: {ref}")
+                        continue
+                    
+                    # 添加ID
+                    ref["id"] = generate_id()
+                    
+                    # 确保authors是数组
+                    if "authors" in ref and not isinstance(ref["authors"], list):
+                        if isinstance(ref["authors"], str):
+                            # 如果是字符串，尝试分割
+                            ref["authors"] = [author.strip() for author in ref["authors"].split(",")]
+                        else:
+                            ref["authors"] = [str(ref["authors"])]
+                    
+                    validated_references.append(ref)
+                    safe_print(f"✅ 验证参考文献 {i+1}: {ref.get('title', 'Unknown')}")
+                
+                safe_print(f"🎉 完成验证，生成{len(validated_references)}条有效参考文献")
+                return validated_references
+                
+            except json.JSONDecodeError as e:
+                safe_print(f"❌ JSON解析失败: {e}")
+                safe_print(f"原始内容: {content}")
+                raise Exception(f"参考文献解析失败，无法解析JSON: {e}")
+            except Exception as e:
+                safe_print(f"❌ 参考文献解析失败: {e}")
+                raise Exception(f"参考文献解析失败: {e}")
+        
 
 # 全局实例
 _llm_utils: Optional[LLMUtils] = None

@@ -1418,3 +1418,102 @@ def check_block_parsing_status(entry_id, section_id, block_id):
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
         return internal_error_response(f"检查解析状态失败: {exc}")
+
+
+@bp.route("/<entry_id>/parse-references", methods=["POST"])
+@login_required
+def parse_references_for_user_paper(entry_id):
+    """
+    用户解析参考文献文本并添加到个人论文中
+    
+    请求体示例:
+    {
+        "text": "[1] J. Smith, \"Title of paper,\" Journal Name, vol. 10, no. 2, pp. 123-145, 2020.\n[2] K. Johnson et al., \"Another paper title,\" Conference Name, 2019."
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or not data.get("text"):
+            return bad_request_response("参考文献文本不能为空")
+        
+        text = data.get("text")
+        
+        # 首先获取用户论文详情，确保用户有权限
+        service = get_user_paper_service()
+        user_paper_result = service.get_user_paper_detail(
+            user_paper_id=entry_id,
+            user_id=g.current_user["user_id"]
+        )
+        
+        if user_paper_result["code"] != BusinessCode.SUCCESS:
+            # 区分不同类型的错误
+            if user_paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+                return bad_request_response(user_paper_result["message"])
+            elif user_paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+                from flask import jsonify
+                return jsonify({
+                    "code": ResponseCode.FORBIDDEN,
+                    "message": user_paper_result["message"],
+                    "data": None
+                }), ResponseCode.FORBIDDEN
+            else:
+                return bad_request_response(user_paper_result["message"])
+        
+        user_paper = user_paper_result["data"]
+        paper_data = user_paper.get("paperData")
+        
+        if not paper_data:
+            return bad_request_response("论文数据不存在")
+        
+        # 获取实际的paper_id（可能是引用的公共论文，也可能是用户自己的论文）
+        paper_id = paper_data.get("id")
+        if not paper_id:
+            return bad_request_response("无效的论文ID")
+        
+        # 使用paperService解析参考文献
+        from ..services.paperService import get_paper_service
+        paper_service = get_paper_service()
+        parse_result = paper_service.parse_references(text)
+        
+        if parse_result["code"] != BusinessCode.SUCCESS:
+            return bad_request_response(parse_result["message"])
+        
+        parse_data = parse_result["data"]
+        parsed_references = parse_data["references"]
+        
+        if not parsed_references and not parse_data["errors"]:
+            return bad_request_response("未能从文本中解析出有效的参考文献")
+        
+        # 将解析后的参考文献添加到论文中
+        add_result = paper_service.add_references_to_paper(
+            paper_id=paper_id,
+            references=parsed_references,
+            user_id=g.current_user["user_id"],
+            is_admin=False
+        )
+        
+        if add_result["code"] == BusinessCode.SUCCESS:
+            # 如果成功，需要更新用户论文库中的paperData
+            updated_paper = add_result["data"]["paper"]
+            update_result = service.update_user_paper(
+                entry_id=entry_id,
+                user_id=g.current_user["user_id"],
+                update_data={"paperData": updated_paper}
+            )
+           
+            if update_result["code"] == BusinessCode.SUCCESS:
+                # 在响应中包含解析结果（包括错误信息）
+                response_data = add_result["data"].copy()
+                response_data["parseResult"] = {
+                    "references": parse_data["references"],
+                    "count": parse_data["count"],
+                    "errors": parse_data["errors"]
+                }
+                return success_response(response_data, add_result["message"])
+            else:
+                return internal_error_response("更新用户论文库失败")
+        else:
+            return bad_request_response(add_result["message"])
+            
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")

@@ -567,9 +567,10 @@ def parse_references(paper_id):
         if parse_result["code"] != BusinessCode.SUCCESS:
             return bad_request_response(parse_result["message"])
         
-        parsed_references = parse_result["data"]["references"]
+        parse_data = parse_result["data"]
+        parsed_references = parse_data["references"]
         
-        if not parsed_references:
+        if not parsed_references and not parse_data["errors"]:
             return bad_request_response("未能从文本中解析出有效的参考文献")
         
         # 将解析后的参考文献添加到论文中
@@ -581,7 +582,14 @@ def parse_references(paper_id):
         )
         
         if add_result["code"] == BusinessCode.SUCCESS:
-            return success_response(add_result["data"], add_result["message"])
+            # 在响应中包含解析结果（包括错误信息）
+            response_data = add_result["data"].copy()
+            response_data["parseResult"] = {
+                "references": parse_data["references"],
+                "count": parse_data["count"],
+                "errors": parse_data["errors"]
+            }
+            return success_response(response_data, add_result["message"])
         else:
             return bad_request_response(add_result["message"])
             

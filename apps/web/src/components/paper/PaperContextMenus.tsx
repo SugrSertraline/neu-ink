@@ -687,6 +687,7 @@ interface ReferenceContextMenuProps {
   onCopyDoi?: MenuAction;
   onCopyUrl?: MenuAction;
   onOpenLink?: MenuAction;
+  onParseReferences?: MenuAction;
 }
 
 export function ReferenceContextMenu({
@@ -701,6 +702,7 @@ export function ReferenceContextMenu({
   onCopyDoi,
   onCopyUrl,
   onOpenLink,
+  onParseReferences,
 }: ReferenceContextMenuProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
   if (!canEditContent) return <>{children}</>;
@@ -710,14 +712,13 @@ export function ReferenceContextMenu({
   if (onEdit) {
     entries.push({ kind: 'item', label: '编辑参考文献', onSelect: onEdit });
   }
-  if (onDuplicate || onInsertBelow) {
+  if (onInsertBelow) {
     if (entries.length) entries.push({ kind: 'separator' });
-    if (onDuplicate) {
-      entries.push({ kind: 'item', label: '复制此条参考文献', onSelect: onDuplicate });
-    }
-    if (onInsertBelow) {
-      entries.push({ kind: 'item', label: '在下方插入参考文献', onSelect: onInsertBelow });
-    }
+    entries.push({ kind: 'item', label: '在下方插入参考文献', onSelect: onInsertBelow });
+  }
+  if (onParseReferences) {
+    if (entries.length) entries.push({ kind: 'separator' });
+    entries.push({ kind: 'item', label: '批量解析参考文献', onSelect: onParseReferences });
   }
   if (onMoveUp || onMoveDown) {
     if (entries.length) entries.push({ kind: 'separator' });

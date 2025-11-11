@@ -193,8 +193,10 @@ export default function PaperReferences({
               onCopyDoi={ref.doi ? handleCopyDoi : undefined}
               onCopyUrl={ref.url ? handleCopyUrl : undefined}
               onOpenLink={ref.url ? handleOpenLink : undefined}
+              onParseReferences={onParseReferences}
             >
               <li
+                key={ref.id}
                 id={`reference-${ref.id}`}
                 data-reference-id={ref.id}
                 onMouseEnter={() => handleMouseEnter(ref.id)}

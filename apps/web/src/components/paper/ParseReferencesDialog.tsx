@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { adminPaperService } from '@/lib/services/paper';
+import { adminPaperService, userPaperService } from '@/lib/services/paper';
 import type { Reference } from '@/types/paper';
 
 interface ParseReferencesDialogProps {
@@ -28,6 +28,15 @@ export default function ParseReferencesDialog({
   const [text, setText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [parseResult, setParseResult] = useState<{
+    references: Reference[];
+    count: number;
+    errors: Array<{
+      index: number | null;
+      raw: string;
+      message: string;
+    }>;
+  } | null>(null);
 
   const handleSubmit = async () => {
     if (!text.trim()) {
@@ -37,6 +46,7 @@ export default function ParseReferencesDialog({
 
     setIsLoading(true);
     setError(null);
+    setParseResult(null);
 
     try {
       // 选择正确的 ID（个人论文 or 公共库）
@@ -45,46 +55,81 @@ export default function ParseReferencesDialog({
         throw new Error('无法确定论文标识');
       }
 
-      // 第一步：解析参考文献
-      const parseResult = await adminPaperService.parseReferences({
-        text: text.trim(),
-      });
+      let result;
+      
+      // 根据论文类型选择不同的服务
+      if (isPersonalOwner) {
+        // 用户个人论文库
+        result = await userPaperService.parseReferencesForUserPaper(
+          targetId,
+          { text: text.trim() }
+        );
+      } else {
+        // 管理员公共论文库
+        result = await adminPaperService.parseReferencesForPaper(
+          targetId,
+          { text: text.trim() }
+        );
+      }
 
-      if (
-        parseResult.bizCode !== 0 ||
-        !parseResult.data?.references ||
-        !parseResult.data.references.length
-      ) {
-        const msg =
-          parseResult.bizMessage || '解析失败，未找到有效的参考文献';
+      if (result.bizCode !== 0) {
+        const msg = result.bizMessage || '解析并添加参考文献失败';
         throw new Error(msg);
       }
 
-      const parsedReferences = parseResult.data.references as Reference[];
+      const addedReferences = result.data?.addedReferences as Reference[] || [];
+      const updatedReferences = result.data?.updatedReferences as Reference[] || [];
+      const duplicateCount = result.data?.duplicateCount || 0;
+      const totalReferences = result.data?.paper?.references?.length || 0;
+      const parseData = result.data?.parseResult;
 
-      // 第二步：添加到论文
-      const addResult = await adminPaperService.addReferencesToPaper(
-        targetId,
-        { references: parsedReferences },
-      );
+      // 如果有解析结果数据，显示解析状态
+      if (parseData) {
+        setParseResult({
+          references: parseData.references || [],
+          count: parseData.count || 0,
+          errors: parseData.errors || []
+        });
 
-      if (addResult.bizCode !== 0) {
-        const msg = addResult.bizMessage || '添加参考文献失败';
-        throw new Error(msg);
+        // 如果有解析错误，显示警告并在控制台输出错误详情
+        if (parseData.errors && parseData.errors.length > 0) {
+          console.group('📚 参考文献解析错误详情');
+          console.error(`解析失败的条目数量: ${parseData.errors.length}`);
+          parseData.errors.forEach((error, index) => {
+            console.error(`错误 ${index + 1}:`, {
+              条目索引: error.index,
+              原始内容: error.raw,
+              错误信息: error.message
+            });
+          });
+          console.groupEnd();
+          
+          toast.warning('部分参考文献解析失败', {
+            description: `成功解析 ${parseData.count} 条，${parseData.errors.length} 条解析失败`,
+          });
+        }
       }
+
+      // 构建成功消息
+      let successMessage = `成功添加了 ${addedReferences.length} 条参考文献`;
+      if (updatedReferences.length > 0) {
+        successMessage += `，更新了 ${updatedReferences.length} 条重复文献`;
+      }
+      successMessage += `，总计 ${totalReferences} 条`;
 
       // 成功提示
       toast.success('参考文献解析成功', {
-        description: `成功添加了 ${parsedReferences.length} 条参考文献`,
+        description: successMessage,
       });
 
-      // 通知上层更新本地 state
-      onReferencesAdded(parsedReferences);
+      // 通知上层更新本地 state（包括新增和更新的参考文献）
+      onReferencesAdded([...addedReferences, ...updatedReferences]);
       
       // 关闭弹窗并清空状态
       onOpenChange(false);
       setText('');
       setError(null);
+      setParseResult(null);
     } catch (err) {
       const msg =
         err instanceof Error
@@ -108,6 +153,7 @@ export default function ParseReferencesDialog({
       onOpenChange(false);
       setText('');
       setError(null);
+      setParseResult(null);
     }
   };
 
@@ -154,6 +200,37 @@ export default function ParseReferencesDialog({
           {error && (
             <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-3">
               <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+            </div>
+          )}
+
+          {parseResult && (
+            <div className="rounded-lg bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 p-3">
+              <h4 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
+                解析结果
+              </h4>
+              <p className="text-sm text-blue-700 dark:text-blue-300 mb-2">
+                成功解析 {parseResult.count} 条参考文献
+              </p>
+              
+              {parseResult.errors.length > 0 && (
+                <div className="mt-3">
+                  <h5 className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
+                    解析失败的条目 ({parseResult.errors.length})
+                  </h5>
+                  <div className="max-h-32 overflow-y-auto space-y-2">
+                    {parseResult.errors.map((err, idx) => (
+                      <div key={idx} className="text-xs bg-red-100 dark:bg-red-900/30 rounded p-2">
+                        <p className="text-red-700 dark:text-red-300 font-medium">
+                          {err.index !== null ? `条目 [${err.index}]` : '未知条目'}: {err.message}
+                        </p>
+                        <p className="text-red-600 dark:text-red-400 mt-1 font-mono">
+                          {err.raw.length > 100 ? `${err.raw.substring(0, 100)}...` : err.raw}
+                        </p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
