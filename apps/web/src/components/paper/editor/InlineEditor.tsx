@@ -694,20 +694,97 @@ export default function InlineEditor({
                           );
                         }
 
+                        // 获取元素信息用于显示缩略图
+                        const getElementInfo = () => {
+                          const element = document.getElementById(item.id);
+                          if (!element) return null;
+                          
+                          if (item.type === 'figure') {
+                            const imgElement = element.querySelector('img') as HTMLImageElement | null;
+                            const numberElement = element.querySelector('.text-gray-800');
+                            return {
+                              img: imgElement,
+                              number: numberElement?.textContent?.replace('Figure ', '').replace('.', '') || item.number || '?'
+                            };
+                          }
+                          
+                          if (item.type === 'table') {
+                            const numberElement = element.querySelector('.text-gray-800');
+                            return {
+                              number: numberElement?.textContent?.replace('Table ', '').replace('.', '') || item.number || '?'
+                            };
+                          }
+                          
+                          if (item.type === 'equation') {
+                            const numberElement = element.querySelector('.text-gray-500');
+                            return {
+                              number: numberElement?.textContent?.replace(/[()]/g, '') || item.number || '?'
+                            };
+                          }
+                          
+                          return { number: item.number };
+                        };
+                        
+                        const elementInfo = getElementInfo();
+                        
                         return (
                           <button
                             key={item.id}
                             onClick={() => insertSingleReference(item)}
                             className="w-full text-left p-4 border-2 border-white/70 rounded-xl hover:bg-blue-50 hover:border-blue-400 transition-all shadow-sm hover:shadow-md bg-white/80"
                           >
-                            <div className="font-semibold text-gray-900 text-base mb-1">
-                              {item.displayText}
-                            </div>
-                            <div className="text-xs text-gray-500 mt-2 font-mono">
-                              {item.type === 'figure' && `Figure ${item.number ?? '?'}`}
-                              {item.type === 'table' && `Table ${item.number ?? '?'}`}
-                              {item.type === 'equation' && `Equation ${item.number ?? '?'}`}
-                              {item.type === 'section' && `Section ${item.number ?? ''}`}
+                            <div className="flex items-start gap-3">
+                              {/* 缩略图区域 */}
+                              {item.type === 'figure' && elementInfo?.img && (
+                                <div className="shrink-0 w-16 h-16 bg-gray-100 rounded-md overflow-hidden border border-gray-200">
+                                  <img
+                                    src={elementInfo.img.currentSrc || elementInfo.img.src}
+                                    alt="figure thumbnail"
+                                    className="w-full h-full object-cover"
+                                  />
+                                </div>
+                              )}
+                              
+                              {item.type === 'table' && (
+                                <div className="shrink-0 w-16 h-16 bg-orange-50 rounded-md border border-orange-200 flex items-center justify-center">
+                                  <Table className="w-8 h-8 text-orange-600" />
+                                </div>
+                              )}
+                              
+                              {item.type === 'equation' && (
+                                <div className="shrink-0 w-16 h-16 bg-indigo-50 rounded-md border border-indigo-200 flex items-center justify-center">
+                                  <Sigma className="w-8 h-8 text-indigo-600" />
+                                </div>
+                              )}
+                              
+                              {/* 文本信息区域 */}
+                              <div className="flex-1 min-w-0">
+                                <div className="font-semibold text-gray-900 text-base mb-1">
+                                  {item.type === 'figure' && `Figure ${elementInfo?.number || '?'}`}
+                                  {item.type === 'table' && `Table ${elementInfo?.number || '?'}`}
+                                  {item.type === 'equation' && `Equation ${elementInfo?.number || '?'}`}
+                                  {item.type === 'section' && `Section ${elementInfo?.number || ''}`}
+                                </div>
+                                
+                                {/* 额外描述信息 */}
+                                {item.type === 'figure' && (item.data as any)?.caption?.en && (
+                                  <div className="text-sm text-gray-600 mt-1 line-clamp-2">
+                                    {(item.data as any).caption.en.map((node: any) => node.content).join(' ')}
+                                  </div>
+                                )}
+                                
+                                {item.type === 'table' && (item.data as any)?.caption?.en && (
+                                  <div className="text-sm text-gray-600 mt-1 line-clamp-2">
+                                    {(item.data as any).caption.en.map((node: any) => node.content).join(' ')}
+                                  </div>
+                                )}
+                                
+                                {item.type === 'equation' && (item.data as any)?.latex && (
+                                  <div className="text-xs text-gray-500 mt-1 font-mono line-clamp-1">
+                                    ${(item.data as any).latex}
+                                  </div>
+                                )}
+                              </div>
                             </div>
                           </button>
                         );

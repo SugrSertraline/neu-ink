@@ -308,43 +308,11 @@ export function usePaperBlocks(
       isPersonalOwner: boolean,
       onSaveToServer?: () => Promise<void>
     ) => {
-      // 本地更新
+      // 只进行本地更新，不立即保存到服务器
+      // 所有类型的block（包括figure）都将在用户点击"完成编辑"时统一保存
       updateBlockTree(blockId, () => ({ block: nextBlock }));
-      
-      // 如果是图片块（figure类型），立即保存到服务器
-      if (nextBlock.type === 'figure') {
-        const figureBlock = nextBlock as any; // 类型断言，因为FigureBlock有特定的字段
-        console.log('[DEBUG] 图片块更新，准备保存到服务器:', {
-          blockId,
-          src: figureBlock.src,
-          alt: figureBlock.alt,
-          width: figureBlock.width,
-          height: figureBlock.height,
-          caption: figureBlock.caption,
-          description: figureBlock.description,
-          uploadedFilename: figureBlock.uploadedFilename
-        });
-        
-        // 异步保存到服务器，不阻塞UI
-        handleBlockUpdateWithAPI(sectionId, blockId, {
-          type: 'figure',
-          src: figureBlock.src,
-          alt: figureBlock.alt,
-          width: figureBlock.width,
-          height: figureBlock.height,
-          caption: figureBlock.caption,
-          description: figureBlock.description,
-          uploadedFilename: figureBlock.uploadedFilename
-        }, paperId, userPaperId, isPersonalOwner).then(result => {
-          if (!result.success) {
-            console.error('Failed to save image block to server:', result.error);
-          } else {
-            console.log('[DEBUG] 图片块保存到服务器成功');
-          }
-        });
-      }
     },
-    [updateBlockTree, handleBlockUpdateWithAPI]
+    [updateBlockTree]
   );
 
   // 新增：专门用于保存到服务器的函数
@@ -404,6 +372,12 @@ export function usePaperBlocks(
           insertAfter: { ...cloneBlock(block), id: generateId(`${block.type}`) },
         };
       });
+      
+      // 复制块后，需要清除未保存状态
+      // 由于复制操作是纯本地操作，没有API调用，我们直接触发事件
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('blockAddedSuccessfully'));
+      }, 100);
     },
     [updateBlockTree]
   );
@@ -520,6 +494,9 @@ export function usePaperBlocks(
           // 删除成功，清理保存的块信息
           deletedBlocksRef.current.delete(blockId);
           toast.success('内容块删除成功', { id: 'delete-block' });
+          
+          // 删除成功后，需要清除未保存状态
+          window.dispatchEvent(new CustomEvent('blockAddedSuccessfully'));
         }
       } catch (error) {
         // 删除失败，恢复被删除的块
@@ -627,6 +604,9 @@ export function usePaperBlocks(
         if (result.success) {
           setActiveBlockId(newBlockId);
           toast.success('内容块插入成功', { id: 'insert-block' });
+          
+          // 插入成功后，需要清除未保存状态
+          window.dispatchEvent(new CustomEvent('blockAddedSuccessfully'));
         } else {
           toast.error('插入内容块失败', {
             id: 'insert-block',
@@ -687,32 +667,153 @@ export function usePaperBlocks(
   );
 
   const handleBlockAppendSubsection = useCallback(
-    (blockId: string) => {
+    async (
+      blockId: string,
+      paperId: string,
+      userPaperId: string | null,
+      isPersonalOwner: boolean,
+      onSaveToServer?: () => Promise<void>
+    ) => {
+      // 找到包含该块的章节
+      let parentSectionId: string | null = null;
+      let currentSections: Section[] = [];
+      
+      // 获取当前的sections
       updateSections(sections => {
-        let touched = false;
-
-        const walk = (nodes: Section[]): Section[] =>
-          nodes.map(section => {
-            let nextSection = section;
-
-            if (section.content.some(block => block.id === blockId)) {
-              const nextSubsections = [...(section.subsections ?? []), createEmptySection()];
-              nextSection = { ...section, subsections: nextSubsections };
-              touched = true;
-            } else if (section.subsections?.length) {
-              const nextSubsections = walk(section.subsections);
-              if (nextSubsections !== section.subsections) {
-                nextSection = { ...nextSection, subsections: nextSubsections };
-                touched = true;
-              }
-            }
-
-            return nextSection;
-          });
-
-        const nextSections = walk(sections);
-        return { sections: touched ? nextSections : sections, touched };
+        currentSections = sections;
+        return { sections, touched: false };
       });
+      
+      const findSectionContainingBlock = (sections: Section[], blockId: string): { section: Section; sectionId: string } | null => {
+        for (const section of sections) {
+          if (section.content?.some(block => block.id === blockId)) {
+            return { section, sectionId: section.id };
+          }
+          if (section.subsections) {
+            const found = findSectionContainingBlock(section.subsections, blockId);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+      
+      const parentSection = findSectionContainingBlock(currentSections, blockId);
+      if (!parentSection) {
+        toast.error('无法找到包含该块的章节');
+        return;
+      }
+      
+      parentSectionId = parentSection.sectionId;
+      
+      // 创建新章节
+      const newSection = createEmptySection();
+      
+      // 显示加载状态
+      toast.loading('正在添加子章节...', { id: 'add-subsection' });
+      
+      try {
+        // 调用API添加子章节
+        const { adminPaperService, userPaperService } = await import('@/lib/services/paper');
+        let result;
+        
+        if (isPersonalOwner && userPaperId) {
+          result = await userPaperService.addSection(userPaperId, {
+            title: {
+              en: newSection.title || '',
+              zh: newSection.titleZh || ''
+            },
+            content: newSection.content || []
+          }, {
+            parentSectionId: parentSectionId,
+            position: -1 // 添加到末尾
+          });
+        } else {
+          result = await adminPaperService.addSection(paperId, {
+            title: {
+              en: newSection.title || '',
+              zh: newSection.titleZh || ''
+            },
+            content: newSection.content || []
+          }, {
+            parentSectionId: parentSectionId,
+            position: -1 // 添加到末尾
+          });
+        }
+        
+        if (result.bizCode === 0) {
+          // API调用成功，使用返回的数据更新本地状态
+          if (result.data && result.data.paper) {
+            // 使用服务器返回的更新后的论文数据
+            const updatedPaper = result.data.paper;
+            let updatedSections: Section[] = [];
+            
+            if (isPersonalOwner) {
+              // 对于个人论文，sections 在 paperData 中
+              updatedSections = (updatedPaper as any).paperData?.sections || [];
+            } else {
+              // 对于公共论文，sections 直接在 paper 中
+              updatedSections = (updatedPaper as any).sections || [];
+            }
+            
+            // 更新本地状态
+            updateSections(() => ({
+              sections: updatedSections,
+              touched: true
+            }));
+            
+            toast.success('子章节添加成功', { id: 'add-subsection' });
+          } else {
+            // 如果返回的数据中没有paper，则重新获取
+            try {
+              let paperResult;
+              if (isPersonalOwner && userPaperId) {
+                paperResult = await userPaperService.getUserPaperDetail(userPaperId);
+              } else {
+                paperResult = await adminPaperService.getAdminPaperDetail(paperId);
+              }
+              
+              if (paperResult && paperResult.bizCode === 0 && paperResult.data) {
+                // 使用服务器返回的最新数据更新本地状态
+                let updatedSections: Section[] = [];
+                
+                if (isPersonalOwner) {
+                  // 对于个人论文，sections 在 paperData 中
+                  updatedSections = (paperResult.data as any).paperData?.sections || [];
+                } else {
+                  // 对于公共论文，sections 直接在 data 中
+                  updatedSections = (paperResult.data as any).sections || [];
+                }
+                
+                // 更新本地状态
+                updateSections(() => ({
+                  sections: updatedSections,
+                  touched: true
+                }));
+                
+                toast.success('子章节添加成功', { id: 'add-subsection' });
+              } else {
+                // 如果获取最新数据失败，至少显示成功消息
+                toast.success('子章节添加成功，但可能需要刷新页面查看最新内容', { id: 'add-subsection' });
+              }
+            } catch (error) {
+              console.error('获取最新论文数据失败:', error);
+              // 即使获取最新数据失败，也显示成功消息
+              toast.success('子章节添加成功，但可能需要刷新页面查看最新内容', { id: 'add-subsection' });
+            }
+          }
+        } else {
+          toast.error('添加子章节失败', {
+            id: 'add-subsection',
+            description: result.bizMessage || '服务器错误'
+          });
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : '添加子章节时发生未知错误';
+        toast.error('添加子章节失败', {
+          id: 'add-subsection',
+          description: message
+        });
+      }
     },
     [updateSections]
   );
@@ -773,6 +874,11 @@ export function usePaperBlocks(
         if (result.success) {
           setActiveBlockId(newBlockId);
           toast.success('组件添加成功', { id: 'add-component' });
+          
+          // 添加成功后，需要清除未保存状态
+          // 由于我们无法直接访问setHasUnsavedChanges，我们需要通过其他方式
+          // 这里我们可以触发一个自定义事件，让页面组件处理
+          window.dispatchEvent(new CustomEvent('blockAddedSuccessfully'));
         } else {
           // 如果API调用失败，回滚本地更新
           if (targetSectionId && newBlockId) {
@@ -825,6 +931,7 @@ function createEmptySection(): Section {
   return {
     id: generateId('section'),
     title: 'Untitled Section',
+    titleZh: '未命名章节',
     content: [],
     subsections: [],
   };

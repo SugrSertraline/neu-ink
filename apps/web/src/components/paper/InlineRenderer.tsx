@@ -519,7 +519,14 @@ export default function InlineRenderer({
 
         case 'figure-ref': {
           const n = node as any;
-          const label = String(n.displayText || 'Fig.');
+          // 获取图片元素和编号
+          const figureElement = n.figureId ? document.getElementById(n.figureId) : null;
+          const figureNumberElement = figureElement?.querySelector('.text-gray-800');
+          const figureNumber = figureNumberElement?.textContent?.replace('Figure ', '').replace('.', '') || '';
+          
+          // 如果有编号，使用 "Figure X"，否则使用默认文本
+          const label = figureNumber ? `Figure ${figureNumber}` : String(n.displayText || 'Fig.');
+          
           return (
             <button
               key={key}

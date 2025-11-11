@@ -53,7 +53,8 @@ import type {
   
   export const createEmptySection = (): Section => ({
     id: generateId('section'),
-    title: { en: 'Untitled Section', zh: '未命名章节' },
+    title: 'Untitled Section',
+    titleZh: '未命名章节',
     content: [],
     subsections: [],
   });

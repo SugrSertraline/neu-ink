@@ -712,12 +712,28 @@ function FigureEditor({
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 用于“乐观预览”的本地状态；与 block.src 双向同步
+  // 用于"乐观预览"的本地状态；与 block.src 双向同步
   const [localSrc, setLocalSrc] = useState(block.src ?? '');
   useEffect(() => {
     // 父级刷回来后，同步预览
+    console.log('[DEBUG] block.src 变化:', block.src, 'block.id:', block.id);
     setLocalSrc(block.src ?? '');
   }, [block.src, block.id]);
+
+  // 为 alt 文本添加本地状态，确保更改能立即反映在 UI 中
+  const [localAlt, setLocalAlt] = useState(block.alt ?? '');
+  useEffect(() => {
+    // 父级刷回来后，同步 alt 文本
+    setLocalAlt(block.alt ?? '');
+  }, [block.alt]);
+
+  // 为宽度和高度添加本地状态，确保更改能立即反映在 UI 中
+  const [localWidth, setLocalWidth] = useState(block.width ?? '');
+  const [localHeight, setLocalHeight] = useState(block.height ?? '');
+  useEffect(() => {
+    setLocalWidth(block.width ?? '');
+    setLocalHeight(block.height ?? '');
+  }, [block.width, block.height]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -754,7 +770,13 @@ function FigureEditor({
 
       // 2) 后端返回 URL 后，统一写入本地预览 + block
       const finalUrl = res.url;
+      console.log('[DEBUG] 上传成功，最终URL:', finalUrl);
+      
+      // 先更新本地状态，确保预览立即更新
       setLocalSrc(finalUrl);
+      
+      // 然后更新 block 状态，但不立即保存到服务器
+      // 只更新本地状态，等待用户点击"完成编辑"时才保存
       onChange({ ...block, src: finalUrl, uploadedFilename: file.name });
 
       toast.success('图片上传成功');
@@ -779,6 +801,7 @@ function FigureEditor({
   };
 
   const displaySrc = (localSrc ?? '').trim();
+  console.log('[DEBUG] displaySrc:', displaySrc, 'localSrc:', localSrc, 'block.src:', block.src);
 
   return (
     <div className="space-y-4">
@@ -799,7 +822,7 @@ function FigureEditor({
               <div className="relative inline-block">
                 {/* 用 key 强制在 src 变化时重建节点，避免缓存/渲染残留 */}
                 <img
-                  key={displaySrc}
+                  key={`${displaySrc}-${block.id}`}
                   src={displaySrc}
                   alt={block.alt || '预览'}
                   className="max-h-48 rounded border border-gray-300"
@@ -882,6 +905,7 @@ function FigureEditor({
           value={localSrc || ''}
           onChange={(e) => {
             const v = e.target.value;
+            console.log('[DEBUG] 手动输入图片路径:', v);
             setLocalSrc(v);                 // 本地立刻生效
             onChange({ ...block, src: v }); // 同步给父级
           }}
@@ -894,8 +918,12 @@ function FigureEditor({
         <label className="block text-sm font-medium text-gray-700 mb-1">Alt 文本:</label>
         <input
           type="text"
-          value={block.alt ?? ''}
-          onChange={(e) => onChange({ ...block, alt: e.target.value })}
+          value={localAlt}
+          onChange={(e) => {
+            const newAlt = e.target.value;
+            setLocalAlt(newAlt); // 本地立刻生效
+            onChange({ ...block, alt: newAlt }); // 同步给父级
+          }}
           placeholder="图片描述"
           className="w-full px-3 py-2 border border-gray-300 rounded"
         />
@@ -906,8 +934,12 @@ function FigureEditor({
           <label className="block text-sm font-medium text-gray-700 mb-1">宽度:</label>
           <input
             type="text"
-            value={block.width ?? ''}
-            onChange={(e) => onChange({ ...block, width: e.target.value })}
+            value={localWidth}
+            onChange={(e) => {
+              const newWidth = e.target.value;
+              setLocalWidth(newWidth); // 本地立刻生效
+              onChange({ ...block, width: newWidth }); // 同步给父级
+            }}
             placeholder="auto 或 500px"
             className="w-full px-3 py-2 border border-gray-300 rounded"
           />
@@ -916,16 +948,83 @@ function FigureEditor({
           <label className="block text-sm font-medium text-gray-700 mb-1">高度:</label>
           <input
             type="text"
-            value={block.height ?? ''}
-            onChange={(e) => onChange({ ...block, height: e.target.value })}
+            value={localHeight}
+            onChange={(e) => {
+              const newHeight = e.target.value;
+              setLocalHeight(newHeight); // 本地立刻生效
+              onChange({ ...block, height: newHeight }); // 同步给父级
+            }}
             placeholder="auto 或 300px"
             className="w-full px-3 py-2 border border-gray-300 rounded"
           />
         </div>
       </div>
 
-      {/* 下面 captions / description 保持你原来的 InlineEditor 调用 */}
-      {/* ... */}
+      <div className="space-y-4">
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">图片标题 (英文):</label>
+          <InlineEditor
+            value={block.caption?.en ?? []}
+            onChange={(newContent) =>
+              onChange({
+                ...block,
+                caption: { ...block.caption, en: newContent },
+              })
+            }
+            references={references}
+            allSections={allSections}
+            placeholder="输入英文图片标题..."
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">图片标题 (中文):</label>
+          <InlineEditor
+            value={block.caption?.zh ?? []}
+            onChange={(newContent) =>
+              onChange({
+                ...block,
+                caption: { ...block.caption, zh: newContent },
+              })
+            }
+            references={references}
+            allSections={allSections}
+            placeholder="输入中文图片标题..."
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">图片描述 (英文):</label>
+          <InlineEditor
+            value={block.description?.en ?? []}
+            onChange={(newContent) =>
+              onChange({
+                ...block,
+                description: { ...block.description, en: newContent },
+              })
+            }
+            references={references}
+            allSections={allSections}
+            placeholder="输入英文图片描述..."
+          />
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">图片描述 (中文):</label>
+          <InlineEditor
+            value={block.description?.zh ?? []}
+            onChange={(newContent) =>
+              onChange({
+                ...block,
+                description: { ...block.description, zh: newContent },
+              })
+            }
+            references={references}
+            allSections={allSections}
+            placeholder="输入中文图片描述..."
+          />
+        </div>
+      </div>
     </div>
   );
 }

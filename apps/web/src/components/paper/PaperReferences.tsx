@@ -33,26 +33,8 @@ const joinMeta = (...parts: (string | undefined | null)[]) =>
   parts.filter(Boolean).join('. ');
 
 const formatReference = (ref: Reference) => {
-  // 如果有原始文本，优先使用原始文本
-  if (ref.originalText && ref.originalText.trim()) {
-    return ref.originalText.trim();
-  }
-  
-  // 否则使用格式化后的参考文献
-  const authors = ref.authors.length ? ref.authors.join(', ') : 'Unknown author';
-  const publication = joinMeta(
-    ref.publication,
-    ref.volume && `Vol. ${ref.volume}`,
-    ref.issue && `No. ${ref.issue}`,
-  );
-  const tail = joinMeta(
-    publication,
-    ref.pages,
-    ref.year?.toString(),
-    ref.doi && `DOI: ${ref.doi}`,
-    ref.url && `URL: ${ref.url}`,
-  );
-  return joinMeta(authors, ref.title, tail);
+  // 直接使用原始文本，不进行任何格式化处理
+  return ref.originalText && ref.originalText.trim() ? ref.originalText.trim() : '';
 };
 
 export default function PaperReferences({
@@ -139,6 +121,9 @@ export default function PaperReferences({
           const displayNumber = ref.number ?? idx + 1;
           const isHighlighted = highlightedRefs.includes(ref.id);
           const citationText = formatReference(ref);
+          
+          // 使用索引和ID的组合确保key的唯一性
+          const uniqueKey = `${ref.id}-${idx}`;
 
           const handleCopyCitation = () => {
             if (!citationText) return;
@@ -178,7 +163,7 @@ export default function PaperReferences({
 
           return (
             <li
-              key={ref.id}
+              key={uniqueKey}
               id={`reference-${ref.id}`}
               data-reference-id={ref.id}
               onMouseEnter={() => handleMouseEnter(ref.id)}

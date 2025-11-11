@@ -76,7 +76,7 @@ export function usePaperSections(
         const result = await userPaperService.updateSection(userPaperId, sectionId, updateData);
         
         if (result.bizCode === 0) {
-          return { success: true };
+          return { success: true, data: result.data };
         } else {
           toast.error('更新失败', { description: result.bizMessage || '服务器错误' });
           return { success: false, error: result.bizMessage || '更新章节失败' };
@@ -86,7 +86,7 @@ export function usePaperSections(
         const result = await adminPaperService.updateSection(paperId, sectionId, updateData);
         
         if (result.bizCode === 0) {
-          return { success: true };
+          return { success: true, data: result.data };
         } else {
           toast.error('更新失败', { description: result.bizMessage || '服务器错误' });
           return { success: false, error: result.bizMessage || '更新章节失败' };
@@ -120,7 +120,7 @@ export function usePaperSections(
         
         if (result.bizCode === 0) {
           toast.success('章节添加成功');
-          return { success: true };
+          return { success: true, data: result.data };
         } else {
           toast.error('添加失败', { description: result.bizMessage || '服务器错误' });
           return { success: false, error: result.bizMessage || '添加章节失败' };
@@ -131,7 +131,7 @@ export function usePaperSections(
         
         if (result.bizCode === 0) {
           toast.success('章节添加成功');
-          return { success: true };
+          return { success: true, data: result.data };
         } else {
           toast.error('添加失败', { description: result.bizMessage || '服务器错误' });
           return { success: false, error: result.bizMessage || '添加章节失败' };
@@ -272,6 +272,12 @@ export function usePaperSections(
         });
       } else {
         toast.success('章节标题更新成功', { id: 'update-section-title' });
+        
+        // 如果API返回了更新后的论文数据，可以在这里处理
+        if (result.data && result.data.paper) {
+          // 可以在这里更新本地状态，但通常不需要，因为我们已经更新了UI
+          console.log('章节标题更新成功，返回的数据:', result.data);
+        }
       }
     } catch (error) {
       toast.error('更新章节标题失败', {
@@ -295,12 +301,6 @@ export function usePaperSections(
       // 显示加载状态
       toast.loading('正在添加子章节...', { id: 'add-subsection' });
       
-      // 先本地更新UI
-      updateSectionTree(sectionId, section => ({
-        ...section,
-        subsections: [...(section.subsections ?? []), newSection],
-      }));
-      
       // 调用API保存
       const sectionData = {
         title: {
@@ -321,22 +321,76 @@ export function usePaperSections(
         }
       );
 
-      // 如果API调用失败，可以考虑回滚本地更新
+      // 如果API调用失败，显示错误信息
       if (!result.success) {
         toast.error('添加子章节失败', {
           id: 'add-subsection',
           description: result.error
         });
-        // 回滚本地更新
-        updateSectionTree(sectionId, section => ({
-          ...section,
-          subsections: (section.subsections ?? []).filter(sub => sub.id !== newSection.id)
-        }));
       } else {
-        toast.success('子章节添加成功', { id: 'add-subsection' });
+        // API调用成功，使用返回的数据更新本地状态
+        if (result.data && result.data.paper) {
+          // 使用服务器返回的更新后的论文数据
+          const updatedPaper = result.data.paper;
+          let updatedSections: Section[] = [];
+          
+          if (isPersonalOwner) {
+            // 对于个人论文，sections 在 paperData 中
+            updatedSections = (updatedPaper as any).paperData?.sections || [];
+          } else {
+            // 对于公共论文，sections 直接在 paper 中
+            updatedSections = (updatedPaper as any).sections || [];
+          }
+            
+          setEditableDraft(prev => {
+            if (!prev) return prev;
+            return { ...prev, sections: updatedSections };
+          });
+          
+          toast.success('子章节添加成功', { id: 'add-subsection' });
+        } else {
+          // 如果返回的数据中没有paper，则重新获取
+          try {
+            let paperResult;
+            if (isPersonalOwner && userPaperId) {
+              const { userPaperService } = await import('@/lib/services/paper');
+              paperResult = await userPaperService.getUserPaperDetail(userPaperId);
+            } else {
+              const { adminPaperService } = await import('@/lib/services/paper');
+              paperResult = await adminPaperService.getAdminPaperDetail(paperId);
+            }
+            
+            if (paperResult && paperResult.bizCode === 0 && paperResult.data) {
+              // 使用服务器返回的最新数据更新本地状态
+              let updatedSections: Section[] = [];
+              
+              if (isPersonalOwner) {
+                // 对于个人论文，sections 在 paperData 中
+                updatedSections = (paperResult.data as any).paperData?.sections || [];
+              } else {
+                // 对于公共论文，sections 直接在 data 中
+                updatedSections = (paperResult.data as any).sections || [];
+              }
+                
+              setEditableDraft(prev => {
+                if (!prev) return prev;
+                return { ...prev, sections: updatedSections };
+              });
+              
+              toast.success('子章节添加成功', { id: 'add-subsection' });
+            } else {
+              // 如果获取最新数据失败，至少显示成功消息
+              toast.success('子章节添加成功，但可能需要刷新页面查看最新内容', { id: 'add-subsection' });
+            }
+          } catch (error) {
+            console.error('获取最新论文数据失败:', error);
+            // 即使获取最新数据失败，也显示成功消息
+            toast.success('子章节添加成功，但可能需要刷新页面查看最新内容', { id: 'add-subsection' });
+          }
+        }
       }
     },
-    [updateSectionTree, handleSectionAddWithAPI]
+    [handleSectionAddWithAPI, setEditableDraft]
   );
 
   const handleSectionInsert = useCallback(
@@ -819,6 +873,43 @@ export function usePaperSections(
         if (result.bizCode === 0) {
           loadingBlockId = result.data.loadingBlockId;
           
+          // 立即在本地状态中添加loading block，这样用户可以立即看到
+          updateSectionTree(sectionId, section => {
+            const currentBlocks = section.content || [];
+            let insertIndex = currentBlocks.length; // 默认在末尾
+           
+            if (afterBlockId) {
+              for (let i = 0; i < currentBlocks.length; i++) {
+                if (currentBlocks[i].id === afterBlockId) {
+                  insertIndex = i + 1;
+                  break;
+                }
+              }
+            }
+           
+            // 创建loading block
+            const loadingBlock: BlockContent = {
+              id: loadingBlockId!,
+              type: 'loading',
+              status: 'pending',
+              message: '正在准备解析文本...',
+              progress: 0,
+              originalText: text,
+              sectionId: sectionId,
+              afterBlockId: afterBlockId,
+              createdAt: new Date().toISOString()
+            };
+           
+            // 插入loading block
+            const newBlocks = [...currentBlocks];
+            newBlocks.splice(insertIndex, 0, loadingBlock);
+           
+            return {
+              ...section,
+              content: newBlocks
+            };
+          });
+          
           // 显示加载状态
           toast.loading('正在解析文本内容...', { id: 'parse-text' });
           
@@ -833,18 +924,45 @@ export function usePaperSections(
               setTimeout(checkStatus, pollInterval);
               return;
             }
-            
+           
+            // 确保 loadingBlockId 不为 null
+            if (!loadingBlockId) {
+              console.error('loadingBlockId 为 null，停止轮询');
+              return;
+            }
+           
             try {
               const statusResult = await userPaperService.checkBlockParsingStatus(
                 userPaperId,
                 sectionId,
-                loadingBlockId!
+                loadingBlockId
               );
               
               if (statusResult.bizCode === 0) {
-                const { status, addedBlocks, error } = statusResult.data;
+                const { status, addedBlocks, error, progress, message } = statusResult.data;
                 
-                if (status === 'completed') {
+                // 更新loading block的状态和进度
+                if (status === 'processing' || status === 'pending') {
+                  updateSectionTree(sectionId, section => {
+                    const currentBlocks = section.content || [];
+                    const updatedBlocks = currentBlocks.map(block => {
+                      if (block.id === loadingBlockId && block.type === 'loading') {
+                        return {
+                          ...block,
+                          status,
+                          message: message || (status === 'processing' ? '正在解析文本...' : '等待中...'),
+                          progress: progress || 0
+                        } as BlockContent;
+                      }
+                      return block;
+                    });
+                    
+                    return {
+                      ...section,
+                      content: updatedBlocks
+                    };
+                  });
+                } else if (status === 'completed') {
                   // 解析完成，移除加载块，添加解析后的blocks
                   updateSectionTree(sectionId, section => {
                     const currentBlocks = section.content || [];
@@ -878,11 +996,26 @@ export function usePaperSections(
                   // 解析完成，清除轮询
                   return;
                 } else if (status === 'failed') {
-                  // 移除加载块
-                  updateSectionTree(sectionId, section => ({
-                    ...section,
-                    content: (section.content || []).filter(block => block.id !== loadingBlockId)
-                  }));
+                  // 更新loading block为失败状态
+                  updateSectionTree(sectionId, section => {
+                    const currentBlocks = section.content || [];
+                    const updatedBlocks = currentBlocks.map(block => {
+                      if (block.id === loadingBlockId && block.type === 'loading') {
+                        return {
+                          ...block,
+                          status: 'failed',
+                          message: error || '解析失败',
+                          progress: 0
+                        } as BlockContent;
+                      }
+                      return block;
+                    });
+                    
+                    return {
+                      ...section,
+                      content: updatedBlocks
+                    };
+                  });
                    
                   toast.error('文本解析失败', {
                     id: 'parse-text',
@@ -897,13 +1030,13 @@ export function usePaperSections(
               console.error('检查解析状态时出错:', error);
               // 不清除轮询，继续尝试
             }
-            
+           
             // 增加轮询间隔（指数退避）
             pollCount++;
             if (pollCount > 3) { // 前3次保持2秒间隔
               pollInterval = Math.min(pollInterval * 1.5, maxPollInterval);
             }
-            
+           
             // 继续下一次轮询
             setTimeout(checkStatus, pollInterval);
           };
@@ -929,6 +1062,43 @@ export function usePaperSections(
         if (result.bizCode === 0) {
           loadingBlockId = result.data.loadingBlockId;
           
+          // 立即在本地状态中添加loading block，这样用户可以立即看到
+          updateSectionTree(sectionId, section => {
+            const currentBlocks = section.content || [];
+            let insertIndex = currentBlocks.length; // 默认在末尾
+           
+            if (afterBlockId) {
+              for (let i = 0; i < currentBlocks.length; i++) {
+                if (currentBlocks[i].id === afterBlockId) {
+                  insertIndex = i + 1;
+                  break;
+                }
+              }
+            }
+           
+            // 创建loading block
+            const loadingBlock: BlockContent = {
+              id: loadingBlockId!,
+              type: 'loading',
+              status: 'pending',
+              message: '正在准备解析文本...',
+              progress: 0,
+              originalText: text,
+              sectionId: sectionId,
+              afterBlockId: afterBlockId,
+              createdAt: new Date().toISOString()
+            };
+           
+            // 插入loading block
+            const newBlocks = [...currentBlocks];
+            newBlocks.splice(insertIndex, 0, loadingBlock);
+           
+            return {
+              ...section,
+              content: newBlocks
+            };
+          });
+          
           // 显示加载状态
           toast.loading('正在解析文本内容...', { id: 'parse-text' });
           
@@ -943,18 +1113,45 @@ export function usePaperSections(
               setTimeout(checkStatus, pollInterval);
               return;
             }
-            
+           
+            // 确保 loadingBlockId 不为 null
+            if (!loadingBlockId) {
+              console.error('loadingBlockId 为 null，停止轮询');
+              return;
+            }
+           
             try {
               const statusResult = await adminPaperService.checkBlockParsingStatus(
                 paperId,
                 sectionId,
-                loadingBlockId!
+                loadingBlockId
               );
               
               if (statusResult.bizCode === 0) {
-                const { status, addedBlocks, error } = statusResult.data;
+                const { status, addedBlocks, error, progress, message } = statusResult.data;
                 
-                if (status === 'completed') {
+                // 更新loading block的状态和进度
+                if (status === 'processing' || status === 'pending') {
+                  updateSectionTree(sectionId, section => {
+                    const currentBlocks = section.content || [];
+                    const updatedBlocks = currentBlocks.map(block => {
+                      if (block.id === loadingBlockId && block.type === 'loading') {
+                        return {
+                          ...block,
+                          status,
+                          message: message || (status === 'processing' ? '正在解析文本...' : '等待中...'),
+                          progress: progress || 0
+                        } as BlockContent;
+                      }
+                      return block;
+                    });
+                    
+                    return {
+                      ...section,
+                      content: updatedBlocks
+                    };
+                  });
+                } else if (status === 'completed') {
                   // 解析完成，移除加载块，添加解析后的blocks
                   updateSectionTree(sectionId, section => {
                     const currentBlocks = section.content || [];
@@ -988,11 +1185,26 @@ export function usePaperSections(
                   // 解析完成，清除轮询
                   return;
                 } else if (status === 'failed') {
-                  // 移除加载块
-                  updateSectionTree(sectionId, section => ({
-                    ...section,
-                    content: (section.content || []).filter(block => block.id !== loadingBlockId)
-                  }));
+                  // 更新loading block为失败状态
+                  updateSectionTree(sectionId, section => {
+                    const currentBlocks = section.content || [];
+                    const updatedBlocks = currentBlocks.map(block => {
+                      if (block.id === loadingBlockId && block.type === 'loading') {
+                        return {
+                          ...block,
+                          status: 'failed',
+                          message: error || '解析失败',
+                          progress: 0
+                        } as BlockContent;
+                      }
+                      return block;
+                    });
+                    
+                    return {
+                      ...section,
+                      content: updatedBlocks
+                    };
+                  });
                    
                   toast.error('文本解析失败', {
                     id: 'parse-text',
@@ -1007,13 +1219,13 @@ export function usePaperSections(
               console.error('检查解析状态时出错:', error);
               // 不清除轮询，继续尝试
             }
-            
+           
             // 增加轮询间隔（指数退避）
             pollCount++;
             if (pollCount > 3) { // 前3次保持2秒间隔
               pollInterval = Math.min(pollInterval * 1.5, maxPollInterval);
             }
-            
+           
             // 继续下一次轮询
             setTimeout(checkStatus, pollInterval);
           };
@@ -1040,6 +1252,142 @@ export function usePaperSections(
     }
   }, [updateSectionTree]);
 
+  // 新增：从块添加子章节的函数
+  const handleBlockAppendSubsection = useCallback(
+    async (
+      blockId: string,
+      paperId: string,
+      userPaperId: string | null,
+      isPersonalOwner: boolean,
+      onSaveToServer?: () => Promise<void>
+    ) => {
+      // 获取当前的sections
+      let currentSections: Section[] = [];
+      setEditableDraft(prev => {
+        if (prev) {
+          currentSections = prev.sections;
+        }
+        return prev;
+      });
+      
+      // 找到包含该块的章节
+      const findSectionContainingBlock = (sections: Section[], blockId: string): Section | null => {
+        for (const section of sections) {
+          if (section.content?.some(block => block.id === blockId)) {
+            return section;
+          }
+          if (section.subsections) {
+            const found = findSectionContainingBlock(section.subsections, blockId);
+            if (found) return found;
+          }
+        }
+        return null;
+      };
+      
+      const parentSection = findSectionContainingBlock(currentSections, blockId);
+      if (!parentSection) {
+        toast.error('无法找到包含该块的章节');
+        return;
+      }
+      
+      // 使用与 handleSectionAddSubsection 相同的逻辑
+      const newSection = createEmptySection();
+      
+      // 显示加载状态
+      toast.loading('正在添加子章节...', { id: 'add-subsection' });
+      
+      // 调用API保存
+      const sectionData = {
+        title: {
+          en: newSection.title || '',
+          zh: newSection.titleZh || ''
+        },
+        content: newSection.content || []
+      };
+
+      const result = await handleSectionAddWithAPI(
+        paperId,
+        userPaperId,
+        isPersonalOwner,
+        sectionData,
+        {
+          parentSectionId: parentSection.id,
+          position: -1 // 添加到末尾
+        }
+      );
+
+      // 如果API调用失败，显示错误信息
+      if (!result.success) {
+        toast.error('添加子章节失败', {
+          id: 'add-subsection',
+          description: result.error
+        });
+      } else {
+        // API调用成功，使用返回的数据更新本地状态
+        if (result.data && result.data.paper) {
+          // 使用服务器返回的更新后的论文数据
+          const updatedPaper = result.data.paper;
+          let updatedSections: Section[] = [];
+          
+          if (isPersonalOwner) {
+            // 对于个人论文，sections 在 paperData 中
+            updatedSections = (updatedPaper as any).paperData?.sections || [];
+          } else {
+            // 对于公共论文，sections 直接在 paper 中
+            updatedSections = (updatedPaper as any).sections || [];
+          }
+          
+          setEditableDraft(prev => {
+            if (!prev) return prev;
+            return { ...prev, sections: updatedSections };
+          });
+          
+          toast.success('子章节添加成功', { id: 'add-subsection' });
+        } else {
+          // 如果返回的数据中没有paper，则重新获取
+          try {
+            let paperResult;
+            if (isPersonalOwner && userPaperId) {
+              const { userPaperService } = await import('@/lib/services/paper');
+              paperResult = await userPaperService.getUserPaperDetail(userPaperId);
+            } else {
+              const { adminPaperService } = await import('@/lib/services/paper');
+              paperResult = await adminPaperService.getAdminPaperDetail(paperId);
+            }
+            
+            if (paperResult && paperResult.bizCode === 0 && paperResult.data) {
+              // 使用服务器返回的最新数据更新本地状态
+              let updatedSections: Section[] = [];
+              
+              if (isPersonalOwner) {
+                // 对于个人论文，sections 在 paperData 中
+                updatedSections = (paperResult.data as any).paperData?.sections || [];
+              } else {
+                // 对于公共论文，sections 直接在 data 中
+                updatedSections = (paperResult.data as any).sections || [];
+              }
+              
+              setEditableDraft(prev => {
+                if (!prev) return prev;
+                return { ...prev, sections: updatedSections };
+              });
+              
+              toast.success('子章节添加成功', { id: 'add-subsection' });
+            } else {
+              // 如果获取最新数据失败，至少显示成功消息
+              toast.success('子章节添加成功，但可能需要刷新页面查看最新内容', { id: 'add-subsection' });
+            }
+          } catch (error) {
+            console.error('获取最新论文数据失败:', error);
+            // 即使获取最新数据失败，也显示成功消息
+            toast.success('子章节添加成功，但可能需要刷新页面查看最新内容', { id: 'add-subsection' });
+          }
+        }
+      }
+    },
+    [handleSectionAddWithAPI, setEditableDraft]
+  );
+
   return {
     updateSections,
     updateSectionTree,
@@ -1054,5 +1402,6 @@ export function usePaperSections(
     handleSectionDeleteWithAPI,
     handleSectionUpdateWithAPI,
     handleAddBlocksFromText,
+    handleBlockAppendSubsection,
   };
 }

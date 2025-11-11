@@ -1059,6 +1059,18 @@ export default function PaperPage() {
     };
   }, [isPersonalOwner, resolvedUserPaperId, saveImmediately]);
 
+  // 监听块添加成功事件，清除未保存状态
+  useEffect(() => {
+    const handleBlockAdded = () => {
+      setHasUnsavedChanges(false);
+    };
+
+    window.addEventListener('blockAddedSuccessfully', handleBlockAdded);
+    return () => {
+      window.removeEventListener('blockAddedSuccessfully', handleBlockAdded);
+    };
+  }, [setHasUnsavedChanges]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex items-center justify-center">
@@ -1205,6 +1217,8 @@ export default function PaperPage() {
                     }}
                     notesByBlock={notesByBlock}
                     isPersonalOwner={isPersonalOwner}
+                    paperId={paperId}
+                    userPaperId={resolvedUserPaperId}
                   />
 
                   <PaperReferences

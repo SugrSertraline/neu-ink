@@ -556,12 +556,14 @@ class PaperService:
             
             # 确保新章节有必要的字段（使用新的 title 和 titleZh 结构）
             title_data = section_data.get("title", {})
+            title_zh_data = section_data.get("titleZh", "")
+            
             if isinstance(title_data, dict) and "en" in title_data:
                 # 新格式：{en: "...", zh: "..."}
                 new_section = {
                     "id": section_data.get("id"),
                     "title": title_data.get("en", "Untitled Section"),
-                    "titleZh": title_data.get("zh", "未命名章节"),
+                    "titleZh": title_data.get("zh", title_zh_data or "未命名章节"),
                     "content": section_data.get("content", []),
                     "subsections": section_data.get("subsections", [])
                 }
@@ -570,7 +572,7 @@ class PaperService:
                 new_section = {
                     "id": section_data.get("id"),
                     "title": title_data if title_data else "Untitled Section",
-                    "titleZh": section_data.get("titleZh", "未命名章节"),
+                    "titleZh": title_zh_data if title_zh_data else "未命名章节",
                     "content": section_data.get("content", []),
                     "subsections": section_data.get("subsections", [])
                 }
@@ -667,6 +669,9 @@ class PaperService:
                     else:
                         # 旧格式：直接字符串
                         target_section["title"] = value
+                elif key == "titleZh":
+                    # 直接更新titleZh字段
+                    target_section["titleZh"] = value
                 elif key in ["content", "subsections"]:
                     target_section[key] = value
 
@@ -1868,7 +1873,7 @@ class PaperService:
         is_admin: bool = False,
     ) -> Dict[str, Any]:
         """
-        将解析后的参考文献添加到论文中，自动检测并更新重复的参考文献
+        将解析后的参考文献添加到论文中，只保存原始文本，不进行重复检测
         
         Args:
             paper_id: 论文ID
@@ -1894,10 +1899,8 @@ class PaperService:
             # 按照解析出的index字段排序，确保参考文献按照原始编号顺序添加
             sorted_references = sorted(references, key=lambda x: x.get("index", 0))
             
-            # 处理参考文献：检测重复并更新
+            # 处理参考文献：直接添加，不进行重复检测
             added_references = []
-            updated_references = []
-            duplicate_count = 0
             
             print(f"\n[参考文献处理] 开始处理{len(sorted_references)}条参考文献")
             print(f"[参考文献处理] 当前已有{len(current_references)}条参考文献")
@@ -1935,26 +1938,9 @@ class PaperService:
                 # 移除空值字段
                 new_ref = {k: v for k, v in new_ref.items() if v is not None}
                 
-                print(f"[参考文献处理] 新参考文献: 标题='{new_ref.get('title', '')}', 作者={new_ref.get('authors', [])}")
-                
-                # 检测重复参考文献
-                duplicate_index = self._find_duplicate_reference(new_ref, current_references)
-                
-                if duplicate_index is not None:
-                    # 发现重复，更新现有参考文献
-                    print(f"[参考文献处理] 发现重复参考文献，更新现有参考文献（索引={duplicate_index}）")
-                    existing_ref = current_references[duplicate_index].copy()
-                    # 保留原始ID和number，更新其他字段
-                    new_ref["id"] = existing_ref["id"]
-                    new_ref["number"] = existing_ref["number"]
-                    current_references[duplicate_index] = new_ref
-                    updated_references.append(new_ref)
-                    duplicate_count += 1
-                else:
-                    # 没有重复，添加新参考文献
-                    print(f"[参考文献处理] 添加新参考文献")
-                    added_references.append(new_ref)
-                    current_references.append(new_ref)
+                print(f"[参考文献处理] 添加新参考文献")
+                added_references.append(new_ref)
+                current_references.append(new_ref)
             
             # 更新论文
             update_data = {"references": current_references}
@@ -1962,19 +1948,13 @@ class PaperService:
                 updated_paper = self.paper_model.find_by_id(paper_id)
                 
                 # 构建详细的结果信息
-                result_message = f"成功处理{len(sorted_references)}条参考文献"
-                if added_references:
-                    result_message += f"，新增{len(added_references)}条"
-                if updated_references:
-                    result_message += f"，更新{len(updated_references)}条重复文献"
+                result_message = f"成功添加{len(added_references)}条参考文献"
                 
                 return self._wrap_success(
                     result_message,
                     {
                         "paper": updated_paper,
                         "addedReferences": added_references,
-                        "updatedReferences": updated_references,
-                        "duplicateCount": duplicate_count,
                         "totalProcessed": len(sorted_references),
                         "totalReferences": len(current_references)
                     }
@@ -1985,92 +1965,6 @@ class PaperService:
         except Exception as exc:
             return self._wrap_error(f"添加参考文献失败: {exc}")
     
-    def _find_duplicate_reference(self, new_ref: Dict[str, Any], existing_refs: List[Dict[str, Any]]) -> Optional[int]:
-        """
-        查找重复的参考文献，主要以标题为基准进行判断
-        
-        Args:
-            new_ref: 新参考文献
-            existing_refs: 现有参考文献列表
-            
-        Returns:
-            重复参考文献的索引，如果没有找到重复则返回None
-        """
-        # 如果新参考文献标题包含错误标识，直接跳过重复检测
-        title = new_ref.get("title", "")
-        if title and "【解析错误】" in title:
-            return None
-            
-        def normalize_text(text: str) -> str:
-            """标准化文本：小写、去除多余空格和标点"""
-            if not text:
-                return ""
-            # 转换为小写
-            text = text.lower()
-            # 去除多余空格
-            text = re.sub(r'\s+', ' ', text)
-            # 去除常见标点符号
-            text = re.sub(r'[^\w\s]', '', text)
-            return text.strip()
-        
-        # 提取新参考文献的关键信息
-        new_title = normalize_text(new_ref.get("title", ""))
-        new_authors = new_ref.get("authors", [])
-        new_year = str(new_ref.get("year", ""))
-        new_doi = normalize_text(new_ref.get("doi", ""))
-        
-        # 打印调试信息
-        print(f"[重复检测] 新参考文献: 标题='{new_ref.get('title', '')}', 作者={new_authors}, 年份={new_year}")
-        
-        # 主要以标题为基准进行重复检测
-        if new_title:
-            for i, existing_ref in enumerate(existing_refs):
-                # 跳过带有错误标识的现有参考文献
-                existing_title_raw = existing_ref.get("title", "")
-                if existing_title_raw and "【解析错误】" in existing_title_raw:
-                    print(f"[重复检测] 跳过带有错误标识的参考文献: {existing_title_raw}")
-                    continue
-                    
-                existing_title = normalize_text(existing_ref.get("title", ""))
-                existing_authors = existing_ref.get("authors", [])
-                existing_year = str(existing_ref.get("year", ""))
-                
-                print(f"[重复检测] 对比现有参考文献 #{i}: 标题='{existing_ref.get('title', '')}', 作者={existing_authors}, 年份={existing_year}")
-                
-                # 标题匹配逻辑
-                title_match = False
-                if len(new_title) > 10 and len(existing_title) > 10:
-                    # 较长标题使用包含关系检查
-                    if new_title in existing_title or existing_title in new_title:
-                        title_match = True
-                        print(f"[重复检测] 长标题包含匹配: '{new_title}' vs '{existing_title}'")
-                else:
-                    # 较短标题使用精确匹配
-                    if new_title == existing_title:
-                        title_match = True
-                        print(f"[重复检测] 短标题精确匹配: '{new_title}' == '{existing_title}'")
-                
-                # 如果标题匹配，认为是重复（主要判断依据）
-                if title_match:
-                    print(f"[重复检测] 发现重复参考文献，索引={i}")
-                    return i
-        
-        # 如果DOI存在，作为辅助匹配条件
-        if new_doi:
-            for i, existing_ref in enumerate(existing_refs):
-                # 跳过带有错误标识的现有参考文献
-                existing_title = existing_ref.get("title", "")
-                if existing_title and "【解析错误】" in existing_title:
-                    continue
-                    
-                existing_doi = normalize_text(existing_ref.get("doi", ""))
-                if existing_doi and existing_doi == new_doi:
-                    print(f"[重复检测] DOI匹配: '{new_doi}'，索引={i}")
-                    return i
-        
-        # 没有找到重复
-        print("[重复检测] 未找到重复参考文献")
-        return None
 
     def check_and_complete_translation(self, paper_id: str) -> Dict[str, Any]:
         """

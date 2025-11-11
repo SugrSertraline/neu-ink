@@ -10,6 +10,7 @@ import type {
   HeadingBlock,
   ParagraphBlock,
   QuoteBlock,
+  PaperContent as PaperContentModel,
 } from '@/types/paper';
 import BlockRenderer from './BlockRenderer';
 import BlockEditor from './editor/BlockEditor';
@@ -22,6 +23,7 @@ import {
 import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
 import { useEditingState } from '@/stores/useEditingState';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
+import { calculateAllNumbers } from './utils/autoNumbering';
 
 type Lang = 'en' | 'both';
 
@@ -56,7 +58,7 @@ interface PaperContentProps {
   onBlockDelete?: (blockId: string) => void;
   onBlockInsert?: (blockId: string, position: 'above' | 'below') => void;
   onBlockMove?: (blockId: string, direction: 'up' | 'down') => void;
-  onBlockAppendSubsection?: (blockId: string) => void;
+  onBlockAppendSubsection?: (blockId: string, paperId: string, userPaperId: string | null, isPersonalOwner: boolean, onSaveToServer?: () => Promise<void>) => void;
   onBlockAddComponent?: (blockId: string, type: BlockContent['type']) => void;
   onParseTextAdd?: (sectionId: string, text: string, afterBlockId?: string) => Promise<{
     success: boolean;
@@ -68,6 +70,8 @@ interface PaperContentProps {
   /** 笔记相关 */
   notesByBlock?: Record<string, any[]>;
   isPersonalOwner?: boolean;
+  paperId?: string;
+  userPaperId?: string | null;
 }
 
 type ContentBlock = HeadingBlock | ParagraphBlock | QuoteBlock;
@@ -108,7 +112,22 @@ export default function PaperContent({
   onSaveToServer,
   notesByBlock = {},
   isPersonalOwner = false,
+  paperId,
+  userPaperId,
 }: PaperContentProps) {
+  // 应用自动编号的内容
+  const contentWithNumbers = useMemo(() => {
+    const paperContent: PaperContentModel = {
+      sections,
+      references,
+      metadata: {
+        title: '', // 必需的 title 属性
+        authors: [], // 必需的 authors 属性
+      },
+    };
+    return calculateAllNumbers(paperContent);
+  }, [sections, references]);
+
   const escapeRegExp = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
   const highlightText = (text: string, query: string): React.ReactNode => {
@@ -262,7 +281,7 @@ export default function PaperContent({
     }
 
     const results: string[] = [];
-    traverseSections(sections, (section) => {
+    traverseSections(contentWithNumbers.sections, (section) => {
       section.content?.forEach((block) => {
         const text = extractBlockText(block).toLowerCase();
         if (text.includes(q)) results.push(block.id);
@@ -375,6 +394,18 @@ export default function PaperContent({
   }, []);
 
   const renderedTree = useMemo(() => {
+    // 辅助函数：从 contentWithNumbers 中找到对应 ID 的章节
+    const findSectionById = (id: string, sections: Section[]): Section | null => {
+      for (const section of sections) {
+        if (section.id === id) return section;
+        if (section.subsections) {
+          const found = findSectionById(id, section.subsections);
+          if (found) return found;
+        }
+      }
+      return null;
+    };
+
     const renderSection = (
       section: Section,
       path: number[],
@@ -382,48 +413,50 @@ export default function PaperContent({
       index: number,
       parentSectionId: string | null,
     ): React.ReactNode => {
+      // 获取带有编号的章节
+      const numberedSection = findSectionById(section.id, contentWithNumbers.sections) || section;
       const sectionNumber = generateSectionNumber(path);
-      const hasZhTitle = !!section.titleZh?.trim();
-      const normalizedZh = (section.titleZh ?? '').trim();
+      const hasZhTitle = !!numberedSection.titleZh?.trim();
+      const normalizedZh = (numberedSection.titleZh ?? '').trim();
       const sectionMargin = Math.max(0, (path.length - 1) * 24);
-      const isRenaming = renamingSectionId === section.id;
+      const isRenaming = renamingSectionId === numberedSection.id;
       const isFirstSibling = index === 0;
       const isLastSibling = index === siblings.length - 1;
 
       return (
         <section
-          key={section.id}
-          id={section.id}
+          key={numberedSection.id}
+          id={numberedSection.id}
           className="relative overflow-hidden rounded-2xl border border-white/45 bg-linear-to-tr from-white/30 via-white/15 to-white/35 p-6 shadow-[0_30px_60px_rgba(15,23,42,0.18)] backdrop-blur-[18px] transition-all duration-300 hover:shadow-[0_40px_80px_rgba(15,23,42,0.25)] dark:border-white/10 dark:from-slate-900/60 dark:via-slate-900/45 dark:to-slate-900/55 space-y-4"
           style={{ marginLeft: sectionMargin }}
         >
           <SectionContextMenu
-            onRename={canEditContent ? () => handleSectionEditStart(section.id) : undefined}
+            onRename={canEditContent ? () => handleSectionEditStart(numberedSection.id) : undefined}
             onAddSectionBefore={
               canEditContent && onSectionInsert
-                ? () => onSectionInsert(section.id, 'above', parentSectionId)
+                ? () => onSectionInsert(numberedSection.id, 'above', parentSectionId)
                 : undefined
             }
             onAddSectionAfter={
               canEditContent && onSectionInsert
-                ? () => onSectionInsert(section.id, 'below', parentSectionId)
+                ? () => onSectionInsert(numberedSection.id, 'below', parentSectionId)
                 : undefined
             }
-            onAddSubsection={canEditContent ? () => onSectionAddSubsection?.(section.id) : undefined}
+            onAddSubsection={canEditContent ? () => onSectionAddSubsection?.(numberedSection.id) : undefined}
             onAddBlock={
               canEditContent && onSectionAddBlock
-                ? (type) => onSectionAddBlock(section.id, type)
+                ? (type) => onSectionAddBlock(numberedSection.id, type)
                 : undefined
             }
-            onStartTextParse={canEditContent ? () => handleStartTextParse(section.id) : undefined}
+            onStartTextParse={canEditContent ? () => handleStartTextParse(numberedSection.id) : undefined}
             onMoveUp={
               canEditContent && onSectionMove && !isFirstSibling
-                ? () => onSectionMove(section.id, 'up', parentSectionId)
+                ? () => onSectionMove(numberedSection.id, 'up', parentSectionId)
                 : undefined
             }
             onMoveDown={
               canEditContent && onSectionMove && !isLastSibling
-                ? () => onSectionMove(section.id, 'down', parentSectionId)
+                ? () => onSectionMove(numberedSection.id, 'down', parentSectionId)
                 : undefined
             }
             onDelete={
@@ -438,8 +471,8 @@ export default function PaperContent({
                       onConfirm: () => Promise.resolve(),
                     });
                     if (confirmed) {
-                      onSectionDelete?.(section.id);
-                      if (renamingSectionId === section.id) setRenamingSectionId(null);
+                      onSectionDelete?.(numberedSection.id);
+                      if (renamingSectionId === numberedSection.id) setRenamingSectionId(null);
                     }
                   }
                 : undefined
@@ -453,7 +486,7 @@ export default function PaperContent({
             >
               <span className="text-blue-600 dark:text-blue-400 font-semibold">{sectionNumber}.</span>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-baseline gap-3">
-                <span>{highlightText(String(section.title ?? ''), searchQuery)}</span>
+                <span>{highlightText(String(numberedSection.title ?? ''), searchQuery)}</span>
                 <span className="text-gray-400 mx-1">/</span>
                 {hasZhTitle ? (
                   <span className="rounded px-1 bg-gray-50 text-gray-700">
@@ -470,16 +503,16 @@ export default function PaperContent({
 
           {canEditContent && isRenaming && (
             <SectionTitleInlineEditor
-              key={section.id}
-              initialTitle={section}
+              key={numberedSection.id}
+              initialTitle={numberedSection}
               lang={lang}
               onCancel={() => setRenamingSectionId(null)}
-              onConfirm={(title) => handleSectionRenameConfirm(section.id, title)}
+              onConfirm={(title) => handleSectionRenameConfirm(numberedSection.id, title)}
             />
           )}
 
           <div className="space-y-4">
-            {section.content?.map((block, blockIndex) => {
+            {numberedSection.content?.map((block, blockIndex) => {
               const isEditingBlock = isEditing(block.id);
               const isSelected = selectedBlockId === block.id;
               const isActive = isSelected || activeBlockId === block.id;
@@ -567,11 +600,11 @@ export default function PaperContent({
                       {blockContent}
                     </div>
                     <InlineTextParserEditor
-                      sectionId={section.id}
-                      sectionTitle={String(section.title || section.titleZh || '未命名章节')}
+                      sectionId={numberedSection.id}
+                      sectionTitle={String(numberedSection.title || numberedSection.titleZh || '未命名章节')}
                       context="block"
                       blockId={block.id}
-                      onParseText={(text) => onParseTextAdd?.(section.id, text, block.id) || Promise.resolve({ success: false })}
+                      onParseText={(text) => onParseTextAdd?.(numberedSection.id, text, block.id) || Promise.resolve({ success: false })}
                       onCancel={handleParseTextComplete}
                     />
                   </React.Fragment>
@@ -584,8 +617,8 @@ export default function PaperContent({
                     blockShell
                   ) : (
                     <BlockContextMenu
-                      sectionId={section.id}
-                      sectionTitle={String(section.title || section.titleZh || '未命名章节')}
+                      sectionId={numberedSection.id}
+                      sectionTitle={String(numberedSection.title || numberedSection.titleZh || '未命名章节')}
                       onEdit={
                         canEditContent
                           ? () => {
@@ -599,12 +632,12 @@ export default function PaperContent({
                       onMoveDown={canEditContent ? () => onBlockMove?.(block.id, 'down') : undefined}
                       onDuplicate={canEditContent ? () => onBlockDuplicate?.(block.id) : undefined}
                       onAddSubsectionAfter={
-                        canEditContent ? () => onBlockAppendSubsection?.(block.id) : undefined
+                        canEditContent ? () => onBlockAppendSubsection?.(block.id, paperId || '', userPaperId || null, isPersonalOwner, onSaveToServer) : undefined
                       }
                       onAddComponentAfter={
                         canEditContent ? type => onBlockAddComponent?.(block.id, type) : undefined
                       }
-                      onStartTextParse={canEditContent ? () => handleStartBlockTextParse(section.id, block.id) : undefined}
+                      onStartTextParse={canEditContent ? () => handleStartBlockTextParse(numberedSection.id, block.id) : undefined}
                       onDelete={
                         canEditContent
                           ? async () => {
@@ -632,25 +665,25 @@ export default function PaperContent({
             })}
           </div>
 
-          {canEditContent && textParseSectionId === section.id && (
+          {canEditContent && textParseSectionId === numberedSection.id && (
             <InlineTextParserEditor
-              sectionId={section.id}
-              sectionTitle={String(section.title || section.titleZh || '未命名章节')}
+              sectionId={numberedSection.id}
+              sectionTitle={String(numberedSection.title || numberedSection.titleZh || '未命名章节')}
               context="section"
-              onParseText={(text) => onParseTextAdd?.(section.id, text) || Promise.resolve({ success: false })}
+              onParseText={(text) => onParseTextAdd?.(numberedSection.id, text) || Promise.resolve({ success: false })}
               onCancel={handleParseTextComplete}
             />
           )}
 
-          {section.subsections?.length ? (
+          {numberedSection.subsections?.length ? (
             <div className="space-y-8">
-              {section.subsections.map((child, childIndex) =>
+              {numberedSection.subsections.map((child, childIndex) =>
                 renderSection(
                   child,
                   [...path, childIndex + 1],
-                  section.subsections ?? [],
+                  numberedSection.subsections ?? [],
                   childIndex,
-                  section.id,
+                  numberedSection.id,
                 ),
               )}
             </div>
@@ -659,10 +692,11 @@ export default function PaperContent({
       );
     };
 
-    return sections.map((section, index) =>
-      renderSection(section, [index + 1], sections, index, null),
+    return contentWithNumbers.sections.map((section, index) =>
+      renderSection(section, [index + 1], contentWithNumbers.sections, index, null),
     );
   }, [
+    contentWithNumbers, // 添加这个依赖项
     sections,
     lang,
     searchQuery,
@@ -719,7 +753,7 @@ export default function PaperContent({
 
   return (
     <>
-      <div className="space-y-8">{sections.length ? renderedTree : emptyState}</div>
+      <div className="space-y-8">{contentWithNumbers.sections.length ? renderedTree : emptyState}</div>
       <ConfirmDialog />
     </>
   );

@@ -146,7 +146,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearRedirectGuard();
         return;
       }
-      apiClient.clearToken();
+      authService.clearToken();
       setUser(null);
 
       if (!isPublicPath(pathname) && needsRedirect(uni)) {
@@ -154,8 +154,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       const err = error as { authReset?: boolean; message?: string };
-      apiClient.clearToken();
-      setUser(null);
+      
+      // 只有明确的认证错误才清除token和用户状态
+      if (err?.authReset) {
+        authService.clearToken();
+        setUser(null);
+      }
 
       if (!isPublicPath(pathname) && (err?.authReset || needsRedirect(undefined, err?.message))) {
         redirectToLogin();
@@ -171,7 +175,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       // 静默失败，不打断用户体验
     } finally {
-      apiClient.clearToken();
+      authService.clearToken();
       setUser(null);
       redirectToLogin({ includeFrom: false });
     }

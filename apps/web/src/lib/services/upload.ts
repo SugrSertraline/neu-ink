@@ -1,4 +1,5 @@
 // 上传服务
+import { callAndNormalize } from '@/lib/http';
 import { apiClient } from '@/lib/http/client';
 
 export interface UploadResponse {
@@ -28,14 +29,20 @@ export async function uploadImage(file: File): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append('file', file);
 
-  try {
-    const response = await apiClient.upload<UploadResponse>('/upload/image', formData);
-    console.log('[DEBUG] 图片上传响应:', response);
-    return response.data;
-  } catch (error) {
-    console.error('[DEBUG] 图片上传失败:', error);
-    throw error;
+  const response = await callAndNormalize<UploadResponse>(
+    apiClient.upload<UploadResponse>('/upload/image', formData)
+  );
+  
+  console.log('[DEBUG] 图片上传响应:', response);
+  
+  // 处理嵌套的响应结构
+  // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
+  if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+    console.log('[DEBUG] 解析嵌套响应，提取真实数据:', response.data.data);
+    return response.data.data as UploadResponse;
   }
+  
+  return response.data;
 }
 
 /**
@@ -47,7 +54,15 @@ export async function uploadDocument(file: File): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await apiClient.upload<UploadResponse>('/upload/document', formData);
+  const response = await callAndNormalize<UploadResponse>(
+    apiClient.upload<UploadResponse>('/upload/document', formData)
+  );
+  
+  // 处理嵌套的响应结构
+  if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+    return response.data.data as UploadResponse;
+  }
+  
   return response.data;
 }
 
@@ -60,7 +75,15 @@ export async function uploadMarkdown(file: File): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append('file', file);
 
-  const response = await apiClient.upload<UploadResponse>('/upload/markdown', formData);
+  const response = await callAndNormalize<UploadResponse>(
+    apiClient.upload<UploadResponse>('/upload/markdown', formData)
+  );
+  
+  // 处理嵌套的响应结构
+  if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+    return response.data.data as UploadResponse;
+  }
+  
   return response.data;
 }
 
@@ -78,14 +101,20 @@ export async function uploadPaperImage(file: File, paperId?: string): Promise<Up
     formData.append('paper_id', paperId);
   }
 
-  try {
-    const response = await apiClient.upload<UploadResponse>('/upload/paper-image', formData);
-    console.log('[DEBUG] 论文图片上传响应:', response);
-    return response.data;
-  } catch (error) {
-    console.error('[DEBUG] 论文图片上传失败:', error);
-    throw error;
+  const response = await callAndNormalize<UploadResponse>(
+    apiClient.upload<UploadResponse>('/upload/paper-image', formData)
+  );
+  
+  console.log('[DEBUG] 论文图片上传响应:', response);
+  
+  // 处理嵌套的响应结构
+  // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
+  if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+    console.log('[DEBUG] 解析嵌套响应，提取真实数据:', response.data.data);
+    return response.data.data as UploadResponse;
   }
+  
+  return response.data;
 }
 
 /**
@@ -93,7 +122,9 @@ export async function uploadPaperImage(file: File, paperId?: string): Promise<Up
  * @returns 上传配置
  */
 export async function getUploadConfig(): Promise<UploadConfig> {
-  const response = await apiClient.get<UploadConfig>('/upload/config');
+  const response = await callAndNormalize<UploadConfig>(
+    apiClient.get<UploadConfig>('/upload/config')
+  );
   return response.data;
 }
 
@@ -109,11 +140,18 @@ export async function getUploadToken(key: string, expires = 3600): Promise<{
   expires: number;
   domain: string;
 }> {
-  const response = await apiClient.get<{
+  const response = await callAndNormalize<{
     token: string;
     key: string;
     expires: number;
     domain: string;
-  }>(`/upload/token?key=${encodeURIComponent(key)}&expires=${expires}`);
+  }>(
+    apiClient.get<{
+      token: string;
+      key: string;
+      expires: number;
+      domain: string;
+    }>(`/upload/token?key=${encodeURIComponent(key)}&expires=${expires}`)
+  );
   return response.data;
 }

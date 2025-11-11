@@ -47,22 +47,14 @@ export function shouldResetAuth(topCode: number, bizCode?: number, errMsg?: stri
   // 只有明确的认证错误才重置认证状态
   if (topCode === ResponseCode.UNAUTHORIZED) return true;
   if (bizCode === BusinessCode.TOKEN_INVALID || bizCode === BusinessCode.TOKEN_EXPIRED) return true;
+  
+  // 明确的权限错误也应该退出登录
+  if (topCode === ResponseCode.FORBIDDEN) return true;
+  if (bizCode === BusinessCode.PERMISSION_DENIED) return true;
 
   // 检查错误消息，但更加严格，避免误判
   if (errMsg) {
     const s = `${errMsg}`.toLowerCase();
-    // 只检查明确的认证相关错误
-    if (
-      s.includes('401') ||
-      s.includes('unauthorized') ||
-      (s.includes('token') &&
-        (s.includes('invalid') ||
-          s.includes('expired') ||
-          s.includes('过期') ||
-          s.includes('无效')))
-    ) {
-      return true;
-    }
     
     // 排除明确的业务错误，这些不应该导致登出
     if (
@@ -72,9 +64,36 @@ export function shouldResetAuth(topCode: number, bizCode?: number, errMsg?: stri
       s.includes('block数据不能为空') ||
       s.includes('文本内容不能为空') ||
       s.includes('更新数据不能为空') ||
-      s.includes('参数错误')
+      s.includes('参数错误') ||
+      s.includes('无效的笔记ID') ||
+      s.includes('笔记不存在') ||
+      s.includes('笔记创建失败') ||
+      s.includes('笔记更新失败') ||
+      s.includes('笔记删除失败') ||
+      s.includes('论文创建失败') ||
+      s.includes('论文更新失败') ||
+      s.includes('论文删除失败') ||
+      s.includes('无效的论文数据')
     ) {
       return false;
+    }
+    
+    // 只有在明确包含认证相关词汇时才认为是认证错误
+    // 并且要确保不是业务错误中误包含的词汇
+    if (
+      s.includes('401') ||
+      s.includes('unauthorized') ||
+      (s.includes('token') && (
+        s.includes('invalid') ||
+        s.includes('expired') ||
+        s.includes('过期') ||
+        s.includes('无效')
+      )) ||
+      s.includes('认证失败') ||
+      s.includes('登录已过期') ||
+      s.includes('请重新登录')
+    ) {
+      return true;
     }
   }
   return false;
@@ -82,7 +101,11 @@ export function shouldResetAuth(topCode: number, bizCode?: number, errMsg?: stri
 
 function markAuthReset(target: unknown) {
   try {
-    apiClient.clearToken();
+    // 使用 authService 而不是直接使用 apiClient
+    // 这里需要动态导入以避免循环依赖
+    import('../services/auth').then(({ authService }) => {
+      authService.clearToken();
+    });
   } catch {
     /* noop */
   }

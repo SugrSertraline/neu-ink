@@ -100,9 +100,27 @@ export const FigureRef = Node.create({
 });
 
 function FigureRefComponent({ node }: any) {
+  // 获取图片元素和编号
+  const figureElement = node.attrs.figureId ? document.getElementById(node.attrs.figureId) : null;
+  const figureNumber = figureElement?.querySelector('.text-gray-800')?.textContent?.replace('Figure ', '').replace('.', '') || '';
+  const imgElement = figureElement?.querySelector('img') as HTMLImageElement | null;
+  
   return (
-    <NodeViewWrapper as="span" className="inline-block px-1.5 py-0.5 mx-0.5 bg-purple-100 text-purple-800 rounded-md text-xs font-medium cursor-pointer hover:bg-purple-200">
-      {node.attrs.displayText}
+    <NodeViewWrapper
+      as="span"
+      className="inline-flex items-center gap-1 px-2 py-1 mx-0.5 bg-purple-50 border border-purple-200 rounded-md text-purple-700 text-xs font-medium cursor-pointer hover:bg-purple-100"
+      title={`跳转到图：Figure ${figureNumber}`}
+    >
+      {imgElement && (
+        <img
+          src={imgElement.currentSrc || imgElement.src}
+          alt="figure thumbnail"
+          className="w-6 h-6 object-cover rounded border border-gray-200"
+        />
+      )}
+      <span>
+        {node.attrs.displayText || `Figure ${figureNumber}`}
+      </span>
     </NodeViewWrapper>
   );
 }
