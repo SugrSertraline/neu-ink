@@ -323,14 +323,15 @@ export default function InlineRenderer({
       <div className="space-y-2">
         {items.map((it, i) => {
           const r = it.ref ?? {};
-          const title = r.title ?? r.name ?? r.citationText ?? r.text ?? '';
+          // 优先显示原始文本，如果没有则显示标题
+          const displayText = r.originalText ?? r.title ?? r.name ?? r.citationText ?? r.text ?? '';
           const authors = Array.isArray(r.authors) ? r.authors.join(', ') : (r.author ?? r.authors ?? '');
           const year = r.year ?? r.date ?? '';
           const venue = r.journal ?? r.booktitle ?? r.venue ?? '';
           return (
             <div key={i} className="text-sm">
               <div className="font-medium">
-                {typeof it.no === 'number' ? `[${it.no}] ` : ''}{truncate(title || r.id || it.id, 140)}
+                {typeof it.no === 'number' ? `[${it.no}] ` : ''}{truncate(displayText || r.id || it.id, 140)}
               </div>
               <div className="text-gray-600 dark:text-gray-300">
                 {truncate([authors, venue, year].filter(Boolean).join(' · '), 160)}
@@ -408,8 +409,11 @@ export default function InlineRenderer({
   useEffect(() => {
     if (!hoverOpen || !anchorElRef.current) return;
     const handle = () => {
-      const pos = positionForAnchor(anchorElRef.current!);
-      setHoverXY(pos);
+      // 添加空值检查，确保 anchorElRef.current 不为 null
+      if (anchorElRef.current) {
+        const pos = positionForAnchor(anchorElRef.current);
+        setHoverXY(pos);
+      }
     };
     window.addEventListener('resize', handle);
     window.addEventListener('scroll', handle, true);

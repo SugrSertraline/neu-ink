@@ -685,16 +685,9 @@ export default function InlineEditor({
                               </div>
 
                               <div className="flex-1 min-w-0">
-                                <div className="font-semibold text-gray-900 text-base mb-1">
-                                  {item.displayText}
-                                </div>
-                                {ref?.title && (
-                                  <div className="text-sm text-gray-600 mt-1 italic truncate">
-                                    "{ref.title}"
-                                  </div>
-                                )}
-                                <div className="text-xs text-gray-500 mt-2 font-mono">
-                                  {typeof ref?.number === 'number' ? `[${ref.number}]` : '[?]'}
+                                <div className="text-sm text-gray-700">
+                                  {typeof ref?.number === 'number' ? `[${ref.number}] ` : '[?] '}
+                                  {ref?.originalText || item.displayText}
                                 </div>
                               </div>
                             </button>

@@ -33,6 +33,12 @@ const joinMeta = (...parts: (string | undefined | null)[]) =>
   parts.filter(Boolean).join('. ');
 
 const formatReference = (ref: Reference) => {
+  // 如果有原始文本，优先使用原始文本
+  if (ref.originalText && ref.originalText.trim()) {
+    return ref.originalText.trim();
+  }
+  
+  // 否则使用格式化后的参考文献
   const authors = ref.authors.length ? ref.authors.join(', ') : 'Unknown author';
   const publication = joinMeta(
     ref.publication,
@@ -171,49 +177,48 @@ export default function PaperReferences({
           };
 
           return (
-            <ReferenceContextMenu
+            <li
               key={ref.id}
-              onEdit={onReferenceEdit ? () => onReferenceEdit(ref) : undefined}
-              onDuplicate={
-                onReferenceDuplicate ? () => onReferenceDuplicate(ref) : undefined
-              }
-              onInsertBelow={
-                onReferenceInsertBelow
-                  ? () => onReferenceInsertBelow(ref)
-                  : undefined
-              }
-              onMoveUp={
-                onReferenceMoveUp ? () => onReferenceMoveUp(ref) : undefined
-              }
-              onMoveDown={
-                onReferenceMoveDown ? () => onReferenceMoveDown(ref) : undefined
-              }
-              onDelete={onReferenceDelete ? () => onReferenceDelete(ref) : undefined}
-              onCopyCitation={citationText ? handleCopyCitation : undefined}
-              onCopyDoi={ref.doi ? handleCopyDoi : undefined}
-              onCopyUrl={ref.url ? handleCopyUrl : undefined}
-              onOpenLink={ref.url ? handleOpenLink : undefined}
-              onParseReferences={onParseReferences}
+              id={`reference-${ref.id}`}
+              data-reference-id={ref.id}
+              onMouseEnter={() => handleMouseEnter(ref.id)}
+              onMouseLeave={handleMouseLeave}
+              className={clsx(
+                'flex gap-2 rounded-md px-2 py-1 transition-colors',
+                isHighlighted
+                  ? 'bg-blue-50 text-blue-900 dark:bg-slate-800 dark:text-white'
+                  : 'hover:bg-slate-100 dark:hover:bg-slate-800/50',
+              )}
             >
-              <li
-                key={ref.id}
-                id={`reference-${ref.id}`}
-                data-reference-id={ref.id}
-                onMouseEnter={() => handleMouseEnter(ref.id)}
-                onMouseLeave={handleMouseLeave}
-                className={clsx(
-                  'flex gap-2 rounded-md px-2 py-1 transition-colors',
-                  isHighlighted
-                    ? 'bg-blue-50 text-blue-900 dark:bg-slate-800 dark:text-white'
-                    : 'hover:bg-slate-100 dark:hover:bg-slate-800/50',
-                )}
+              <ReferenceContextMenu
+                onEdit={onReferenceEdit ? () => onReferenceEdit(ref) : undefined}
+                onDuplicate={
+                  onReferenceDuplicate ? () => onReferenceDuplicate(ref) : undefined
+                }
+                onInsertBelow={
+                  onReferenceInsertBelow
+                    ? () => onReferenceInsertBelow(ref)
+                    : undefined
+                }
+                onMoveUp={
+                  onReferenceMoveUp ? () => onReferenceMoveUp(ref) : undefined
+                }
+                onMoveDown={
+                  onReferenceMoveDown ? () => onReferenceMoveDown(ref) : undefined
+                }
+                onDelete={onReferenceDelete ? () => onReferenceDelete(ref) : undefined}
+                onCopyCitation={citationText ? handleCopyCitation : undefined}
+                onCopyDoi={ref.doi ? handleCopyDoi : undefined}
+                onCopyUrl={ref.url ? handleCopyUrl : undefined}
+                onOpenLink={ref.url ? handleOpenLink : undefined}
+                onParseReferences={onParseReferences}
               >
                 <span className="shrink-0 text-xs font-semibold text-blue-600 dark:text-blue-400">
                   [{displayNumber}]
                 </span>
                 <span className="whitespace-pre-wrap">{citationText}</span>
-              </li>
-            </ReferenceContextMenu>
+              </ReferenceContextMenu>
+            </li>
           );
         })}
       </ol>

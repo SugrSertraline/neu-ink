@@ -83,6 +83,10 @@ export default function ReferenceEditorDialog({
     updateReference('url', event.target.value);
   };
 
+  const handleOriginalTextChange = (event: ChangeEvent<HTMLTextAreaElement>) => {
+    updateReference('originalText', event.target.value);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
@@ -189,6 +193,17 @@ export default function ReferenceEditorDialog({
               value={reference.url ?? ''}
               onChange={handleUrlChange}
               placeholder="https://example.com"
+              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-blue-400 dark:focus:ring-blue-900/50"
+            />
+          </label>
+
+          <label className="flex flex-col gap-1 text-sm text-slate-600 dark:text-slate-300">
+            <span className="font-medium text-slate-800 dark:text-slate-100">原始文本</span>
+            <textarea
+              value={reference.originalText ?? ''}
+              onChange={handleOriginalTextChange}
+              rows={3}
+              placeholder="原始参考文献文本（可选）"
               className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 dark:focus:border-blue-400 dark:focus:ring-blue-900/50"
             />
           </label>

@@ -564,8 +564,8 @@ def parse_references(paper_id):
         service = get_paper_service()
         parse_result = service.parse_references(text)
         
-        if parse_result["code"] != BusinessCode.SUCCESS:
-            return bad_request_response(parse_result["message"])
+        # 即使解析失败，也继续处理，因为解析结果中包含了错误信息
+        # 这样前端可以显示部分解析成功的结果和错误信息
         
         parse_data = parse_result["data"]
         parsed_references = parse_data["references"]

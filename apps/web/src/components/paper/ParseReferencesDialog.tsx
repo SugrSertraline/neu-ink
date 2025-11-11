@@ -91,21 +91,26 @@ export default function ParseReferencesDialog({
           errors: parseData.errors || []
         });
 
-        // 如果有解析错误，显示警告并在控制台输出错误详情
+        // 如果有解析错误，显示警告并在界面中展示错误详情
         if (parseData.errors && parseData.errors.length > 0) {
-          console.group('📚 参考文献解析错误详情');
+          // 在控制台输出详细错误信息（用于调试）
+          console.group('参考文献解析错误详情');
           console.error(`解析失败的条目数量: ${parseData.errors.length}`);
           parseData.errors.forEach((error, index) => {
-            console.error(`错误 ${index + 1}:`, {
-              条目索引: error.index,
-              原始内容: error.raw,
-              错误信息: error.message
-            });
+            // 确保error对象存在且包含必要的属性
+            const errorInfo = {
+              条目索引: error?.index ?? '未知',
+              原始内容: error?.raw ?? '无内容',
+              错误信息: error?.message ?? '未知错误'
+            };
+            console.error(`错误 ${index + 1}:`, errorInfo);
           });
           console.groupEnd();
           
+          // 显示用户友好的提示
           toast.warning('部分参考文献解析失败', {
-            description: `成功解析 ${parseData.count} 条，${parseData.errors.length} 条解析失败`,
+            description: `成功解析 ${parseData.count} 条，${parseData.errors.length} 条解析失败。解析失败的条目已保留，标题包含错误信息，请手动编辑完善。`,
+            duration: 8000, // 延长显示时间，让用户有足够时间阅读
           });
         }
       }
@@ -217,14 +222,17 @@ export default function ParseReferencesDialog({
                   <h5 className="text-sm font-medium text-red-800 dark:text-red-200 mb-2">
                     解析失败的条目 ({parseResult.errors.length})
                   </h5>
-                  <div className="max-h-32 overflow-y-auto space-y-2">
+                  <p className="text-xs text-red-600 dark:text-red-400 mb-2">
+                    这些条目已添加到参考文献列表中，但标题包含错误信息，其他字段为空。您可以稍后手动编辑完善。
+                  </p>
+                  <div className="max-h-40 overflow-y-auto space-y-2">
                     {parseResult.errors.map((err, idx) => (
-                      <div key={idx} className="text-xs bg-red-100 dark:bg-red-900/30 rounded p-2">
+                      <div key={idx} className="text-xs bg-red-100 dark:bg-red-900/30 rounded p-2 border border-red-200 dark:border-red-800">
                         <p className="text-red-700 dark:text-red-300 font-medium">
-                          {err.index !== null ? `条目 [${err.index}]` : '未知条目'}: {err.message}
+                          {err?.index !== null && err?.index !== undefined ? `条目 [${err.index}]` : '未知条目'}: {err?.message || '未知错误'}
                         </p>
-                        <p className="text-red-600 dark:text-red-400 mt-1 font-mono">
-                          {err.raw.length > 100 ? `${err.raw.substring(0, 100)}...` : err.raw}
+                        <p className="text-red-600 dark:text-red-400 mt-1 font-mono bg-white dark:bg-gray-800 p-1 rounded">
+                          {err?.raw ? (err.raw.length > 150 ? `${err.raw.substring(0, 150)}...` : err.raw) : '无原始内容'}
                         </p>
                       </div>
                     ))}

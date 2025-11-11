@@ -132,6 +132,12 @@ export class ApiClient {
 
       if (!res.ok) {
         const message = data?.message || `HTTP ${res.status}`;
+        console.error('[DEBUG] API请求失败:', {
+          status: res.status,
+          url,
+          message,
+          payload: data
+        });
         throw new ApiError(message, { status: res.status, url, payload: data });
       }
 
@@ -193,6 +199,7 @@ export class ApiClient {
       mode: 'cors',
     });
 
+    console.log('[DEBUG] 上传响应数据:', data);
     return data as ApiResponse<T>;
   }
 }

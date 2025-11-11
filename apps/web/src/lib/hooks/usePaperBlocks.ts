@@ -221,6 +221,13 @@ export function usePaperBlocks(
       content?: any;
       type?: string;
       metadata?: any;
+      src?: string;
+      alt?: string;
+      width?: string;
+      height?: string;
+      caption?: any;
+      description?: any;
+      uploadedFilename?: string;
     },
     paperId: string,
     userPaperId: string | null,
@@ -301,10 +308,43 @@ export function usePaperBlocks(
       isPersonalOwner: boolean,
       onSaveToServer?: () => Promise<void>
     ) => {
-      // 只本地更新，不调用API
+      // 本地更新
       updateBlockTree(blockId, () => ({ block: nextBlock }));
+      
+      // 如果是图片块（figure类型），立即保存到服务器
+      if (nextBlock.type === 'figure') {
+        const figureBlock = nextBlock as any; // 类型断言，因为FigureBlock有特定的字段
+        console.log('[DEBUG] 图片块更新，准备保存到服务器:', {
+          blockId,
+          src: figureBlock.src,
+          alt: figureBlock.alt,
+          width: figureBlock.width,
+          height: figureBlock.height,
+          caption: figureBlock.caption,
+          description: figureBlock.description,
+          uploadedFilename: figureBlock.uploadedFilename
+        });
+        
+        // 异步保存到服务器，不阻塞UI
+        handleBlockUpdateWithAPI(sectionId, blockId, {
+          type: 'figure',
+          src: figureBlock.src,
+          alt: figureBlock.alt,
+          width: figureBlock.width,
+          height: figureBlock.height,
+          caption: figureBlock.caption,
+          description: figureBlock.description,
+          uploadedFilename: figureBlock.uploadedFilename
+        }, paperId, userPaperId, isPersonalOwner).then(result => {
+          if (!result.success) {
+            console.error('Failed to save image block to server:', result.error);
+          } else {
+            console.log('[DEBUG] 图片块保存到服务器成功');
+          }
+        });
+      }
     },
-    [updateBlockTree]
+    [updateBlockTree, handleBlockUpdateWithAPI]
   );
 
   // 新增：专门用于保存到服务器的函数
@@ -784,7 +824,7 @@ export function usePaperBlocks(
 function createEmptySection(): Section {
   return {
     id: generateId('section'),
-    title: { en: 'Untitled Section', zh: '未命名章节' },
+    title: 'Untitled Section',
     content: [],
     subsections: [],
   };

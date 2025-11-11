@@ -301,6 +301,20 @@ export default function ReferencesEditor({
                   className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
                 />
               </label>
+
+              <label className="flex flex-col gap-1 sm:col-span-2">
+                <span className="text-xs font-medium uppercase tracking-wide text-slate-500 dark:text-slate-400">
+                  原始文本
+                </span>
+                <textarea
+                  value={row.originalText ?? ''}
+                  onChange={event => handleFieldChange(row.id, 'originalText', event.target.value)}
+                  disabled={disabled}
+                  rows={3}
+                  placeholder="原始参考文献文本（可选）"
+                  className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:bg-slate-100 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-100"
+                />
+              </label>
             </div>
           </article>
         ))}

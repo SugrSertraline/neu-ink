@@ -22,6 +22,7 @@ export interface Reference {
   pages?: string;
   volume?: string;
   issue?: string;
+  originalText?: string; // 原始参考文献文本（去除编号后的部分）
 }
 
 // —— 章节 ——

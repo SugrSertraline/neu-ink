@@ -127,3 +127,34 @@ class Priority:
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
+
+
+# 七牛云配置
+class QiniuConfig:
+    # 七牛云访问密钥（需要从环境变量获取）
+    ACCESS_KEY = None  # 从环境变量 QINIU_ACCESS_KEY 获取
+    SECRET_KEY = None  # 从环境变量 QINIU_SECRET_KEY 获取
+    
+    # 存储空间名称（需要从环境变量获取）
+    BUCKET_NAME = None  # 从环境变量 QINIU_BUCKET_NAME 获取
+    
+    # 访问域名（需要从环境变量获取）
+    DOMAIN = None  # 从环境变量 QINIU_DOMAIN 获取
+    
+    # 上传策略配置
+    UPLOAD_POLICY = {
+        "mimeLimit": "image/*;application/pdf;text/*",  # 限制上传文件类型
+        "fsizeLimit": 10485760,  # 限制文件大小为10MB
+        "detectMime": 1,  # 自动检测MIME类型
+    }
+    
+    # 文件路径前缀配置
+    FILE_PREFIXES = {
+        "image": "neuink/image/",  # 图片存储路径前缀
+        "document": "neuink/document/",  # 文档存储路径前缀
+        "markdown": "neuink/markdown/",  # Markdown文件存储路径前缀
+        "paper_image": "neuink/paper_image/",  # 论文图片存储路径前缀
+    }
+    
+    # 默认文件路径前缀（向后兼容）
+    FILE_PREFIX = "neuink/image/"  # 默认使用图片路径前缀
