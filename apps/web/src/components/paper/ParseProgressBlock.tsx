@@ -2,6 +2,7 @@
 
 import React, { useEffect, useState, useRef } from 'react';
 import { CheckCircle, XCircle, Loader2, AlertCircle } from 'lucide-react';
+import { apiClient } from '@/lib/http';
 
 interface ParsingProgressData {
   status: 'pending' | 'processing' | 'completed' | 'failed';
@@ -43,7 +44,11 @@ export default function ParseProgressBlock({
 
   useEffect(() => {
     console.log('ParseProgressBlock useEffect:', { sessionId, paperId, sectionId, blockId });
-    connectToStream();
+    
+    // 只有在有sessionId时才尝试连接
+    if (sessionId) {
+      connectToStream();
+    }
 
     return () => {
       disconnectFromStream();
@@ -65,7 +70,8 @@ export default function ParseProgressBlock({
         ...prev,
         status: 'failed',
         message: '缺少会话ID，无法连接到解析服务',
-        progress: 0
+        progress: 0,
+        error: '缺少会话ID'
       }));
       return;
     }
@@ -81,14 +87,26 @@ export default function ParseProgressBlock({
     connectingRef.current = true;
 
     try {
-      const baseUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
-      
       // 根据用户类型选择不同的API端点
       const apiEndpoint = isPersonalOwner && userPaperId
-        ? `${baseUrl}/api/v1/user_papers/${userPaperId}/sections/${sectionId}/add-block-from-text-stream?`
-        : `${baseUrl}/api/v1/admin_papers/${paperId}/sections/${sectionId}/add-block-from-text-stream?`;
+        ? `/api/v1/user/papers/${userPaperId}/sections/${sectionId}/add-block-from-text-stream`
+        : `/api/v1/admin/papers/${paperId}/sections/${sectionId}/add-block-from-text-stream`;
       
-      const streamUrl = apiEndpoint + new URLSearchParams({ sessionId }).toString();
+      // 构建查询参数
+      const params = new URLSearchParams();
+      if (sessionId) {
+        params.append('sessionId', sessionId);
+      }
+      
+      // 获取token并添加到URL参数中
+      const token = apiClient.getToken();
+      if (token) {
+        params.append('token', token);
+      }
+      
+      // 使用apiClient的getFullURL方法构建完整URL
+      const baseUrl = apiClient.getFullURL(apiEndpoint);
+      const streamUrl = `${baseUrl}?${params.toString()}`;
 
       console.log('🔗 连接到流式传输:', streamUrl);
 
@@ -106,6 +124,24 @@ export default function ParseProgressBlock({
         }));
         connectingRef.current = false;
       };
+      
+      // 添加连接超时处理
+      const connectionTimeout = setTimeout(() => {
+        if (eventSource.readyState === EventSource.CONNECTING) {
+          console.error('⏰ 连接超时');
+          eventSource.close();
+          eventSourceRef.current = null;
+          setIsConnected(false);
+          setProgress(prev => ({
+            ...prev,
+            status: 'failed',
+            message: '连接超时，请检查网络连接',
+            error: 'EventSource连接超时',
+            progress: prev.progress
+          }));
+          connectingRef.current = false;
+        }
+      }, 10000); // 10秒超时
 
       eventSource.onmessage = (event) => {
         try {
@@ -120,8 +156,16 @@ export default function ParseProgressBlock({
             if (statusData.status === 'completed') {
               console.log('✅ 解析完成');
               onCompleted(statusData);
+              // 正常关闭连接
+              eventSource.close();
+              eventSourceRef.current = null;
+              setIsConnected(false);
             } else if (statusData.status === 'failed') {
               console.error('❌ 解析失败:', statusData.message);
+              // 关闭连接
+              eventSource.close();
+              eventSourceRef.current = null;
+              setIsConnected(false);
             }
           } else if (data.type === 'progress') {
             // 直接处理进度更新
@@ -146,6 +190,10 @@ export default function ParseProgressBlock({
               paper: data.paper,
               blocks: data.blocks || []
             });
+            // 正常关闭连接
+            eventSource.close();
+            eventSourceRef.current = null;
+            setIsConnected(false);
           } else if (data.type === 'error') {
             console.error('❌ 流式传输错误:', data.message);
             setProgress(prev => ({
@@ -154,23 +202,140 @@ export default function ParseProgressBlock({
               message: data.message || '解析失败',
               progress: 0
             }));
+            // 关闭连接
+            eventSource.close();
+            eventSourceRef.current = null;
+            setIsConnected(false);
           }
         } catch (error) {
           console.error('解析数据失败:', error);
+          // 如果是JSON解析错误，可能是会话正常结束
+          if (error instanceof SyntaxError && error.message.includes('JSON')) {
+            console.log('🔚 可能是会话正常结束');
+            setProgress(prev => ({
+              ...prev,
+              status: 'completed',
+              progress: 100,
+              message: '解析完成'
+            }));
+            onCompleted({
+              status: 'completed',
+              progress: 100,
+              message: '解析完成',
+              paper: progress.paper,
+              blocks: []
+            });
+            // 关闭连接
+            eventSource.close();
+            eventSourceRef.current = null;
+            setIsConnected(false);
+          }
         }
       };
 
       eventSource.onerror = (error) => {
         console.error('❌ 流式传输连接错误:', error);
+        console.error('EventSource状态:', eventSource.readyState);
         setIsConnected(false);
-        setProgress(prev => ({
-          ...prev,
-          status: prev.status === 'completed' ? 'completed' : 'processing',
-          message: prev.status === 'completed'
-            ? prev.message
-            : '连接波动，正在自动重连…（浏览器将自动重试）',
-          progress: prev.progress
-        }));
+        
+        // 清除连接超时定时器
+        clearTimeout(connectionTimeout);
+        
+        // 检查连接状态
+        if (eventSource.readyState === EventSource.CLOSED) {
+          console.log('🔌 EventSource 已关闭');
+          // 如果不是完成状态，可能是意外关闭
+          if (progress.status !== 'completed') {
+            setProgress(prev => ({
+              ...prev,
+              status: 'failed',
+              message: '连接意外关闭',
+              error: 'EventSource连接意外关闭',
+              progress: prev.progress
+            }));
+          }
+          return;
+        }
+        
+        // 只有在非完成状态下才显示错误
+        if (progress.status !== 'completed') {
+          // 获取更详细的错误信息
+          let errorMessage = '连接失败';
+          let errorDetail = '未知错误';
+          
+          // 根据readyState判断错误类型
+          switch (eventSource.readyState) {
+            case EventSource.CONNECTING:
+              errorMessage = '连接中，请稍候...';
+              errorDetail = 'EventSource正在尝试连接';
+              break;
+            case EventSource.OPEN:
+              errorMessage = '连接中断';
+              errorDetail = 'EventSource连接已建立但发生错误';
+              break;
+            default:
+              errorMessage = '服务器连接错误';
+              errorDetail = `EventSource错误: ${error?.type || 'unknown'}`;
+          }
+          
+          // 检查网络状态
+          if (!navigator.onLine) {
+            errorMessage = '网络连接已断开';
+            errorDetail = '请检查网络连接后重试';
+          }
+          
+          // 检查HTTP状态码（如果可用）
+          try {
+            // 尝试发送一个简单的请求来检查服务器状态
+            fetch(streamUrl, {
+              method: 'HEAD',
+              credentials: 'include'
+            }).then(response => {
+              if (!response.ok) {
+                errorMessage = `服务器错误 (${response.status})`;
+                errorDetail = `HTTP ${response.status}: ${response.statusText}`;
+                setProgress(prev => ({
+                  ...prev,
+                  status: 'failed',
+                  message: errorMessage,
+                  error: errorDetail,
+                  progress: prev.progress
+                }));
+              }
+            }).catch(() => {
+              // 忽略这个错误，因为我们已经有了错误信息
+              setProgress(prev => ({
+                ...prev,
+                status: 'failed',
+                message: errorMessage,
+                error: errorDetail,
+                progress: prev.progress
+              }));
+            });
+          } catch (e) {
+            // 忽略这个错误
+            setProgress(prev => ({
+              ...prev,
+              status: 'failed',
+              message: errorMessage,
+              error: errorDetail,
+              progress: prev.progress
+            }));
+          }
+          
+          // 如果没有通过fetch更新状态，则在这里更新
+          if (eventSource.readyState !== EventSource.CONNECTING) {
+            setProgress(prev => ({
+              ...prev,
+              status: 'failed',
+              message: errorMessage,
+              error: errorDetail,
+              progress: prev.progress
+            }));
+          }
+        }
+        
+        connectingRef.current = false;
       };
 
       eventSourceRef.current = eventSource;
@@ -240,8 +405,13 @@ export default function ParseProgressBlock({
     }
   };
 
+  // 如果状态是失败，使用红色边框
+  const containerClass = progress.status === 'failed'
+    ? "my-4 rounded-lg border border-red-200 bg-red-50 p-4"
+    : "my-4 rounded-lg border border-blue-200 bg-blue-50 p-4";
+
   return (
-    <div className="my-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
+    <div className={containerClass}>
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
           {getStatusIcon()}
@@ -297,10 +467,10 @@ export default function ParseProgressBlock({
       </div>
 
       {/* 错误信息 */}
-      {progress.status === 'failed' && progress.error && (
+      {progress.status === 'failed' && (
         <div className="p-3 bg-red-50 border border-red-200 rounded-lg mb-4">
           <p className="text-sm text-red-600">
-            <strong>错误详情:</strong> {progress.error}
+            <strong>错误详情:</strong> {progress.error || '连接失败，请重试'}
           </p>
         </div>
       )}
@@ -308,20 +478,51 @@ export default function ParseProgressBlock({
       {/* 操作按钮 */}
       <div className="flex justify-end gap-2 mb-4">
         {progress.status === 'failed' && (
-          <button
-            onClick={() => {
-              setProgress({
-                status: 'pending',
-                progress: 0,
-                message: '重新连接中...'
-              });
-              disconnectFromStream();
-              connectToStream();
-            }}
-            className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
-          >
-            重新连接
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={() => {
+                setProgress({
+                  status: 'pending',
+                  progress: 0,
+                  message: '重新连接中...',
+                  error: undefined
+                });
+                connectingRef.current = false; // 重置连接状态
+                disconnectFromStream();
+                setTimeout(() => {
+                  connectToStream();
+                }, 500); // 延迟重连
+              }}
+              className="px-4 py-2 text-sm font-medium text-blue-600 bg-blue-50 border border-blue-200 rounded-lg hover:bg-blue-100"
+            >
+              重新连接
+            </button>
+            <button
+              onClick={() => {
+                // 复制错误信息到剪贴板
+                const errorInfo = `错误信息: ${progress.message}\n错误详情: ${progress.error || '无'}\n时间: ${new Date().toLocaleString()}\n会话ID: ${sessionId}\n论文ID: ${paperId}\n章节ID: ${sectionId}`;
+                navigator.clipboard.writeText(errorInfo).then(() => {
+                  // 显示复制成功的提示
+                  const originalText = progress.message;
+                  setProgress(prev => ({
+                    ...prev,
+                    message: '错误信息已复制到剪贴板'
+                  }));
+                  setTimeout(() => {
+                    setProgress(prev => ({
+                      ...prev,
+                      message: originalText
+                    }));
+                  }, 2000);
+                }).catch(err => {
+                  console.error('复制失败:', err);
+                });
+              }}
+              className="px-4 py-2 text-sm font-medium text-gray-600 bg-gray-50 border border-gray-200 rounded-lg hover:bg-gray-100"
+            >
+              复制错误信息
+            </button>
+          </div>
         )}
       </div>
 

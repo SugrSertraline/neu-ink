@@ -67,7 +67,9 @@ def create_app():
             "expose_headers": [
                 "Content-Type",
                 "Authorization",
-                "X-Total-Count"
+                "X-Total-Count",
+                "Cache-Control",
+                "Connection"
             ],
             "supports_credentials": True
         }

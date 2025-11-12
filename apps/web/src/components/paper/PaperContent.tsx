@@ -191,16 +191,16 @@ export default function PaperContent({
         ].join(' ');
       case 'math':
         return [
-          block.latex || '',
+          (block as any).latex || '',
           (block as any).label || '',
           (block as any).number ? String((block as any).number) : '',
         ].join(' ');
       case 'figure':
         return [
-          extractInlineText(block.caption?.en),
-          extractInlineText(block.caption?.zh),
-          extractInlineText(block.description?.en),
-          extractInlineText(block.description?.zh),
+          extractInlineText((block as any).caption?.en),
+          extractInlineText((block as any).caption?.zh),
+          extractInlineText((block as any).description?.en),
+          extractInlineText((block as any).description?.zh),
           (block as any).alt || '',
           (block as any).uploadedFilename || '',
         ].join(' ');
@@ -208,20 +208,20 @@ export default function PaperContent({
         const headerText = Array.isArray((block as any).headers) ? (block as any).headers.join(' ') : '';
         const rowsText = Array.isArray((block as any).rows)
           ? (block as any).rows
-            .map((row: any[]) =>
-              row
-                .map((cell: any) => {
-                  if (typeof cell === 'string') return cell;
-                  if (cell && typeof cell === 'object') {
-                    const en = cell.en ?? '';
-                    const zh = cell.zh ?? '';
-                    return [en, zh].filter(Boolean).join(' ');
-                  }
-                  return '';
-                })
-                .join(' '),
-            )
-            .join(' ')
+              .map((row: any[]) =>
+                row
+                  .map((cell: any) => {
+                    if (typeof cell === 'string') return cell;
+                    if (cell && typeof cell === 'object') {
+                      const en = cell.en ?? '';
+                      const zh = cell.zh ?? '';
+                      return [en, zh].filter(Boolean).join(' ');
+                    }
+                    return '';
+                  })
+                  .join(' '),
+              )
+              .join(' ')
           : '';
         const cap = [
           extractInlineText((block as any).caption?.en),
@@ -241,13 +241,13 @@ export default function PaperContent({
       case 'unordered-list':
         return Array.isArray((block as any).items)
           ? (block as any).items
-            .map((it: any) =>
-              [
-                extractInlineText(it?.content?.en),
-                extractInlineText(it?.content?.zh),
-              ].join(' '),
-            )
-            .join(' ')
+              .map((it: any) =>
+                [
+                  extractInlineText(it?.content?.en),
+                  extractInlineText(it?.content?.zh),
+                ].join(' '),
+              )
+              .join(' ')
           : '';
       case 'quote':
         return [
@@ -401,15 +401,18 @@ export default function PaperContent({
     paperData?: any
   ) => {
     console.log('handleStreamParseComplete called:', { sectionId, blocks: blocks?.length, afterBlockId, paperData });
-    
-    // 调用父组件提供的回调函数
-    if (onParseTextComplete) {
+    if (blocks?.length === 1 && (blocks[0] as any).type === 'parse-progress') {
+      onParseTextComplete?.(sectionId, blocks, afterBlockId);
+      // 不关闭编辑器，这里 InlineTextParserEditor 已有 500ms 后自动 onCancel()
+      return;
+    }
+    if (onParseTextComplete && blocks?.length) {
       onParseTextComplete(sectionId, blocks, afterBlockId);
     }
-    
-    // 如果有完整的paper数据，也可以在这里处理
+  
+    // 若你后端在 progress/complete 时也回了 paperData，可在父层用 paperData 全量替换
+    // 这里只 log，保持最小改动
     if (paperData && paperData.sections) {
-      // 可以选择性地更新整个paper数据
       console.log('收到完整的paper数据:', paperData);
     }
     
@@ -498,8 +501,7 @@ export default function PaperContent({
             }
           >
             <div
-              className={`flex items-baseline gap-3 flex-wrap cursor-context-menu rounded-md transition-colors ${hoveredSectionId === section.id ? 'bg-gray-100 dark:bg-gray-800' : ''
-                }`}
+              className={`flex items-baseline gap-3 flex-wrap cursor-context-menu rounded-md transition-colors ${hoveredSectionId === section.id ? 'bg-gray-100 dark:bg-gray-800' : ''}`}
               onMouseEnter={() => setHoveredSectionId(section.id)}
               onMouseLeave={() => setHoveredSectionId(null)}
             >
@@ -577,19 +579,18 @@ export default function PaperContent({
                 <div
                   id={block.id}
                   data-block-id={block.id}
-                    className={`rounded-md transition-colors ${isActive ? 'ring-2 ring-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : ''}`}
-
+                  className={`rounded-md transition-colors ${isActive ? 'ring-2 ring-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : ''}`}
                   style={{
                     // 让 scrollIntoView 对齐到"头部下方 16px"
-                     scrollMarginTop: 'calc(var(--app-header-h, 0px) + 16px)',
+                    scrollMarginTop: 'calc(var(--app-header-h, 0px) + 16px)',
                   }}
                   onClick={
                     !isEditingBlock && onBlockClick
                       ? () => {
-                        const selection = window.getSelection();
-                        if (selection && selection.toString()) return;
-                        onBlockClick(block.id);
-                      }
+                          const selection = window.getSelection();
+                          if (selection && selection.toString()) return;
+                          onBlockClick(block.id);
+                        }
                       : undefined
                   }
                 >
@@ -659,8 +660,8 @@ export default function PaperContent({
                       onEdit={
                         canEditContent
                           ? () => {
-                            handleBlockEditStart(block.id);
-                          }
+                              handleBlockEditStart(block.id);
+                            }
                           : undefined
                       }
                       onInsertAbove={canEditContent ? () => onBlockInsert?.(block.id, 'above') : undefined}
@@ -675,19 +676,19 @@ export default function PaperContent({
                       onDelete={
                         canEditContent
                           ? async () => {
-                            const confirmed = await confirm({
-                              title: '删除内容块',
-                              description: '确定删除该内容块吗？此操作不可撤销。',
-                              confirmText: '删除',
-                              cancelText: '取消',
-                              variant: 'destructive',
-                              onConfirm: () => Promise.resolve(),
-                            });
-                            if (confirmed) {
-                              onBlockDelete?.(block.id);
-                              if (isEditing(block.id)) clearEditing();
+                              const confirmed = await confirm({
+                                title: '删除内容块',
+                                description: '确定删除该内容块吗？此操作不可撤销。',
+                                confirmText: '删除',
+                                cancelText: '取消',
+                                variant: 'destructive',
+                                onConfirm: () => Promise.resolve(),
+                              });
+                              if (confirmed) {
+                                onBlockDelete?.(block.id);
+                                if (isEditing(block.id)) clearEditing();
+                              }
                             }
-                          }
                           : undefined
                       }
                     >

@@ -1,3 +1,4 @@
+// src/components/paper/editor/InlineTextParserEditor.tsx
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
@@ -33,6 +34,8 @@ export default function InlineTextParserEditor({
   onParseComplete,
 }: InlineTextParserEditorProps) {
   const [text, setText] = useState('');
+  const [insertedProgressBlock, setInsertedProgressBlock] = useState(false);
+
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [streamProgress, setStreamProgress] = useState<{ message: string; progress: number } | null>(null);
@@ -76,6 +79,23 @@ export default function InlineTextParserEditor({
     
     checkActiveSessions();
   }, [sectionId, paperId, userPaperId]);
+
+  const tryInsertTempProgressBlock = (sessionId: string, progress?: number, message?: string) => {
+    if (insertedProgressBlock) return;
+    if (!onParseComplete) return;
+
+    const tempProgressBlock: any = {
+      id: `parse-progress-${sessionId}`,
+      type: 'parse-progress',
+      sessionId,
+      status: 'processing',
+      progress: typeof progress === 'number' ? progress : 5,
+      message: message || '已连接到解析服务...'
+    };
+
+    onParseComplete([tempProgressBlock]);
+    setInsertedProgressBlock(true);
+  };
 
   const handleSubmit = async () => {
     if (!text.trim()) {
@@ -138,12 +158,13 @@ export default function InlineTextParserEditor({
               });
               console.log(`解析进度: ${data.progress}% - ${data.message}`);
               
-              // 保存会话ID
+              // 保存会话ID & 首次插入临时进度块
               if (data.sessionId) {
                 setActiveSessionId(data.sessionId);
                 setHasActiveSession(true);
-                // 新会话，不是恢复的会话
                 setIsResumedSession(false);
+                // ★ 首次拿到 sessionId 时插入“临时进度块”
+                tryInsertTempProgressBlock(data.sessionId, data.progress, data.message);
               }
             } else if (data.type === 'complete') {
               // 解析完成
@@ -175,12 +196,33 @@ export default function InlineTextParserEditor({
             }
           } catch (e) {
             console.error('解析流式响应失败:', e);
-            setError('解析响应失败');
-            setStreamProgress(null);
-            setHasActiveSession(false);
-            setActiveSessionId(null);
-            eventSource.close();
-            eventSourceRef.current = null;
+            // 如果是JSON解析错误，可能是会话正常结束
+            if (e instanceof SyntaxError && e.message.includes('JSON')) {
+              console.log('🔚 可能是会话正常结束');
+              setText('');
+              setError(null);
+              setHasUnsavedChanges(false);
+              setStreamProgress(null);
+              setHasActiveSession(false);
+              setActiveSessionId(null);
+              eventSource.close();
+              eventSourceRef.current = null;
+              
+              // 调用回调函数
+              if (onParseComplete) {
+                onParseComplete([], null);
+              }
+              
+              // 关闭编辑器
+              onCancel();
+            } else {
+              setError('解析响应失败');
+              setStreamProgress(null);
+              setHasActiveSession(false);
+              setActiveSessionId(null);
+              eventSource.close();
+              eventSourceRef.current = null;
+            }
           }
         };
 
@@ -210,8 +252,7 @@ export default function InlineTextParserEditor({
           }
         }, 300000); // 5分钟超时
         
-        // 立即关闭编辑器，让后端创建的loading block显示出来
-        // 这样用户就能看到解析进度
+        // 立即关闭编辑器，让 UI 显示（我们已乐观插入进度块）
         setTimeout(() => {
           if (!error) {
             onCancel();
@@ -315,6 +356,11 @@ export default function InlineTextParserEditor({
               progress: data.progress
             });
             console.log(`解析进度: ${data.progress}% - ${data.message}`);
+
+            // 恢复时如果还没插入过，补插一个临时进度块
+            if (activeSessionId && !insertedProgressBlock) {
+              tryInsertTempProgressBlock(activeSessionId, data.progress, data.message);
+            }
           } else if (data.type === 'complete') {
             // 解析完成
             console.log('解析完成:', data.blocks);
@@ -347,13 +393,35 @@ export default function InlineTextParserEditor({
           }
         } catch (e) {
           console.error('解析流式响应失败:', e);
-          setError('解析响应失败');
-          setStreamProgress(null);
-          setHasActiveSession(false);
-          setActiveSessionId(null);
-          setIsResumedSession(false);
-          eventSource.close();
-          eventSourceRef.current = null;
+          // 如果是JSON解析错误，可能是会话正常结束
+          if (e instanceof SyntaxError && e.message.includes('JSON')) {
+            console.log('🔚 可能是会话正常结束');
+            setText('');
+            setError(null);
+            setHasUnsavedChanges(false);
+            setStreamProgress(null);
+            setHasActiveSession(false);
+            setActiveSessionId(null);
+            setIsResumedSession(false);
+            eventSource.close();
+            eventSourceRef.current = null;
+            
+            // 调用回调函数
+            if (onParseComplete) {
+              onParseComplete([], null);
+            }
+            
+            // 关闭编辑器
+            onCancel();
+          } else {
+            setError('解析响应失败');
+            setStreamProgress(null);
+            setHasActiveSession(false);
+            setActiveSessionId(null);
+            setIsResumedSession(false);
+            eventSource.close();
+            eventSourceRef.current = null;
+          }
         }
       };
 

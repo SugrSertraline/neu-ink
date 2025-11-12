@@ -52,6 +52,8 @@ function createAuthenticatedEventSource(url: string, params: URLSearchParams): E
   const baseUrl = apiClient.getFullURL(url);
   const fullUrl = `${baseUrl}?${params.toString()}`;
   
+  console.log('createAuthenticatedEventSource URL:', fullUrl);
+  
   // 创建EventSource连接，并设置withCredentials以支持cookie认证
   const eventSource = new EventSource(fullUrl, {
     withCredentials: true // 支持cookie认证
@@ -241,6 +243,8 @@ export const userPaperService = {
     if (request.text) params.append('text', request.text);
     if (request.afterBlockId) params.append('afterBlockId', request.afterBlockId);
     if (request.sessionId) params.append('sessionId', request.sessionId);
+    
+    console.log('userPaperService.addBlockFromTextToSectionStream URL:', `${url}?${params.toString()}`);
     
     // 使用工具函数创建带认证的EventSource
     return createAuthenticatedEventSource(url, params);
@@ -639,6 +643,9 @@ export const adminPaperService = {
     // 添加请求参数到URL
     if (request.text) params.append('text', request.text);
     if (request.afterBlockId) params.append('afterBlockId', request.afterBlockId);
+    if (request.sessionId) params.append('sessionId', request.sessionId);
+    
+    console.log('adminPaperService.addBlockFromTextToSectionStream URL:', `${url}?${params.toString()}`);
     
     // 使用工具函数创建带认证的EventSource
     return createAuthenticatedEventSource(url, params);

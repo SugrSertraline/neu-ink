@@ -3,6 +3,7 @@
 负责用户收藏公共论文、上传私有论文、管理个人笔记等功能
 """
 import json
+from datetime import datetime
 from flask import Blueprint, request, g
 
 from ..services.userPaperService import get_user_paper_service
@@ -13,6 +14,20 @@ from ..utils.common import (
     internal_error_response,
 )
 from ..config.constants import BusinessCode, ResponseCode
+
+
+def _serialize_datetime_in_dict(data):
+    """
+    递归序列化字典中的所有datetime对象为ISO格式字符串
+    """
+    if isinstance(data, dict):
+        return {key: _serialize_datetime_in_dict(value) for key, value in data.items()}
+    elif isinstance(data, list):
+        return [_serialize_datetime_in_dict(item) for item in data]
+    elif isinstance(data, datetime):
+        return data.isoformat()
+    else:
+        return data
 
 bp = Blueprint("user_papers", __name__)
 
@@ -1456,6 +1471,11 @@ def add_block_from_text_to_user_paper_section_stream(entry_id, section_id):
         if not text and not session_id:
             return bad_request_response("文本内容或会话ID不能为空")
         
+        # 添加调试日志
+        print(f"DEBUG: 收到用户流式请求 - sessionId: {session_id}, entry_id: {entry_id}, section_id: {section_id}")
+        print(f"DEBUG: 请求头信息: {dict(request.headers)}")
+        print(f"DEBUG: 请求参数: {dict(request.args)}")
+        
         # 导入会话模型和后台任务管理器
         from ..models.parsingSession import get_parsing_session_model
         from ..utils.common import generate_id
@@ -1494,14 +1514,8 @@ def add_block_from_text_to_user_paper_section_stream(entry_id, section_id):
             # 检查是否有后台任务正在运行
             task = task_manager.get_task(session_id)
             if task and task.status.value in ["pending", "running"]:
-                # 任务正在运行，返回当前状态
-                return success_response({
-                    "type": "resume",
-                    "sessionId": session_id,
-                    "status": task.status.value,
-                    "progress": task.progress,
-                    "message": task.message
-                }, "恢复会话成功")
+                # 任务正在运行，直接进入SSE流式响应，不返回JSON
+                pass
             
             # 获取已保存的进度块ID
             progress_block_id = existing_session.get("progressBlockId")
@@ -1738,7 +1752,11 @@ def add_block_from_text_to_user_paper_section_stream(entry_id, section_id):
                         # 获取最新的会话数据
                         completed_session = session_model.get_session(session_id)
                         if completed_session and completed_session["status"] == "completed":
-                            yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'completed', 'progress': 100, 'message': '解析完成', 'paper': completed_session.get('paperData'), 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
+                            # 确保paperData中的datetime对象被序列化
+                            paper_data = completed_session.get('paperData')
+                            if paper_data:
+                                paper_data = _serialize_datetime_in_dict(paper_data)
+                            yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'completed', 'progress': 100, 'message': '解析完成', 'paper': paper_data, 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
                         break
                     elif current_task.status.value == "failed":
                         yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': current_task.error or '任务失败', 'error': current_task.error or '任务失败', 'sessionId': session_id}}, ensure_ascii=False)}\n\n"

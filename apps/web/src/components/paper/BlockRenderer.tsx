@@ -1339,6 +1339,15 @@ export default function BlockRenderer({
         };
 
         // 直接显示解析进度块，不需要模态框
+        console.log('BlockRenderer rendering ParseProgressBlock with:', {
+          paperId: paperId || '',
+          sectionId: sectionId || loadingBlock.sectionId || '',
+          blockId: loadingBlock.id,
+          sessionId: loadingBlock.sessionId || '',
+          isPersonalOwner,
+          userPaperId
+        });
+        
         return (
           <ParseProgressBlock
             paperId={paperId || ''}
