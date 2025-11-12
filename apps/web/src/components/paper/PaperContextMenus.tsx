@@ -389,7 +389,6 @@ interface SectionContextMenuProps {
   onRename?: MenuAction;
   onAddSectionBefore?: MenuAction;
   onAddSectionAfter?: MenuAction;
-  onAddSubsection?: MenuAction;
   onAddBlock?: (type: BlockContent['type']) => void;
   onStartTextParse?: MenuAction;
   onMoveUp?: MenuAction;
@@ -402,7 +401,6 @@ export function SectionContextMenu({
   onRename,
   onAddSectionBefore,
   onAddSectionAfter,
-  onAddSubsection,
   onAddBlock,
   onStartTextParse,
   onMoveUp,
@@ -436,15 +434,8 @@ export function SectionContextMenu({
     }
   }
 
-  if (onAddSubsection || onAddBlock || onStartTextParse) {
+  if (onAddBlock || onStartTextParse) {
     if (entries.length) entries.push({ kind: 'separator' });
-    if (onAddSubsection) {
-      entries.push({
-        kind: 'item',
-        label: '添加子章节',
-        onSelect: onAddSubsection,
-      });
-    }
 
     if (onAddBlock) {
       const blockTypes: { type: BlockContent['type']; label: string; icon: string }[] = [
@@ -546,7 +537,6 @@ interface BlockContextMenuProps {
   onMoveUp?: MenuAction;
   onMoveDown?: MenuAction;
   onDuplicate?: MenuAction;
-  onAddSubsectionAfter?: MenuAction;
   onDelete?: MenuAction;
   onAddComponentAfter?: (type: BlockContent['type']) => void;
   onStartTextParse?: MenuAction;
@@ -562,7 +552,6 @@ export function BlockContextMenu({
   onMoveUp,
   onMoveDown,
   onDuplicate,
-  onAddSubsectionAfter,
   onDelete,
   onAddComponentAfter,
   onStartTextParse,
@@ -626,11 +615,9 @@ export function BlockContextMenu({
     if (onMoveDown) entries.push({ kind: 'item', label: '下移一行', onSelect: onMoveDown });
   }
 
-  if (onDuplicate || onAddSubsectionAfter) {
+  if (onDuplicate) {
     if (entries.length) entries.push({ kind: 'separator' });
-    if (onDuplicate) entries.push({ kind: 'item', label: '复制块', onSelect: onDuplicate });
-    if (onAddSubsectionAfter)
-      entries.push({ kind: 'item', label: '在本节下添加子章节', onSelect: onAddSubsectionAfter });
+    entries.push({ kind: 'item', label: '复制块', onSelect: onDuplicate });
   }
 
   if (onDelete) {

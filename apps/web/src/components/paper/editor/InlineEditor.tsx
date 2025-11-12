@@ -243,8 +243,6 @@ export default function InlineEditor({
             });
           }
         });
-
-        if (section.subsections?.length) walkSections(section.subsections);
       });
     };
 
@@ -822,7 +820,7 @@ export default function InlineEditor({
                         <button
                           onClick={insertSelectedCitations}
                           disabled={selectedCitations.size === 0}
-                          className={`rounded-xl bg-gradient-to-r from-[#28418A]/92 via-[#28418A]/88 to-[#28418A]/92 shadow-[0_16px_38px_rgba(40,65,138,0.28)] hover:shadow-[0_20px_46px_rgba(40,65,138,0.35)] border border-white/70 text-white px-6 py-2 text-sm font-medium transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
+                          className={`rounded-xl bg-linear-to-r from-[#28418A]/92 via-[#28418A]/88 to-[#28418A]/92 shadow-[0_16px_38px_rgba(40,65,138,0.28)] hover:shadow-[0_20px_46px_rgba(40,65,138,0.35)] border border-white/70 text-white px-6 py-2 text-sm font-medium transition-all disabled:opacity-60 disabled:cursor-not-allowed ${
                             selectedCitations.size ? '' : 'bg-gray-300 text-gray-500 cursor-not-allowed'
                           }`}
                         >

@@ -45,12 +45,6 @@ export function usePaperBlocks(
               nextSection = { ...nextSection, content: nextContent };
             }
 
-            if (section.subsections?.length) {
-              const nextSubsections = walkSections(section.subsections);
-              if (nextSubsections !== section.subsections) {
-                nextSection = { ...nextSection, subsections: nextSubsections };
-              }
-            }
 
             const foundBlock = section.content.find(b => b.id === blockId);
             const result = foundBlock ? apply(section, foundBlock) : {};
@@ -184,7 +178,20 @@ export function usePaperBlocks(
         });
         
         if (result.bizCode === 0) {
-          return { success: true, data: result.data };
+          // 添加调试日志
+          console.log('添加block API响应:', result);
+          console.log('响应数据:', result.data);
+          
+          // 返回后端创建的真实block ID
+          // 根据normalize.ts的处理，result.data应该是内层的data对象
+          const blockId = result.data?.blockId || result.data?.addedBlock?.id;
+          console.log('提取的blockId:', blockId);
+          
+          return {
+            success: true,
+            data: result.data,
+            blockId: blockId
+          };
         } else {
           const errorMsg = result.bizMessage || '服务器错误';
           toast.error('添加失败', { description: errorMsg });
@@ -199,7 +206,20 @@ export function usePaperBlocks(
         });
         
         if (result.bizCode === 0) {
-          return { success: true, data: result.data };
+          // 添加调试日志
+          console.log('添加block API响应(管理员):', result);
+          console.log('响应数据(管理员):', result.data);
+          
+          // 返回后端创建的真实block ID
+          // 根据normalize.ts的处理，result.data应该是内层的data对象
+          const blockId = result.data?.blockId || result.data?.addedBlock?.id;
+          console.log('提取的blockId(管理员):', blockId);
+          
+          return {
+            success: true,
+            data: result.data,
+            blockId: blockId
+          };
         } else {
           const errorMsg = result.bizMessage || '服务器错误';
           toast.error('添加失败', { description: errorMsg });
@@ -275,6 +295,8 @@ export function usePaperBlocks(
         const { userPaperService } = await import('@/lib/services/paper');
         const result = await userPaperService.deleteBlock(userPaperId, sectionId, blockId);
         
+        console.log('删除block API响应(个人):', result);
+        
         if (result.bizCode === 0) {
           // 不再在这里更新UI，因为乐观更新已经在 handleBlockDelete 中处理
           return { success: true };
@@ -285,6 +307,8 @@ export function usePaperBlocks(
         const { adminPaperService } = await import('@/lib/services/paper');
         const result = await adminPaperService.deleteBlock(paperId, sectionId, blockId);
         
+        console.log('删除block API响应(管理员):', result);
+        
         if (result.bizCode === 0) {
           // 不再在这里更新UI，因为乐观更新已经在 handleBlockDelete 中处理
           return { success: true };
@@ -293,6 +317,7 @@ export function usePaperBlocks(
         }
       }
     } catch (error) {
+      console.error('删除block API调用出错:', error);
       const message = error instanceof Error ? error.message : '删除内容块时发生未知错误';
       return { success: false, error: message };
     }
@@ -383,7 +408,7 @@ export function usePaperBlocks(
   );
 
   // 用于存储被删除的块信息，以便在删除失败时恢复
-  const deletedBlocksRef = useRef<Map<string, { block: BlockContent; sectionId: string }>>(new Map());
+  const deletedBlocksRef = useRef<Map<string, { block: BlockContent; sectionId: string; originalIndex?: number }>>(new Map());
 
   const handleBlockDelete = useCallback(
     async (
@@ -395,7 +420,17 @@ export function usePaperBlocks(
       onSaveToServer?: () => Promise<void>
     ) => {
       // 在乐观更新前，先保存被删除的块信息
-      let deletedBlockInfo: { block: BlockContent; sectionId: string } | null = null;
+      let deletedBlockInfo: { block: BlockContent; sectionId: string; originalIndex?: number } | null = null;
+      
+      // 检查是否是临时ID（前端生成的ID格式）
+      // 前端生成的ID格式：type_timestamp_random（如 paragraph_mhvuvhkp_92a7）
+      // 后端生成的ID格式：block_timestamp_hash（如 block_1234567890_abcdef）
+      const isTempId = blockId.match(/^[a-z-]+_[a-z0-9]+_[a-z0-9]+$/) &&
+                       !blockId.startsWith('block_');
+      
+      console.log('删除block:', blockId, '是否为临时ID:', isTempId);
+      
+      let actualBlockId = blockId; // 用于API调用的实际ID
       
       // 查找要删除的块信息
       updateSections(sections => {
@@ -407,9 +442,97 @@ export function usePaperBlocks(
             const blockIndex = section.content.findIndex(b => b.id === blockId);
             if (blockIndex !== -1) {
               found = true;
+              const blockToDelete = section.content[blockIndex];
+              
+              if (isTempId) {
+                // 如果是临时ID，说明这个block可能还没有正确同步到后端
+                // 或者前端没有正确更新ID
+                console.warn('尝试删除使用临时ID的block:', blockId);
+                
+                // 尝试在section中查找相同类型和内容的block，获取其真实ID
+                const sameTypeBlocks = section.content.filter(b =>
+                  b.type === blockToDelete.type && b.id !== blockId && b.id.startsWith('block_')
+                );
+                
+                // 如果找到相同类型的block，尝试找到最相似的block
+                if (sameTypeBlocks.length > 0) {
+                  // 简单的内容比较，找到最相似的block
+                  let mostSimilarBlock = null;
+                  let maxSimilarity = 0;
+                   
+                  for (const candidateBlock of sameTypeBlocks) {
+                    // 计算内容相似度（简单实现）
+                    let similarity = 0;
+                    
+                    // 根据block类型比较相应的内容字段
+                    if (blockToDelete.type === 'math' && candidateBlock.type === 'math') {
+                      // MathBlock 比较 latex 字段
+                      if ('latex' in blockToDelete && 'latex' in candidateBlock &&
+                          blockToDelete.latex === candidateBlock.latex) {
+                        similarity += 0.8;
+                      }
+                    } else if (blockToDelete.type === 'figure' && candidateBlock.type === 'figure') {
+                      // FigureBlock 比较 src 字段
+                      if ('src' in blockToDelete && 'src' in candidateBlock &&
+                          blockToDelete.src === candidateBlock.src) {
+                        similarity += 0.8;
+                      }
+                    } else if (blockToDelete.type === 'code' && candidateBlock.type === 'code') {
+                      // CodeBlock 比较 code 字段
+                      if ('code' in blockToDelete && 'code' in candidateBlock &&
+                          blockToDelete.code === candidateBlock.code) {
+                        similarity += 0.8;
+                      }
+                    } else if (blockToDelete.type === 'table' && candidateBlock.type === 'table') {
+                      // TableBlock 比较 rows 字段
+                      if ('rows' in blockToDelete && 'rows' in candidateBlock &&
+                          JSON.stringify(blockToDelete.rows) === JSON.stringify(candidateBlock.rows)) {
+                        similarity += 0.8;
+                      }
+                    } else if ('content' in blockToDelete && 'content' in candidateBlock) {
+                      // 其他有 content 字段的 block
+                      if (JSON.stringify(blockToDelete.content) === JSON.stringify(candidateBlock.content)) {
+                        similarity += 0.8;
+                      }
+                    }
+                    
+                    // 比较类型
+                    if (blockToDelete.type === candidateBlock.type) {
+                      similarity += 0.2;
+                    }
+                    
+                    if (similarity > maxSimilarity) {
+                      maxSimilarity = similarity;
+                      mostSimilarBlock = candidateBlock;
+                    }
+                  }
+                   
+                  // 如果找到相似度高的block，使用其ID进行删除
+                  if (mostSimilarBlock && maxSimilarity > 0.5) {
+                    console.warn('找到相似的block，使用其ID进行删除:', mostSimilarBlock.id);
+                    actualBlockId = mostSimilarBlock.id;
+                  } else {
+                    console.warn('未找到相似的block，尝试使用临时ID删除');
+                    // 对于临时ID，我们可以直接跳过API调用，只进行本地删除
+                    // 因为这个block可能还没有同步到后端
+                    console.warn('跳过API调用，只进行本地删除');
+                    
+                    // 标记为跳过API调用
+                    actualBlockId = '';
+                  }
+                } else {
+                  // 没有找到相同类型的后端ID，可能是刚创建的block
+                  console.warn('没有找到相同类型的block，可能是刚创建的block，跳过API调用');
+                  
+                  // 标记为跳过API调用
+                  actualBlockId = '';
+                }
+              }
+              
               deletedBlockInfo = {
-                block: { ...section.content[blockIndex] },
-                sectionId: section.id
+                block: { ...blockToDelete },
+                sectionId: section.id,
+                originalIndex: blockIndex  // 记录原始位置
               };
               
               // 保存到 ref 中以便后续恢复
@@ -421,13 +544,7 @@ export function usePaperBlocks(
                 content: section.content.filter(b => b.id !== blockId)
               };
             }
-            
-            if (section.subsections?.length) {
-              return {
-                ...section,
-                subsections: walk(section.subsections)
-              };
-            }
+           
             
             return section;
           });
@@ -436,17 +553,45 @@ export function usePaperBlocks(
         return { sections: walk(sections), touched: true };
       });
       
+      // 如果actualBlockId为空，说明是临时ID且不需要调用API
+      if (!actualBlockId) {
+        console.log('跳过API调用，只进行本地删除，blockId:', blockId);
+        
+        // 显示加载状态
+        toast.loading('正在删除内容块...', { id: 'delete-block' });
+        
+        // 直接返回成功，不调用API
+        setTimeout(() => {
+          toast.success('内容块删除成功', { id: 'delete-block' });
+          // 清除未保存状态
+          window.dispatchEvent(new CustomEvent('blockAddedSuccessfully'));
+        }, 500);
+        
+        return;
+      }
+      
       // 显示加载状态
       toast.loading('正在删除内容块...', { id: 'delete-block' });
+      
+      console.log('调用API删除block:', {
+        sectionId,
+        actualBlockId,
+        originalBlockId: blockId,
+        paperId,
+        userPaperId,
+        isPersonalOwner
+      });
       
       try {
         const result = await handleBlockDeleteWithAPI(
           sectionId,
-          blockId,
+          actualBlockId,
           paperId,
           userPaperId,
           isPersonalOwner
         );
+        
+        console.log('删除block API响应:', result);
 
         if (!result.success) {
           // 删除失败，恢复被删除的块
@@ -458,24 +603,25 @@ export function usePaperBlocks(
                   if (section.id === savedBlockInfo.sectionId) {
                     // 找到原来的位置并恢复块
                     const updatedContent = [...section.content];
-                    // 这里简化处理，直接添加到末尾
-                    // 在实际应用中，可能需要记录原始位置
-                    updatedContent.push(savedBlockInfo.block);
+                    
+                    // 尝试恢复到原始位置
+                    if (savedBlockInfo.originalIndex !== undefined &&
+                        savedBlockInfo.originalIndex >= 0 &&
+                        savedBlockInfo.originalIndex <= updatedContent.length) {
+                      updatedContent.splice(savedBlockInfo.originalIndex, 0, savedBlockInfo.block);
+                    } else {
+                      // 如果无法恢复到原始位置，添加到末尾
+                      updatedContent.push(savedBlockInfo.block);
+                    }
                    
                     return {
                       ...section,
                       content: updatedContent
-                    };
+                    } as Section;
                   }
                    
-                  if (section.subsections?.length) {
-                    return {
-                      ...section,
-                      subsections: walk(section.subsections)
-                    };
-                  }
                    
-                  return section;
+                  return section as Section;
                 });
               };
                
@@ -486,10 +632,22 @@ export function usePaperBlocks(
             deletedBlocksRef.current.delete(blockId);
           }
           
+          // 显示更详细的错误信息
+          const errorMsg = result.error || '删除内容块失败';
           toast.error('删除失败', {
             id: 'delete-block',
-            description: result.error
+            description: errorMsg.includes('不存在') ?
+              '要删除的内容块不存在，可能已经被删除。请刷新页面后重试。' :
+              errorMsg
           });
+          
+          // 如果是400错误（block不存在），触发页面刷新以重新同步状态
+          if (errorMsg.includes('不存在') || errorMsg.includes('400')) {
+            console.warn('检测到block不存在的错误，将在2秒后刷新页面以重新同步状态');
+            setTimeout(() => {
+              window.location.reload();
+            }, 2000);
+          }
         } else {
           // 删除成功，清理保存的块信息
           deletedBlocksRef.current.delete(blockId);
@@ -508,25 +666,27 @@ export function usePaperBlocks(
                 if (section.id === savedBlockInfo.sectionId) {
                   // 找到原来的位置并恢复块
                   const updatedContent = [...section.content];
-                  // 这里简化处理，直接添加到末尾
-                  updatedContent.push(savedBlockInfo.block);
+                  
+                  // 尝试恢复到原始位置
+                  if (savedBlockInfo.originalIndex !== undefined &&
+                      savedBlockInfo.originalIndex >= 0 &&
+                      savedBlockInfo.originalIndex <= updatedContent.length) {
+                    updatedContent.splice(savedBlockInfo.originalIndex, 0, savedBlockInfo.block);
+                  } else {
+                    // 如果无法恢复到原始位置，添加到末尾
+                    updatedContent.push(savedBlockInfo.block);
+                  }
                    
                   return {
                     ...section,
                     content: updatedContent
-                  };
+                  } as Section;
                 }
-                 
-                if (section.subsections?.length) {
-                  return {
-                    ...section,
-                    subsections: walk(section.subsections)
-                  };
-                }
-                 
-                return section;
-              });
-            };
+                  
+                  
+                  return section as Section;
+                });
+              };
            
             return { sections: walk(sections), touched: true };
           });
@@ -535,9 +695,12 @@ export function usePaperBlocks(
           deletedBlocksRef.current.delete(blockId);
         }
         
+        const errorMsg = error instanceof Error ? error.message : '未知错误';
         toast.error('删除失败', {
           id: 'delete-block',
-          description: error instanceof Error ? error.message : '未知错误'
+          description: errorMsg.includes('不存在') ?
+            '要删除的内容块不存在，可能已经被删除。请刷新页面后重试。' :
+            errorMsg
         });
       }
     },
@@ -549,7 +712,7 @@ export function usePaperBlocks(
       blockId: string,
       position: 'above' | 'below'
     ) => {
-      let newBlockId: string | null = null;
+      let tempBlockId: string | null = null;
       let targetSectionId: string | null = null;
 
       // 显示加载状态
@@ -566,7 +729,7 @@ export function usePaperBlocks(
 
             if (idx !== -1) {
               const newBlock = createPlaceholderParagraph(lang);
-              newBlockId = newBlock.id;
+              tempBlockId = newBlock.id;
               targetSectionId = section.id;
               const nextContent = [...section.content];
               const insertIndex = position === 'above' ? idx : idx + 1;
@@ -575,13 +738,6 @@ export function usePaperBlocks(
               touched = true;
             }
 
-            if (section.subsections?.length) {
-              const nextSubsections = walk(section.subsections);
-              if (nextSubsections !== section.subsections) {
-                nextSection = { ...section, subsections: nextSubsections };
-                touched = true;
-              }
-            }
 
             return nextSection;
           });
@@ -591,7 +747,7 @@ export function usePaperBlocks(
       });
 
       // 然后调用API
-      if (newBlockId && targetSectionId) {
+      if (tempBlockId && targetSectionId) {
         const result = await handleBlockAddWithAPI(
           targetSectionId,
           createPlaceholderParagraph(lang),
@@ -601,13 +757,48 @@ export function usePaperBlocks(
           isPersonalOwner
         );
         
-        if (result.success) {
-          setActiveBlockId(newBlockId);
+        if (result.success && result.blockId) {
+          console.log('更新本地block ID:', tempBlockId, '->', result.blockId);
+          
+          // 更新本地状态中的临时ID为后端返回的真实ID
+          updateSections(sections => {
+            const walk = (nodes: Section[]): Section[] =>
+              nodes.map(section => {
+                if (section.id === targetSectionId) {
+                  const nextContent = section.content.map(block =>
+                    block.id === tempBlockId ? { ...block, id: result.blockId! } : block
+                  );
+                  return { ...section, content: nextContent };
+                }
+                return section;
+              });
+
+            return { sections: walk(sections), touched: true };
+          });
+          
+          // 使用后端返回的真实ID设置活动块
+          setActiveBlockId(result.blockId);
           toast.success('内容块插入成功', { id: 'insert-block' });
           
           // 插入成功后，需要清除未保存状态
           window.dispatchEvent(new CustomEvent('blockAddedSuccessfully'));
         } else {
+          // 如果API调用失败，移除本地添加的临时block
+          if (tempBlockId && targetSectionId) {
+            updateSections(sections => {
+              const walk = (nodes: Section[]): Section[] =>
+                nodes.map(section => {
+                  if (section.id === targetSectionId) {
+                    const nextContent = section.content.filter(block => block.id !== tempBlockId);
+                    return { ...section, content: nextContent };
+                  }
+                  return section;
+                });
+
+              return { sections: walk(sections), touched: true };
+            });
+          }
+          
           toast.error('插入内容块失败', {
             id: 'insert-block',
             description: result.error
@@ -643,13 +834,6 @@ export function usePaperBlocks(
               didMove = true;
             }
 
-            if (section.subsections?.length) {
-              const nextSubsections = walk(section.subsections);
-              if (nextSubsections !== section.subsections) {
-                nextSection = { ...nextSection, subsections: nextSubsections };
-                touched = true;
-              }
-            }
 
             return nextSection;
           });
@@ -666,161 +850,10 @@ export function usePaperBlocks(
     [setActiveBlockId, updateSections]
   );
 
-  const handleBlockAppendSubsection = useCallback(
-    async (
-      blockId: string,
-      paperId: string,
-      userPaperId: string | null,
-      isPersonalOwner: boolean,
-      onSaveToServer?: () => Promise<void>
-    ) => {
-      // 找到包含该块的章节
-      let parentSectionId: string | null = null;
-      let currentSections: Section[] = [];
-      
-      // 获取当前的sections
-      updateSections(sections => {
-        currentSections = sections;
-        return { sections, touched: false };
-      });
-      
-      const findSectionContainingBlock = (sections: Section[], blockId: string): { section: Section; sectionId: string } | null => {
-        for (const section of sections) {
-          if (section.content?.some(block => block.id === blockId)) {
-            return { section, sectionId: section.id };
-          }
-          if (section.subsections) {
-            const found = findSectionContainingBlock(section.subsections, blockId);
-            if (found) return found;
-          }
-        }
-        return null;
-      };
-      
-      const parentSection = findSectionContainingBlock(currentSections, blockId);
-      if (!parentSection) {
-        toast.error('无法找到包含该块的章节');
-        return;
-      }
-      
-      parentSectionId = parentSection.sectionId;
-      
-      // 创建新章节
-      const newSection = createEmptySection();
-      
-      // 显示加载状态
-      toast.loading('正在添加子章节...', { id: 'add-subsection' });
-      
-      try {
-        // 调用API添加子章节
-        const { adminPaperService, userPaperService } = await import('@/lib/services/paper');
-        let result;
-        
-        if (isPersonalOwner && userPaperId) {
-          result = await userPaperService.addSection(userPaperId, {
-            title: {
-              en: newSection.title || '',
-              zh: newSection.titleZh || ''
-            },
-            content: newSection.content || []
-          }, {
-            parentSectionId: parentSectionId,
-            position: -1 // 添加到末尾
-          });
-        } else {
-          result = await adminPaperService.addSection(paperId, {
-            title: {
-              en: newSection.title || '',
-              zh: newSection.titleZh || ''
-            },
-            content: newSection.content || []
-          }, {
-            parentSectionId: parentSectionId,
-            position: -1 // 添加到末尾
-          });
-        }
-        
-        if (result.bizCode === 0) {
-          // API调用成功，使用返回的数据更新本地状态
-          if (result.data && result.data.paper) {
-            // 使用服务器返回的更新后的论文数据
-            const updatedPaper = result.data.paper;
-            let updatedSections: Section[] = [];
-            
-            if (isPersonalOwner) {
-              // 对于个人论文，sections 在 paperData 中
-              updatedSections = (updatedPaper as any).paperData?.sections || [];
-            } else {
-              // 对于公共论文，sections 直接在 paper 中
-              updatedSections = (updatedPaper as any).sections || [];
-            }
-            
-            // 更新本地状态
-            updateSections(() => ({
-              sections: updatedSections,
-              touched: true
-            }));
-            
-            toast.success('子章节添加成功', { id: 'add-subsection' });
-          } else {
-            // 如果返回的数据中没有paper，则重新获取
-            try {
-              let paperResult;
-              if (isPersonalOwner && userPaperId) {
-                paperResult = await userPaperService.getUserPaperDetail(userPaperId);
-              } else {
-                paperResult = await adminPaperService.getAdminPaperDetail(paperId);
-              }
-              
-              if (paperResult && paperResult.bizCode === 0 && paperResult.data) {
-                // 使用服务器返回的最新数据更新本地状态
-                let updatedSections: Section[] = [];
-                
-                if (isPersonalOwner) {
-                  // 对于个人论文，sections 在 paperData 中
-                  updatedSections = (paperResult.data as any).paperData?.sections || [];
-                } else {
-                  // 对于公共论文，sections 直接在 data 中
-                  updatedSections = (paperResult.data as any).sections || [];
-                }
-                
-                // 更新本地状态
-                updateSections(() => ({
-                  sections: updatedSections,
-                  touched: true
-                }));
-                
-                toast.success('子章节添加成功', { id: 'add-subsection' });
-              } else {
-                // 如果获取最新数据失败，至少显示成功消息
-                toast.success('子章节添加成功，但可能需要刷新页面查看最新内容', { id: 'add-subsection' });
-              }
-            } catch (error) {
-              console.error('获取最新论文数据失败:', error);
-              // 即使获取最新数据失败，也显示成功消息
-              toast.success('子章节添加成功，但可能需要刷新页面查看最新内容', { id: 'add-subsection' });
-            }
-          }
-        } else {
-          toast.error('添加子章节失败', {
-            id: 'add-subsection',
-            description: result.bizMessage || '服务器错误'
-          });
-        }
-      } catch (error) {
-        const message = error instanceof Error ? error.message : '添加子章节时发生未知错误';
-        toast.error('添加子章节失败', {
-          id: 'add-subsection',
-          description: message
-        });
-      }
-    },
-    [updateSections]
-  );
 
   const handleBlockAddComponent = useCallback(
     async (blockId: string, type: BlockContent['type']) => {
-      let newBlockId: string | null = null;
+      let tempBlockId: string | null = null;
       let targetSectionId: string | null = null;
 
       // 显示加载状态
@@ -837,7 +870,7 @@ export function usePaperBlocks(
 
             if (idx !== -1) {
               const newBlock = createBlock(type, lang);
-              newBlockId = newBlock.id;
+              tempBlockId = newBlock.id;
               targetSectionId = section.id;
               const nextContent = [...section.content];
               nextContent.splice(idx + 1, 0, newBlock);
@@ -845,13 +878,6 @@ export function usePaperBlocks(
               touched = true;
             }
 
-            if (section.subsections?.length) {
-              const nextSubsections = walk(section.subsections);
-              if (nextSubsections !== section.subsections) {
-                nextSection = { ...section, subsections: nextSubsections };
-                touched = true;
-              }
-            }
 
             return nextSection;
           });
@@ -861,7 +887,7 @@ export function usePaperBlocks(
       });
 
       // 然后调用API保存
-      if (newBlockId && targetSectionId) {
+      if (tempBlockId && targetSectionId) {
         const result = await handleBlockAddWithAPI(
           targetSectionId,
           createBlock(type, lang),
@@ -871,8 +897,27 @@ export function usePaperBlocks(
           isPersonalOwner
         );
         
-        if (result.success) {
-          setActiveBlockId(newBlockId);
+        if (result.success && result.blockId) {
+          console.log('更新本地block ID(组件):', tempBlockId, '->', result.blockId);
+          
+          // 更新本地状态中的临时ID为后端返回的真实ID
+          updateSections(sections => {
+            const walk = (nodes: Section[]): Section[] =>
+              nodes.map(section => {
+                if (section.id === targetSectionId) {
+                  const nextContent = section.content.map(block =>
+                    block.id === tempBlockId ? { ...block, id: result.blockId! } : block
+                  );
+                  return { ...section, content: nextContent };
+                }
+                return section;
+              });
+
+            return { sections: walk(sections), touched: true };
+          });
+          
+          // 使用后端返回的真实ID设置活动块
+          setActiveBlockId(result.blockId);
           toast.success('组件添加成功', { id: 'add-component' });
           
           // 添加成功后，需要清除未保存状态
@@ -881,21 +926,15 @@ export function usePaperBlocks(
           window.dispatchEvent(new CustomEvent('blockAddedSuccessfully'));
         } else {
           // 如果API调用失败，回滚本地更新
-          if (targetSectionId && newBlockId) {
+          if (targetSectionId && tempBlockId) {
             updateSections(sections => {
               const walk = (nodes: Section[]): Section[] =>
                 nodes.map(section => {
                   if (section.id === targetSectionId) {
-                    const nextContent = section.content.filter(block => block.id !== newBlockId);
-                    return { ...section, content: nextContent };
+                    const nextContent = section.content.filter(block => block.id !== tempBlockId);
+                    return { ...section, content: nextContent } as Section;
                   }
-                  if (section.subsections?.length) {
-                    return {
-                      ...section,
-                      subsections: walk(section.subsections)
-                    };
-                  }
-                  return section;
+                  return section as Section;
                 });
 
               const nextSections = walk(sections);
@@ -918,7 +957,6 @@ export function usePaperBlocks(
     handleBlockDelete,
     handleBlockInsert,
     handleBlockMove,
-    handleBlockAppendSubsection,
     handleBlockAddComponent,
     // 新增的API调用函数
     handleBlockDeleteWithAPI,
@@ -933,6 +971,5 @@ function createEmptySection(): Section {
     title: 'Untitled Section',
     titleZh: '未命名章节',
     content: [],
-    subsections: [],
   };
 }

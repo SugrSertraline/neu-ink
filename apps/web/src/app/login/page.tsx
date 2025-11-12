@@ -34,11 +34,13 @@ export default function LoginPage() {
       } else {
         const msg = (res.message && String(res.message).trim()) || '用户名或密码错误';
         setError(msg);
-        toast.error('登录失败', { description: msg });
+        // 对于400等错误，normalize.ts已经处理了toast，这里不再重复显示
+        // 只设置内联错误信息供LoginForm显示
       }
     } catch (err) {
       const msg = '登录失败，请稍后重试';
       setError(msg);
+      // 对于非400错误，显示网络异常toast
       toast.error('网络或服务器异常', { description: msg });
     } finally {
       setIsSubmitting(false);

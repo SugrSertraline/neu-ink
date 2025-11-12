@@ -55,12 +55,23 @@ const PARSE_STATUS_SET = new Set<ParseStatus['status']>([
 function extractPaperListData(payload: unknown): PaperListData | null {
   if (!payload || typeof payload !== 'object') return null;
 
-  if (Array.isArray((payload as PaperListData).papers)) {
+  // 格式1：直接匹配格式：{papers: [], pagination: {}}
+  if (Array.isArray((payload as any).papers)) {
     return payload as PaperListData;
   }
 
+  // 格式2：检查是否是业务响应格式：{code: 0, message: "...", data: {...}}
+  const bizResponse = payload as { code?: number; message?: string; data?: any };
+  if (bizResponse.code !== undefined && bizResponse.data !== undefined) {
+    const data = bizResponse.data;
+    if (data && typeof data === 'object' && Array.isArray((data as any).papers)) {
+      return data as PaperListData;
+    }
+  }
+
+  // 格式3：处理嵌套在 data 字段中的情况
   const nested = (payload as { data?: unknown }).data;
-  if (nested && typeof nested === 'object' && Array.isArray((nested as PaperListData).papers)) {
+  if (nested && typeof nested === 'object' && Array.isArray((nested as any).papers)) {
     return nested as PaperListData;
   }
 
@@ -215,12 +226,13 @@ export function usePublicLibraryController() {
         throw new Error(response.bizMessage || response.topMessage || '获取论文列表失败');
       }
 
-      const payload = extractPaperListData(response.data);
-      if (!payload) {
+      // response.data 已经是 normalize 处理后的数据，直接使用
+      const payload = response.data as PaperListData;
+      if (!payload || !Array.isArray(payload.papers)) {
         throw new Error('返回数据结构不符合预期');
       }
 
-      const rawList = Array.isArray(payload.papers) ? payload.papers : [];
+      const rawList = payload.papers;
       const mappedList = rawList.map(transformPaperToListItem);
       const filteredList = applyClientSideFilters(mappedList);
 

@@ -352,19 +352,14 @@ class NoteService:
     @staticmethod
     def _block_exists_in_paper(paper_data: Dict[str, Any], block_id: str) -> bool:
         """
-        检查 block 是否存在于论文中
-        递归检查所有 sections 和 subsections
+        检查 block 是否存在于论文中（已移除subsection支持）
+        仅检查所有 sections
         """
 
         def check_section(section: Dict[str, Any]) -> bool:
             # 检查当前 section 的所有 blocks
             for block in section.get("content", []):
                 if block.get("id") == block_id:
-                    return True
-
-            # 递归检查 subsections
-            for subsection in section.get("subsections", []):
-                if check_section(subsection):
                     return True
 
             return False

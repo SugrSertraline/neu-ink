@@ -40,7 +40,6 @@ interface PaperContentProps {
   setSearchResults: (results: string[]) => void;
   setCurrentSearchIndex: (index: number) => void;
   onSectionTitleUpdate?: (sectionId: string, title: { en: string; zh: string }) => void;
-  onSectionAddSubsection?: (sectionId: string) => Promise<void> | void;
   onSectionInsert?: (
     targetSectionId: string | null,
     position: 'above' | 'below',
@@ -65,8 +64,11 @@ interface PaperContentProps {
     blocks?: BlockContent[];
     error?: string;
   }>;
+  onParseTextComplete?: (sectionId: string, blocks: BlockContent[], afterBlockId?: string) => void; // 新增回调函数
   onStartTextParse?: (sectionId: string) => void;
   onSaveToServer?: () => Promise<void>;
+  /** ParseProgressModal 需要的回调 */
+  onParseComplete?: (result: any) => void;
   /** 笔记相关 */
   notesByBlock?: Record<string, any[]>;
   isPersonalOwner?: boolean;
@@ -96,7 +98,6 @@ export default function PaperContent({
   setSearchResults,
   setCurrentSearchIndex,
   onSectionTitleUpdate,
-  onSectionAddSubsection,
   onSectionInsert,
   onSectionMove,
   onSectionDelete,
@@ -109,7 +110,9 @@ export default function PaperContent({
   onBlockAppendSubsection,
   onBlockAddComponent,
   onParseTextAdd,
+  onParseTextComplete,
   onSaveToServer,
+  onParseComplete,
   notesByBlock = {},
   isPersonalOwner = false,
   paperId,
@@ -264,9 +267,6 @@ export default function PaperContent({
       nodes.forEach((section, index) => {
         const nextPath = [...path, index + 1];
         visitor(section, nextPath);
-        if (section.subsections?.length) {
-          traverseSections(section.subsections, visitor, nextPath);
-        }
       });
     },
     [],
@@ -393,15 +393,35 @@ export default function PaperContent({
     setTextParseBlockId(null);
   }, []);
 
+  // 处理流式解析完成后的blocks
+  const handleStreamParseComplete = useCallback((
+    sectionId: string,
+    blocks: BlockContent[],
+    afterBlockId?: string,
+    paperData?: any
+  ) => {
+    console.log('handleStreamParseComplete called:', { sectionId, blocks: blocks?.length, afterBlockId, paperData });
+    
+    // 调用父组件提供的回调函数
+    if (onParseTextComplete) {
+      onParseTextComplete(sectionId, blocks, afterBlockId);
+    }
+    
+    // 如果有完整的paper数据，也可以在这里处理
+    if (paperData && paperData.sections) {
+      // 可以选择性地更新整个paper数据
+      console.log('收到完整的paper数据:', paperData);
+    }
+    
+    // 关闭文本解析编辑器
+    handleParseTextComplete();
+  }, [onParseTextComplete, handleParseTextComplete]);
+
   const renderedTree = useMemo(() => {
     // 辅助函数：从 contentWithNumbers 中找到对应 ID 的章节
     const findSectionById = (id: string, sections: Section[]): Section | null => {
       for (const section of sections) {
         if (section.id === id) return section;
-        if (section.subsections) {
-          const found = findSectionById(id, section.subsections);
-          if (found) return found;
-        }
       }
       return null;
     };
@@ -442,7 +462,6 @@ export default function PaperContent({
                 ? () => onSectionInsert(numberedSection.id, 'below', parentSectionId)
                 : undefined
             }
-            onAddSubsection={canEditContent ? () => onSectionAddSubsection?.(numberedSection.id) : undefined}
             onAddBlock={
               canEditContent && onSectionAddBlock
                 ? (type) => onSectionAddBlock(numberedSection.id, type)
@@ -547,6 +566,10 @@ export default function PaperContent({
                   onSaveToServer={onSaveToServer}
                   notesCount={notesByBlock[block.id]?.length || 0}
                   isPersonalOwner={isPersonalOwner}
+                  paperId={paperId}
+                  sectionId={numberedSection.id}
+                  onParseComplete={onParseComplete}
+                  userPaperId={userPaperId}
                 />
               );
 
@@ -604,8 +627,22 @@ export default function PaperContent({
                       sectionTitle={String(numberedSection.title || numberedSection.titleZh || '未命名章节')}
                       context="block"
                       blockId={block.id}
-                      onParseText={(text) => onParseTextAdd?.(numberedSection.id, text, block.id) || Promise.resolve({ success: false })}
+                      onParseText={async (text: string, afterBlockId?: string, isStreaming?: boolean) => {
+                        if (isStreaming) {
+                          // 支持流式传输，返回一个特殊的Promise
+                          return new Promise<{ success: boolean; error?: string }>((resolve) => {
+                            // 这个Promise不会被resolve，因为流式传输会通过EventSource处理
+                            // 实际结果会通过onCancel回调来关闭编辑器
+                          });
+                        } else {
+                          // 传统方式
+                          return onParseTextAdd?.(numberedSection.id, text, block.id) || Promise.resolve({ success: false });
+                        }
+                      }}
                       onCancel={handleParseTextComplete}
+                      paperId={paperId || ''}
+                      userPaperId={userPaperId}
+                      onParseComplete={(blocks, paperData) => handleStreamParseComplete(numberedSection.id, blocks, block.id, paperData)}
                     />
                   </React.Fragment>
                 );
@@ -631,9 +668,6 @@ export default function PaperContent({
                       onMoveUp={canEditContent ? () => onBlockMove?.(block.id, 'up') : undefined}
                       onMoveDown={canEditContent ? () => onBlockMove?.(block.id, 'down') : undefined}
                       onDuplicate={canEditContent ? () => onBlockDuplicate?.(block.id) : undefined}
-                      onAddSubsectionAfter={
-                        canEditContent ? () => onBlockAppendSubsection?.(block.id, paperId || '', userPaperId || null, isPersonalOwner, onSaveToServer) : undefined
-                      }
                       onAddComponentAfter={
                         canEditContent ? type => onBlockAddComponent?.(block.id, type) : undefined
                       }
@@ -670,24 +704,25 @@ export default function PaperContent({
               sectionId={numberedSection.id}
               sectionTitle={String(numberedSection.title || numberedSection.titleZh || '未命名章节')}
               context="section"
-              onParseText={(text) => onParseTextAdd?.(numberedSection.id, text) || Promise.resolve({ success: false })}
+              onParseText={async (text: string, afterBlockId?: string, isStreaming?: boolean) => {
+                if (isStreaming) {
+                  // 支持流式传输，返回一个特殊的Promise
+                  return new Promise<{ success: boolean; error?: string }>((resolve) => {
+                    // 这个Promise不会被resolve，因为流式传输会通过EventSource处理
+                    // 实际结果会通过onCancel回调来关闭编辑器
+                  });
+                } else {
+                  // 传统方式
+                  return onParseTextAdd?.(numberedSection.id, text) || Promise.resolve({ success: false });
+                }
+              }}
               onCancel={handleParseTextComplete}
+              paperId={paperId || ''}
+              userPaperId={userPaperId}
+              onParseComplete={(blocks, paperData) => handleStreamParseComplete(numberedSection.id, blocks, undefined, paperData)}
             />
           )}
 
-          {numberedSection.subsections?.length ? (
-            <div className="space-y-8">
-              {numberedSection.subsections.map((child, childIndex) =>
-                renderSection(
-                  child,
-                  [...path, childIndex + 1],
-                  numberedSection.subsections ?? [],
-                  childIndex,
-                  numberedSection.id,
-                ),
-              )}
-            </div>
-          ) : null}
         </section>
       );
     };
@@ -708,7 +743,6 @@ export default function PaperContent({
     hoveredSectionId,
     onSectionInsert,
     onSectionMove,
-    onSectionAddSubsection,
     onSectionDelete,
     onSectionAddBlock,
     onBlockDuplicate,

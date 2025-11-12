@@ -8,10 +8,10 @@ import type { LoginRequest, LoginResponse, User } from '@/types/user';
 // 认证服务：全部返回统一结果体，调用方只关心 isSuccess / data
 export const authService = {
   setToken: (token: string) => apiClient.setToken(token),
-  clearToken: () => {
+  clearToken: async () => {
     // 使用 markAuthReset 来确保 authReset 标记被正确设置
-    const { markAuthReset } = require('../http/normalize');
-    markAuthReset();
+    const { markAuthReset } = await import('../http/normalize');
+    markAuthReset(null);
     apiClient.clearToken();
   },
 
@@ -35,8 +35,8 @@ export const authService = {
     } finally {
       // 无论接口成功与否，清理本地 token
       // 使用 markAuthReset 来确保 authReset 标记被正确设置
-      const { markAuthReset } = require('../http/normalize');
-      markAuthReset();
+      const { markAuthReset } = await import('../http/normalize');
+      markAuthReset(null);
       apiClient.clearToken();
     }
   },

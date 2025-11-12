@@ -11,60 +11,76 @@ import locale
 from typing import Dict, Any, Optional, List
 from enum import Enum
 
-# 设置编码为UTF-8以处理Unicode字符
-if sys.platform.startswith('win'):
-    # 在Windows下设置控制台输出编码
-    import codecs
-    sys.stdout = codecs.getwriter('utf-8')(sys.stdout.detach())
-    sys.stderr = codecs.getwriter('utf-8')(sys.stderr.detach())
-    
-    # 设置默认编码
-    if hasattr(sys, 'setdefaultencoding'):
-        sys.setdefaultencoding('utf-8')
-        
 import logging
+import threading
 
-# 配置日志系统
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('neuink_llm.log', encoding='utf-8'),
-        logging.StreamHandler()  # 同时输出到控制台
-    ]
-)
+# 配置日志系统 - 使用线程安全的配置
+def setup_logger():
+    """设置线程安全的日志器"""
+    logger = logging.getLogger(__name__)
+    
+    # 避免重复添加处理器
+    if logger.handlers:
+        return logger
+    
+    logger.setLevel(logging.INFO)
+    
+    # 创建格式器
+    formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
+    
+    # 文件处理器 - 确保线程安全
+    file_handler = logging.FileHandler('neuink_llm.log', encoding='utf-8')
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+    
+    # 控制台处理器 - 使用线程安全的处理方式
+    console_handler = logging.StreamHandler()
+    console_handler.setFormatter(formatter)
+    logger.addHandler(console_handler)
+    
+    return logger
 
-logger = logging.getLogger(__name__)
+# 初始化日志器
+logger = setup_logger()
+
+# 创建线程锁以确保日志输出的线程安全
+_log_lock = threading.Lock()
 
 # 安全的日志打印函数
 def safe_print(*args, **kwargs):
     """安全的打印函数，避免编码错误，同时输出到日志文件和控制台"""
-    try:
-        # 构建消息字符串
-        message = ' '.join(str(arg) for arg in args)
-        
-        # 输出到日志文件（UTF-8编码）
-        logger.info(message)
-        
-        # 尝试输出到控制台
+    global _log_lock
+    # 确保_log_lock已初始化
+    if _log_lock is None:
+        _log_lock = threading.Lock()
+    
+    with _log_lock:  # 使用线程锁确保线程安全
         try:
-            print(message, **kwargs)
-        except UnicodeEncodeError:
-            # Windows控制台编码错误处理
+            # 构建消息字符串
+            message = ' '.join(str(arg) for arg in args)
+            
+            # 输出到日志文件（UTF-8编码）
+            logger.info(message)
+            
+            # 尝试输出到控制台
             try:
-                # 尝试使用Windows控制台兼容的编码
-                print(message.encode('gbk', errors='replace').decode('gbk'), **kwargs)
+                print(message, **kwargs)
+            except UnicodeEncodeError:
+                # Windows控制台编码错误处理
+                try:
+                    # 尝试使用Windows控制台兼容的编码
+                    print(message.encode('gbk', errors='replace').decode('gbk'), **kwargs)
+                except:
+                    # 最后的兜底方案：移除非ASCII字符
+                    safe_message = ''.join(char if ord(char) < 128 else '?' for char in message)
+                    print(safe_message, **kwargs)
+                    
+        except Exception as e:
+            # 如果所有方法都失败，至少记录到日志文件
+            try:
+                logger.error(f"safe_print failed: {e}")
             except:
-                # 最后的兜底方案：移除非ASCII字符
-                safe_message = ''.join(char if ord(char) < 128 else '?' for char in message)
-                print(safe_message, **kwargs)
-                
-    except Exception as e:
-        # 如果所有方法都失败，至少记录到日志文件
-        try:
-            logger.error(f"safe_print failed: {e}")
-        except:
-            pass  # 避免递归错误
+                pass  # 避免递归错误
 
 class LLMModel(Enum):
     """支持的大模型枚举"""
@@ -112,6 +128,34 @@ class LLMUtils:
             return self._call_glm(messages, temperature, max_tokens, stream, **kwargs)
         elif model == LLMModel.GLM_4_5:
             return self._call_glm(messages, temperature, max_tokens, stream, **kwargs)
+        else:
+            raise ValueError(f"不支持的模型: {model}")
+    
+    def call_llm_stream(
+        self,
+        messages: List[Dict[str, str]],
+        model: LLMModel = LLMModel.GLM_4_6,
+        temperature: float = 0.1,
+        max_tokens: int = 100000,
+        **kwargs
+    ):
+        """
+        调用大模型接口（流式输出）
+        
+        Args:
+            messages: 对话消息列表，格式：[{"role": "user", "content": "..."}]
+            model: 使用的模型
+            temperature: 温度参数，控制随机性
+            max_tokens: 最大输出 token 数
+            **kwargs: 其他模型特定参数
+            
+        Yields:
+            流式响应的每个chunk
+        """
+        if model == LLMModel.GLM_4_6:
+            yield from self._call_glm_stream(messages, temperature, max_tokens, **kwargs)
+        elif model == LLMModel.GLM_4_5:
+            yield from self._call_glm_stream(messages, temperature, max_tokens, **kwargs)
         else:
             raise ValueError(f"不支持的模型: {model}")
     
@@ -184,7 +228,7 @@ class LLMUtils:
                 self.glm_base_url,
                 json=payload,
                 headers=headers,
-                timeout=180  # 60秒超时
+                timeout=300  # 增加到300秒超时
             )
             
             safe_print(f"响应状态码: {response.status_code}")
@@ -227,6 +271,108 @@ class LLMUtils:
         except json.JSONDecodeError as e:
             safe_print(f"GLM API 响应解析失败: {e}")
             return None
+    
+    def _call_glm_stream(
+        self,
+        messages: List[Dict[str, str]],
+        temperature: float,
+        max_tokens: int,
+        **kwargs
+    ):
+        """
+        调用 GLM 模型（流式输出）
+        
+        Args:
+            messages: 对话消息列表
+            temperature: 温度参数
+            max_tokens: 最大输出 token 数
+            **kwargs: 其他参数
+            
+        Yields:
+            流式响应的每个chunk
+        """
+        safe_print("开始调用GLM API (流式)")
+        safe_print(f"请求消息数量: {len(messages)}")
+        
+        if not self.glm_api_key:
+            safe_print("错误：未设置 GLM_API_KEY 环境变量")
+            yield {"error": "未设置 GLM_API_KEY 环境变量"}
+            return
+            
+        # 使用更新的模型名称
+        payload = {
+            "model": LLMModel.GLM_4_6.value,  # 修复：使用 glm-4.6
+            "messages": messages,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "stream": True,  # 启用流式输出
+            **kwargs
+        }
+        
+        safe_print(f"模型: {payload['model']}")
+        safe_print(f"温度: {payload['temperature']}")
+        safe_print(f"最大Token数: {payload['max_tokens']}")
+        safe_print("消息内容预览:")
+        for i, msg in enumerate(messages):
+            safe_print(f"  {i+1}. [{msg['role']}] {msg['content'][:100]}{'...' if len(msg['content']) > 100 else ''}")
+        
+        headers = {
+            "Authorization": f"Bearer {self.glm_api_key}",
+            "Content-Type": "application/json"
+        }
+        
+        try:
+            safe_print("正在发送流式请求到GLM API...")
+            safe_print(f"API端点: {self.glm_base_url}")
+            
+            response = requests.post(
+                self.glm_base_url,
+                json=payload,
+                headers=headers,
+                stream=True,  # 启用流式响应
+                timeout=300  # 增加到300秒超时
+            )
+            
+            safe_print(f"响应状态码: {response.status_code}")
+            
+            if response.status_code == 401:
+                try:
+                    error_response = response.json()
+                    safe_print(f"401错误详情: {error_response}")
+                except:
+                    safe_print(f"401错误响应内容: {response.text[:500]}")
+            
+            response.raise_for_status()
+            
+            # 处理流式响应
+            for line in response.iter_lines():
+                if line:
+                    line = line.decode('utf-8')
+                    if line.startswith('data: '):
+                        data_str = line[6:]  # 去掉 'data: ' 前缀
+                        
+                        if data_str.strip() == '[DONE]':
+                            break
+                            
+                        try:
+                            data = json.loads(data_str)
+                            if 'choices' in data and len(data['choices']) > 0:
+                                delta = data['choices'][0].get('delta', {})
+                                if 'content' in delta:
+                                    yield {
+                                        "type": "content",
+                                        "content": delta['content']
+                                    }
+                        except json.JSONDecodeError:
+                            # 忽略无法解析的行
+                            continue
+                            
+        except requests.exceptions.RequestException as e:
+            safe_print(f"GLM API 流式调用失败: {e}")
+            yield {"error": f"API调用失败: {e}"}
+        except Exception as e:
+            safe_print(f"GLM API 流式调用异常: {e}")
+            yield {"error": f"流式调用异常: {e}"}
     
     def extract_paper_metadata(self, text: str) -> Dict[str, Any]:
         """
@@ -585,6 +731,37 @@ class LLMUtils:
             safe_print(error_msg)
             # 抛出异常而不是静默回退，让用户知道问题所在
             raise RuntimeError(error_msg)
+    
+    def parse_text_to_blocks_stream(
+        self,
+        text: str,
+        section_context: str = ""
+    ):
+        """
+        流式解析文本并生成适合添加到section中的block结构
+        
+        Args:
+            text: 需要解析的文本内容
+            section_context: section的上下文信息，帮助大模型更好地理解和解析
+            
+        Yields:
+            流式解析过程中的进度信息
+        """
+        safe_print("开始流式解析文本为blocks")
+        safe_print(f"文本长度: {len(text)} 字符")
+        
+        if not self.glm_api_key or self.glm_api_key == "your_glm_api_key_here":
+            error_msg = "LLM服务不可用：未配置GLM_API_KEY或使用了占位符值。请在.env文件中设置有效的GLM API密钥。"
+            safe_print(error_msg)
+            yield {"type": "error", "message": error_msg}
+            return
+        
+        try:
+            yield from self._extract_blocks_with_llm_stream(text, section_context)
+        except Exception as e:
+            error_msg = f"LLM解析失败: {e}。请检查API密钥是否有效，或稍后重试。"
+            safe_print(error_msg)
+            yield {"type": "error", "message": error_msg}
 
     def parse_text_to_blocks_and_save(
         self,
@@ -986,12 +1163,7 @@ class LLMUtils:
 
     **重要**：只输出JSON数组，不要任何额外文字。"""
 
-        def safe_print(msg):
-            """安全打印函数，避免编码错误"""
-            try:
-                print(msg)
-            except:
-                print(msg.encode('utf-8', 'ignore').decode('utf-8'))
+        # 使用全局的safe_print函数，避免重复定义
 
         def _parse_markdown():
             """使用LLM解析Markdown文本"""
@@ -1097,39 +1269,94 @@ class LLMUtils:
                 
                 try:
                     response = self.call_llm(messages, temperature=0.1, max_tokens=50000)
-                    if response and "choices" in response:
-                        content = response["choices"][0]["message"]["content"]
+                    
+                    # 增强的错误检查
+                    if not response:
+                        safe_print(f"❌ 翻译批次 {i//batch_size + 1} 失败: API响应为空")
+                        continue
                         
-                        # 清理响应
-                        content = content.strip()
-                        if "```json" in content:
-                            start = content.find("```json") + 7
-                            end = content.find("```", start)
-                            if end != -1:
-                                content = content[start:end].strip()
-                        elif "```" in content:
-                            start = content.find("```") + 3
-                            end = content.find("```", start)
-                            if end != -1:
-                                content = content[start:end].strip()
+                    if "choices" not in response:
+                        safe_print(f"❌ 翻译批次 {i//batch_size + 1} 失败: 响应格式错误，缺少choices")
+                        continue
                         
+                    if not response["choices"]:
+                        safe_print(f"❌ 翻译批次 {i//batch_size + 1} 失败: choices数组为空")
+                        continue
+                    
+                    if "message" not in response["choices"][0]:
+                        safe_print(f"❌ 翻译批次 {i//batch_size + 1} 失败: 缺少message字段")
+                        continue
+                    
+                    content = response["choices"][0]["message"]["content"]
+                    
+                    # 检查内容是否为空
+                    if not content or not content.strip():
+                        safe_print(f"❌ 翻译批次 {i//batch_size + 1} 失败: 响应内容为空")
+                        continue
+                    
+                    # 清理响应内容
+                    original_content = content  # 保存原始内容用于调试
+                    content = content.strip()
+                    
+                    # 提取JSON内容（支持多种格式）
+                    json_extracted = False
+                    if "```json" in content:
+                        start = content.find("```json") + 7
+                        end = content.find("```", start)
+                        if end != -1:
+                            content = content[start:end].strip()
+                            json_extracted = True
+                    elif "```" in content:
+                        start = content.find("```") + 3
+                        end = content.find("```", start)
+                        if end != -1:
+                            content = content[start:end].strip()
+                            json_extracted = True
+                    
+                    # 检查清理后的内容是否为空
+                    if not content:
+                        safe_print(f"❌ 翻译批次 {i//batch_size + 1} 失败: 提取JSON后内容为空")
+                        safe_print(f"原始响应: {original_content[:200]}...")
+                        continue
+                    
+                    # 尝试解析JSON
+                    try:
                         translated_batch = json.loads(content)
+                    except json.JSONDecodeError as json_e:
+                        safe_print(f"❌ 翻译批次 {i//batch_size + 1} 失败: JSON解析错误 {json_e}")
+                        safe_print(f"解析内容: {content[:200]}...")
+                        safe_print(f"原始响应: {original_content[:200]}...")
+                        continue
+                    
+                    # 验证解析结果
+                    if not isinstance(translated_batch, list):
+                        safe_print(f"❌ 翻译批次 {i//batch_size + 1} 失败: 返回的不是数组格式")
+                        continue
+                    
+                    # 更新原始blocks中对应的内容
+                    translated_idx = 0
+                    updated_count = 0
+                    for j in range(len(batch)):
+                        if i+j < len(blocks):
+                            block = blocks[i+j]
+                            # 只更新被翻译的blocks
+                            if "content" in block or (block["type"] in ["ordered-list", "unordered-list"] and "items" in block):
+                                if translated_idx < len(translated_batch):
+                                    blocks[i+j] = translated_batch[translated_idx]
+                                    translated_idx += 1
+                                    updated_count += 1
+                    
+                    if updated_count == 0:
+                        safe_print(f"⚠️ 翻译批次 {i//batch_size + 1}: 没有blocks被更新")
+                    else:
+                        safe_print(f"✅ 完成批次 {i//batch_size + 1} 的翻译，更新了 {updated_count} 个blocks")
                         
-                        # 更新原始blocks中对应的内容
-                        translated_idx = 0
-                        for j in range(len(batch)):
-                            if i+j < len(blocks):
-                                block = blocks[i+j]
-                                # 只更新被翻译的blocks
-                                if "content" in block or (block["type"] in ["ordered-list", "unordered-list"] and "items" in block):
-                                    if translated_idx < len(translated_batch):
-                                        blocks[i+j] = translated_batch[translated_idx]
-                                        translated_idx += 1
-                        
-                        safe_print(f"✅ 完成批次 {i//batch_size + 1} 的翻译")
-                        
+                except requests.exceptions.RequestException as req_e:
+                    safe_print(f"❌ 翻译批次 {i//batch_size + 1} 失败: 网络请求错误 {req_e}")
+                    continue
                 except Exception as e:
-                    safe_print(f"❌ 翻译批次 {i//batch_size + 1} 失败: {e}")
+                    safe_print(f"❌ 翻译批次 {i//batch_size + 1} 失败: 未知错误 {e}")
+                    safe_print(f"错误类型: {type(e).__name__}")
                     continue
             
             return blocks
@@ -1259,10 +1486,531 @@ class LLMUtils:
             safe_print(traceback.format_exc())
             raise Exception(f"LLM解析失败: {e}")
 
+    def _extract_blocks_with_llm_stream(self, text: str, section_context: str = ""):
+        """
+        使用LLM流式解析Markdown格式的学术论文文本，转换为结构化的block数组
+        
+        Args:
+            text: 要解析的Markdown文本
+            section_context: 当前section的上下文信息
+            
+        Yields:
+            流式解析过程中的进度信息
+        """
+        import json
+        import re
+        from typing import List, Dict, Any
 
+        PARSER_SYSTEM_PROMPT = """你是一个专业的学术论文Markdown解析助手，负责将Markdown格式的论文文本转换为结构化的JSON数据。
 
+## 核心任务
+解析Markdown格式的学术论文，输出符合规范的JSON数组，每个元素代表一个内容块(block)。
 
-        def parse_references(self, text: str) -> List[Dict[str, Any]]:
+## 输出格式要求
+1. **必须输出纯JSON数组**，以[开头，以]结尾
+2. **不包含任何额外文字、注释或markdown代码块标记**
+3. **所有文本内容使用InlineContent数组格式**
+
+## Markdown识别规则
+
+### 标题 (heading)
+- # 开头为一级标题 (level: 1)
+- ## 开头为二级标题 (level: 2)
+- 以此类推至六级标题
+- 输出格式示例：
+{
+"type": "heading",
+"level": 2,
+"content": {
+    "en": [{"type": "text", "content": "Introduction"}]
+}
+}
+
+### 段落 (paragraph)
+- 非特殊格式的连续文本行
+- 空行分隔不同段落
+- 输出格式示例：
+{
+"type": "paragraph",
+"content": {
+    "en": [{"type": "text", "content": "This is a paragraph."}]
+}
+}
+
+### 行间公式 (math)
+- 独立成行的 $$...$$ 或 \[...\] 格式
+- **重要**：去除\tag{...}等编号，只保留公式本体
+- 输出格式示例：
+{
+"type": "math",
+"latex": "E = mc^2"
+}
+
+### 行内公式 (inline-math)
+- 文本中的 $...$ 或 \(...\) 格式
+- **必须使用latex字段，不能使用content字段**
+- 输出格式示例：
+{"type": "inline-math", "latex": "x^2 + y^2 = z^2"}
+
+### 有序列表 (ordered-list)
+- 以 1. , 2. 等数字开头
+- 输出格式示例：
+{
+"type": "ordered-list",
+"items": [
+    {"content": {"en": [{"type": "text", "content": "First item"}]}},
+    {"content": {"en": [{"type": "text", "content": "Second item"}]}}
+]
+}
+
+### 无序列表 (unordered-list)
+- 以 - , * , + 开头
+- 输出格式同有序列表，type为"unordered-list"
+
+### 代码块 (code)
+- 三个反引号包围的代码块
+- 识别语言标记（如python）
+- 输出格式示例：
+{
+"type": "code",
+"language": "python",
+"code": "def hello():\n    print('Hello')"
+}
+
+### 表格 (table)
+- Markdown表格格式：|列1|列2|
+- HTML表格格式：<table>...</table>
+- 输出格式示例：
+{
+"type": "table",
+"headers": ["Column 1", "Column 2"],
+"rows": [
+    ["Cell 1", "Cell 2"],
+    ["Cell 3", "Cell 4"]
+]
+}
+
+### 引用 (quote)
+- 以 > 开头的行
+- 输出格式示例：
+{
+"type": "quote",
+"content": {
+    "en": [{"type": "text", "content": "This is a quote"}]
+}
+}
+
+### 分割线 (divider)
+- ---, ***, ___ 等
+- 输出格式示例：
+{"type": "divider"}
+
+## 特殊处理规则
+
+### 引用删除
+**完全删除**以下内容，不要包含在输出中：
+- 参考文献引用：如 [1], [2,3], [Smith et al., 2020]
+- 图片引用：如 Fig. 1, Figure 2, 图1
+- 表格引用：如 Table 1, Tab. 2, 表1
+- 公式引用：如 Eq. (1), Equation 2, 式(1)
+- 脚注标记：如 [^1], [^note]
+- 交叉引用：如 see Section 2, as shown in Chapter 3
+
+### 文本处理
+混合文本和公式时，将公式识别为inline-math类型。例如：
+输入："The equation $x^2 + y^2 = z^2$ represents..."
+输出：[
+{"type": "text", "content": "The equation "},
+{"type": "inline-math", "latex": "x^2 + y^2 = z^2"},
+{"type": "text", "content": " represents..."}
+]
+
+## 重要提醒
+1. **只输出JSON数组，不要任何其他内容**
+2. **inline-math必须用latex字段，不能用content字段**
+3. **删除所有引用标记**
+4. **保持学术术语的准确性**"""
+
+        TRANSLATION_PROMPT = """你是一个专业的学术翻译专家。
+
+## 任务
+将提供的JSON数组中的英文内容翻译为中文，添加到zh字段中。
+
+## 翻译要求
+1. 保持学术术语的专业性和准确性
+2. 数学公式、代码、变量名等保持原样
+3. 使用规范的学术中文表达
+4. 保持原文的语义和逻辑结构
+
+## 输入格式
+你会收到一个包含英文内容的JSON数组。
+
+## 输出格式
+返回完整的JSON数组，其中每个包含content字段的对象都应该同时包含en和zh两个字段。
+
+**重要**：只输出JSON数组，不要任何额外文字。"""
+
+        # 使用全局的safe_print函数，避免重复定义
+
+        def _parse_markdown_stream():
+            """使用LLM流式解析Markdown文本"""
+            safe_print("🚀 开始流式解析Markdown文本")
+            yield {"type": "progress", "stage": "parsing", "message": "开始解析文本内容...", "progress": 10}
+            
+            # 预处理：清理文本
+            cleaned_text = text.strip()
+            
+            # 替换行内公式格式 $...$ -> \(...\)
+            cleaned_text = re.sub(r'\$([^$]+)\$', r'\\(\1\\)', cleaned_text)
+            
+            # 替换行间公式格式 $$...$$ -> \[...\]
+            cleaned_text = re.sub(r'\$\$([^$]+)\$\$', r'\\[\1\\]', cleaned_text, flags=re.DOTALL)
+            
+            # 限制文本长度
+            if len(cleaned_text) > 30000:
+                safe_print(f"⚠️ 文本过长({len(cleaned_text)}字符)，截断至30000字符")
+                cleaned_text = cleaned_text[:30000]
+                yield {"type": "progress", "stage": "parsing", "message": "文本过长，已截断处理", "progress": 15}
+            
+            user_prompt = f"""请解析以下Markdown格式的学术论文文本，输出JSON数组：
+
+{cleaned_text}
+
+记住：
+1. 只输出JSON数组
+2. 删除所有引用
+3. inline-math使用latex字段
+4. 去除公式编号如\\tag{{}}"""
+
+            messages = [
+                {"role": "system", "content": PARSER_SYSTEM_PROMPT},
+                {"role": "user", "content": user_prompt}
+            ]
+            
+            safe_print("📤 发送流式解析请求...")
+            yield {"type": "progress", "stage": "parsing", "message": "正在调用大模型解析文本...", "progress": 20}
+            
+            # 收集流式响应
+            full_content = ""
+            for chunk in self.call_llm_stream(messages, temperature=0.1, max_tokens=50000):
+                if "error" in chunk:
+                    yield {"type": "error", "message": chunk["error"]}
+                    return
+                
+                if "content" in chunk:
+                    full_content += chunk["content"]
+                    # 计算进度（假设解析阶段占总进度的40%）
+                    progress = min(20 + int(len(full_content) / 100), 60)
+                    yield {"type": "progress", "stage": "parsing", "message": "正在解析文本内容...", "progress": progress}
+            
+            # 清理响应内容
+            content = full_content.strip()
+            if "```json" in content:
+                start = content.find("```json") + 7
+                end = content.find("```", start)
+                if end != -1:
+                    content = content[start:end].strip()
+            elif "```" in content:
+                start = content.find("```") + 3
+                end = content.find("```", start)
+                if end != -1:
+                    content = content[start:end].strip()
+            
+            try:
+                blocks = json.loads(content)
+                safe_print(f"✅ 解析完成，得到 {len(blocks)} 个blocks")
+                yield {"type": "progress", "stage": "parsing", "message": f"解析完成，得到 {len(blocks)} 个内容块", "progress": 60}
+                return blocks
+            except json.JSONDecodeError as e:
+                safe_print(f"❌ JSON解析失败: {e}")
+                safe_print(f"响应内容: {content[:500]}...")
+                yield {"type": "error", "message": f"解析失败，JSON格式错误: {e}"}
+                return None
+
+        def _add_translations_stream(blocks):
+            """为blocks流式添加中文翻译"""
+            if not blocks:
+                return blocks
+                
+            safe_print("🌐 开始流式添加中文翻译")
+            yield {"type": "progress", "stage": "translating", "message": "开始翻译内容...", "progress": 65}
+            
+            # 检查是否需要翻译
+            needs_translation = False
+            for block in blocks:
+                if "content" in block and isinstance(block["content"], dict):
+                    if "en" in block["content"] and "zh" not in block["content"]:
+                        needs_translation = True
+                        break
+            
+            if not needs_translation:
+                safe_print("✅ 所有内容已有中文翻译，跳过翻译步骤")
+                yield {"type": "progress", "stage": "translating", "message": "内容已有中文翻译", "progress": 85}
+                return blocks
+            
+            # 批量处理，每次处理10个block
+            batch_size = 10
+            total_batches = (len(blocks) + batch_size - 1) // batch_size
+            
+            for i in range(0, len(blocks), batch_size):
+                batch = blocks[i:i+batch_size]
+                batch_num = i // batch_size + 1
+                
+                # 只选择需要翻译的blocks
+                batch_to_translate = []
+                for block in batch:
+                    if "content" in block or (block["type"] in ["ordered-list", "unordered-list"] and "items" in block):
+                        batch_to_translate.append(block)
+                
+                if not batch_to_translate:
+                    continue
+                
+                # 计算翻译进度（翻译阶段占总进度的25%，从65%到90%）
+                base_progress = 65
+                translation_progress = base_progress + int((batch_num - 1) * 25 / total_batches)
+                yield {"type": "progress", "stage": "translating", "message": f"正在翻译第 {batch_num}/{total_batches} 批内容...", "progress": translation_progress}
+                
+                user_prompt = f"""请为以下JSON数组中的英文内容添加中文翻译：
+
+{json.dumps(batch_to_translate, ensure_ascii=False, indent=2)}
+
+只输出完整的JSON数组。"""
+
+                messages = [
+                    {"role": "system", "content": TRANSLATION_PROMPT},
+                    {"role": "user", "content": user_prompt}
+                ]
+                
+                try:
+                    # 收集流式翻译响应
+                    full_translation = ""
+                    has_content = False
+                    
+                    for chunk in self.call_llm_stream(messages, temperature=0.1, max_tokens=50000):
+                        if "error" in chunk:
+                            yield {"type": "error", "message": chunk["error"]}
+                            continue
+                        
+                        if "content" in chunk:
+                            full_translation += chunk["content"]
+                            has_content = True
+                    
+                    # 检查是否有内容
+                    if not has_content:
+                        safe_print(f"❌ 翻译批次 {batch_num} 失败: 流式响应无内容")
+                        yield {"type": "warning", "message": f"翻译批次 {batch_num} 失败: 响应无内容"}
+                        continue
+                    
+                    if not full_translation or not full_translation.strip():
+                        safe_print(f"❌ 翻译批次 {batch_num} 失败: 收集的翻译内容为空")
+                        yield {"type": "warning", "message": f"翻译批次 {batch_num} 失败: 内容为空"}
+                        continue
+                    
+                    # 清理响应内容
+                    original_content = full_translation  # 保存原始内容用于调试
+                    content = full_translation.strip()
+                    
+                    # 提取JSON内容（支持多种格式）
+                    json_extracted = False
+                    if "```json" in content:
+                        start = content.find("```json") + 7
+                        end = content.find("```", start)
+                        if end != -1:
+                            content = content[start:end].strip()
+                            json_extracted = True
+                    elif "```" in content:
+                        start = content.find("```") + 3
+                        end = content.find("```", start)
+                        if end != -1:
+                            content = content[start:end].strip()
+                            json_extracted = True
+                    
+                    # 检查清理后的内容是否为空
+                    if not content:
+                        safe_print(f"❌ 翻译批次 {batch_num} 失败: 提取JSON后内容为空")
+                        yield {"type": "warning", "message": f"翻译批次 {batch_num} 失败: JSON内容为空"}
+                        continue
+                    
+                    # 尝试解析JSON
+                    try:
+                        translated_batch = json.loads(content)
+                    except json.JSONDecodeError as json_e:
+                        safe_print(f"❌ 翻译批次 {batch_num} 失败: JSON解析错误 {json_e}")
+                        yield {"type": "warning", "message": f"翻译批次 {batch_num} 失败: JSON格式错误"}
+                        continue
+                    
+                    # 验证解析结果
+                    if not isinstance(translated_batch, list):
+                        safe_print(f"❌ 翻译批次 {batch_num} 失败: 返回的不是数组格式")
+                        yield {"type": "warning", "message": f"翻译批次 {batch_num} 失败: 格式错误"}
+                        continue
+                    
+                    # 更新原始blocks中对应的内容
+                    translated_idx = 0
+                    updated_count = 0
+                    for j in range(len(batch)):
+                        if i+j < len(blocks):
+                            block = blocks[i+j]
+                            # 只更新被翻译的blocks
+                            if "content" in block or (block["type"] in ["ordered-list", "unordered-list"] and "items" in block):
+                                if translated_idx < len(translated_batch):
+                                    blocks[i+j] = translated_batch[translated_idx]
+                                    translated_idx += 1
+                                    updated_count += 1
+                    
+                    if updated_count == 0:
+                        safe_print(f"⚠️ 翻译批次 {batch_num}: 没有blocks被更新")
+                        yield {"type": "warning", "message": f"翻译批次 {batch_num}: 无blocks更新"}
+                    else:
+                        safe_print(f"✅ 完成批次 {batch_num} 的翻译，更新了 {updated_count} 个blocks")
+                        yield {"type": "progress", "stage": "translating", "message": f"完成第 {batch_num}/{total_batches} 批翻译", "progress": translation_progress}
+                    
+                except Exception as e:
+                    safe_print(f"❌ 翻译批次 {batch_num} 失败: 未知错误 {e}")
+                    yield {"type": "warning", "message": f"翻译批次 {batch_num} 失败: {str(e)}"}
+                    continue
+            
+            yield {"type": "progress", "stage": "translating", "message": "翻译完成", "progress": 90}
+            return blocks
+
+        def _fix_and_validate_stream(blocks):
+            """流式修复和验证blocks"""
+            if not blocks:
+                return blocks
+                
+            safe_print("🔧 开始流式修复和验证blocks")
+            yield {"type": "progress", "stage": "validating", "message": "开始验证和修复内容格式...", "progress": 92}
+            
+            # 导入必要的工具函数
+            try:
+                from ..utils.common import generate_id, get_current_time
+            except ImportError:
+                # 如果导入失败，使用备用方案
+                import uuid
+                from datetime import datetime
+                
+                def generate_id():
+                    return str(uuid.uuid4())
+                
+                def get_current_time():
+                    return datetime.now()
+            
+            validated_blocks = []
+            
+            for idx, block in enumerate(blocks):
+                try:
+                    if not isinstance(block, dict) or "type" not in block:
+                        safe_print(f"⏭️ 跳过无效block {idx}: 缺少type字段")
+                        continue
+                    
+                    # 添加必需字段
+                    if "id" not in block:
+                        block["id"] = generate_id()
+                    if "createdAt" not in block:
+                        block["createdAt"] = get_current_time().isoformat()
+                    
+                    # 确保content字段格式正确
+                    if "content" in block:
+                        content = block["content"]
+                        if isinstance(content, dict):
+                            # 确保有en和zh字段
+                            if "en" not in content:
+                                content["en"] = []
+                            if "zh" not in content:
+                                # 如果没有zh字段，复制en的内容
+                                content["zh"] = content.get("en", []).copy()
+                            
+                            # 修复inline-math字段
+                            for lang in ["en", "zh"]:
+                                if lang in content and isinstance(content[lang], list):
+                                    for item in content[lang]:
+                                        if isinstance(item, dict) and item.get("type") == "inline-math":
+                                            # 确保使用latex字段而不是content字段
+                                            if "content" in item and "latex" not in item:
+                                                item["latex"] = item.pop("content")
+                                                safe_print(f"🔧 修复block {idx} 的inline-math字段")
+                    
+                    # 处理列表项
+                    if block["type"] in ["ordered-list", "unordered-list"]:
+                        if "items" in block and isinstance(block["items"], list):
+                            for item_idx, item in enumerate(block["items"]):
+                                if "content" in item and isinstance(item["content"], dict):
+                                    # 确保列表项也有双语内容
+                                    if "en" not in item["content"]:
+                                        item["content"]["en"] = []
+                                    if "zh" not in item["content"]:
+                                        item["content"]["zh"] = item["content"].get("en", []).copy()
+                                    
+                                    # 修复列表项中的inline-math
+                                    for lang in ["en", "zh"]:
+                                        if lang in item["content"] and isinstance(item["content"][lang], list):
+                                            for content_item in item["content"][lang]:
+                                                if isinstance(content_item, dict) and content_item.get("type") == "inline-math":
+                                                    if "content" in content_item and "latex" not in content_item:
+                                                        content_item["latex"] = content_item.pop("content")
+                    
+                    # 处理表格
+                    if block["type"] == "table":
+                        # 确保表格有必要的字段
+                        if "headers" not in block:
+                            block["headers"] = []
+                        if "rows" not in block:
+                            block["rows"] = []
+                        # 表格的caption也需要双语
+                        if "caption" in block and isinstance(block["caption"], dict):
+                            if "en" not in block["caption"]:
+                                block["caption"]["en"] = []
+                            if "zh" not in block["caption"]:
+                                block["caption"]["zh"] = block["caption"].get("en", []).copy()
+                    
+                    # 处理数学公式块
+                    if block["type"] == "math":
+                        if "latex" in block:
+                            # 去除\tag{}编号
+                            latex = block["latex"]
+                            latex = re.sub(r'\\tag\{[^}]*\}', '', latex)
+                            # 去除多余的空格
+                            latex = re.sub(r'\s+', ' ', latex).strip()
+                            block["latex"] = latex
+                    
+                    validated_blocks.append(block)
+                    safe_print(f"✅ 验证block {idx}: type={block['type']}")
+                    
+                except Exception as e:
+                    safe_print(f"❌ 验证block {idx} 失败: {e}")
+                    continue
+            
+            safe_print(f"✅ 最终生成 {len(validated_blocks)} 个有效blocks")
+            yield {"type": "progress", "stage": "validating", "message": f"验证完成，生成 {len(validated_blocks)} 个有效内容块", "progress": 95}
+            return validated_blocks
+
+        # 主执行流程
+        try:
+            # 步骤1：解析Markdown
+            blocks = yield from _parse_markdown_stream()
+            if blocks is None:
+                return
+            
+            # 步骤2：添加翻译
+            blocks = yield from _add_translations_stream(blocks)
+            if blocks is None:
+                return
+            
+            # 步骤3：修复和验证
+            validated_blocks = yield from _fix_and_validate_stream(blocks)
+            if validated_blocks is None:
+                return
+            
+            # 完成
+            yield {"type": "complete", "message": f"解析完成，共生成 {len(validated_blocks)} 个内容块", "blocks": validated_blocks, "progress": 100}
+            
+        except Exception as e:
+            safe_print(f"❌ 流式处理失败: {e}")
+            import traceback
+            safe_print(traceback.format_exc())
+            yield {"type": "error", "message": f"流式解析失败: {e}"}
+
+    def parse_references(self, text: str) -> List[Dict[str, Any]]:
             """
             解析参考文献文本，返回结构化的参考文献列表
             
@@ -1290,7 +2038,7 @@ class LLMUtils:
                 safe_print(error_msg)
                 raise RuntimeError(error_msg)
         
-        def _parse_references_with_llm(self, text: str) -> List[Dict[str, Any]]:
+    def _parse_references_with_llm(self, text: str) -> List[Dict[str, Any]]:
             """使用LLM解析参考文献"""
             import json
             import re

@@ -56,7 +56,6 @@ import type {
     title: 'Untitled Section',
     titleZh: '未命名章节',
     content: [],
-    subsections: [],
   });
   
   export const createBlock = (

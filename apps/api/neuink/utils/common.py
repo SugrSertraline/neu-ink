@@ -69,11 +69,7 @@ def success_response(data: Any = None, message: str = ResponseMessage.SUCCESS) -
         "data": data
     }
     
-    return jsonify(create_response(
-        code=ResponseCode.SUCCESS,
-        message=message or ResponseMessage.SUCCESS,
-        data=business_response
-    )), ResponseCode.SUCCESS
+    return jsonify(business_response), ResponseCode.SUCCESS
 
 
 def created_response(data: Any = None, message: str = ResponseMessage.CREATED) -> tuple:

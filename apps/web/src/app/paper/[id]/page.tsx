@@ -529,7 +529,6 @@ export default function PaperPage() {
 
   const {
     handleSectionTitleUpdate,
-    handleSectionAddSubsection,
     handleSectionInsert,
     handleSectionMove,
     handleSectionDelete,
@@ -544,7 +543,6 @@ export default function PaperPage() {
     handleBlockDelete,
     handleBlockInsert,
     handleBlockMove,
-    handleBlockAppendSubsection,
     handleBlockAddComponent,
     handleBlockSaveToServer,
   } = usePaperBlocks(
@@ -1168,10 +1166,6 @@ export default function PaperPage() {
                       const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
                       return handleSectionTitleUpdate(sectionId, title, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
                     }}
-                    onSectionAddSubsection={(sectionId) => {
-                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
-                      return handleSectionAddSubsection(sectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
-                    }}
                     onSectionInsert={(targetSectionId, position, parentSectionId) => {
                       const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
                       return handleSectionInsert(targetSectionId, position, parentSectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
@@ -1201,9 +1195,46 @@ export default function PaperPage() {
                     }}
                     onBlockInsert={handleBlockInsert}
                     onBlockMove={handleBlockMove}
-                    onBlockAppendSubsection={handleBlockAppendSubsection}
                     onBlockAddComponent={handleBlockAddComponent}
                     onParseTextAdd={canEditContent ? handleParseTextAdd : undefined}
+                    onParseTextComplete={canEditContent ? (sectionId, blocks, afterBlockId) => {
+                      // 处理流式解析完成后的blocks
+                      updateSections(sections => {
+                        let touched = false;
+                        
+                        const updatedSections = sections.map(section => {
+                          if (section.id === sectionId) {
+                            touched = true;
+                            const currentBlocks = section.content || [];
+                            let insertIndex = currentBlocks.length; // 默认在末尾
+                            
+                            if (afterBlockId) {
+                              for (let i = 0; i < currentBlocks.length; i++) {
+                                if (currentBlocks[i].id === afterBlockId) {
+                                  insertIndex = i + 1;
+                                  break;
+                                }
+                              }
+                            }
+                            
+                            // 插入新的blocks
+                            const newBlocks = [...currentBlocks];
+                            newBlocks.splice(insertIndex, 0, ...blocks);
+                            
+                            return {
+                              ...section,
+                              content: newBlocks
+                            };
+                          }
+                          return section;
+                        });
+                        
+                        return { sections: touched ? updatedSections : sections, touched };
+                      });
+                      
+                      // 显示成功消息
+                      toast.success(`成功解析并添加了${blocks.length}个段落`);
+                    } : undefined}
                     onSaveToServer={async () => {
                       if (currentEditingId) {
                         const blockInfo = findBlockSection(currentEditingId);
@@ -1214,6 +1245,11 @@ export default function PaperPage() {
                         }
                       }
                       await handleSaveToServer();
+                    }}
+                    onParseComplete={(result) => {
+                      // 处理解析完成的结果，可以更新 UI 或状态
+                      console.log('Parse completed:', result);
+                      // 这里可以添加额外的处理逻辑，比如更新状态或显示通知
                     }}
                     notesByBlock={notesByBlock}
                     isPersonalOwner={isPersonalOwner}

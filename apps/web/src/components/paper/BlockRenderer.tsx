@@ -12,6 +12,7 @@ import {
 } from '@/types/paper';
 import InlineRenderer from './InlineRenderer';
 import TextSelectionToolbar from './TextSelectionToolbar';
+import ParseProgressBlock from './ParseProgressBlock';
 import {
   toggleBold,
   toggleItalic,
@@ -56,6 +57,11 @@ interface BlockRendererProps {
   /** 笔记相关 */
   notesCount?: number;
   isPersonalOwner?: boolean;
+  /** ParseProgressModal 需要的属性 */
+  paperId?: string;
+  sectionId?: string;
+  onParseComplete?: (result: any) => void;
+  userPaperId?: string | null;
 }
 
 type InlineRendererBaseProps = Omit<ComponentProps<typeof InlineRenderer>, 'nodes'>;
@@ -229,6 +235,10 @@ export default function BlockRenderer({
   onSaveToServer,
   notesCount = 0,
   isPersonalOwner = false,
+  paperId,
+  sectionId,
+  onParseComplete,
+  userPaperId,
 }: BlockRendererProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
   const { hasUnsavedChanges, setHasUnsavedChanges, switchToEdit, clearEditing } = useEditingState();
@@ -1320,75 +1330,25 @@ export default function BlockRenderer({
         return <hr className="my-6 border-t-2 border-gray-300" />;
 
       case 'loading': {
-        const getStatusColor = () => {
-          switch (block.status) {
-            case 'pending': return 'text-gray-500';
-            case 'processing': return 'text-blue-500';
-            case 'completed': return 'text-green-500';
-            case 'failed': return 'text-red-500';
-            default: return 'text-gray-500';
-          }
+        const loadingBlock = block as any;
+        console.log('BlockRenderer loading block:', loadingBlock);
+        
+        const handleParseComplete = (result: any) => {
+          console.log('BlockRenderer parse complete:', result);
+          onParseComplete?.(result);
         };
 
-        const getStatusText = () => {
-          switch (block.status) {
-            case 'pending': return '等待中';
-            case 'processing': return '解析中';
-            case 'completed': return '已完成';
-            case 'failed': return '解析失败';
-            default: return '未知状态';
-          }
-        };
-
+        // 直接显示解析进度块，不需要模态框
         return (
-          <div className="my-4 rounded-lg border border-blue-200 bg-blue-50 p-4">
-            <div className="flex items-center gap-3">
-              {block.status === 'processing' && (
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-blue-500 border-t-transparent"></div>
-              )}
-              {block.status === 'completed' && (
-                <div className="h-5 w-5 rounded-full bg-green-500 flex items-center justify-center">
-                  <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" />
-                  </svg>
-                </div>
-              )}
-              {block.status === 'failed' && (
-                <div className="h-5 w-5 rounded-full bg-red-500 flex items-center justify-center">
-                  <svg className="h-3 w-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" />
-                  </svg>
-                </div>
-              )}
-              {block.status === 'pending' && (
-                <div className="h-5 w-5 rounded-full border-2 border-gray-400"></div>
-              )}
-              
-              <div className="flex-1">
-                <div className={`font-medium ${getStatusColor()}`}>
-                  {getStatusText()}
-                </div>
-                {block.message && (
-                  <div className="text-sm text-gray-600 mt-1">
-                    {block.message}
-                  </div>
-                )}
-                {block.progress !== undefined && block.status === 'processing' && (
-                  <div className="mt-2">
-                    <div className="w-full bg-gray-200 rounded-full h-2">
-                      <div
-                        className="bg-blue-500 h-2 rounded-full transition-all duration-300"
-                        style={{ width: `${block.progress}%` }}
-                      ></div>
-                    </div>
-                    <div className="text-xs text-gray-500 mt-1">
-                      {block.progress}%
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
+          <ParseProgressBlock
+            paperId={paperId || ''}
+            sectionId={sectionId || loadingBlock.sectionId || ''}
+            blockId={loadingBlock.id}
+            sessionId={loadingBlock.sessionId || ''}
+            onCompleted={handleParseComplete}
+            isPersonalOwner={isPersonalOwner}
+            userPaperId={userPaperId}
+          />
         );
       }
 

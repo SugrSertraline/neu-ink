@@ -7,6 +7,8 @@ import {
   BusinessCode,
 } from '@/types/api';
 import { apiClient } from './client';
+import { toast } from 'sonner';
+import { ERROR_CODES, ERROR_MESSAGES, getErrorMessage } from '@/types/paper/constants';
 
 function isBusinessEnvelope<T = any>(data: any): data is BusinessResponse<T> {
   return (
@@ -22,6 +24,7 @@ export function normalize<T = any>(res: ApiResponse<T | BusinessResponse<T>>): U
   const topCode = (res.code ?? ResponseCode.SUCCESS) as number;
   const topMessage = res.message ?? '';
 
+  // 检查是否是业务响应格式：{code: 0, message: "...", data: {...}}
   if (isBusinessEnvelope<T>(res.data)) {
     return {
       topCode,
@@ -37,7 +40,7 @@ export function normalize<T = any>(res: ApiResponse<T | BusinessResponse<T>>): U
     topCode,
     topMessage,
     bizCode: BusinessCode.SUCCESS,
-    bizMessage: topMessage || '操作成功',
+    bizMessage: '操作成功',
     data: res.data as T,
     raw: res as ApiResponse<any>,
   };
@@ -99,7 +102,7 @@ export function shouldResetAuth(topCode: number, bizCode?: number, errMsg?: stri
   return false;
 }
 
-function markAuthReset(target: unknown) {
+export function markAuthReset(target: unknown) {
   try {
     // 使用 authService 而不是直接使用 apiClient
     // 这里需要动态导入以避免循环依赖
@@ -128,6 +131,36 @@ export async function callAndNormalize<T>(
     return uni;
   } catch (err: any) {
     const msg = err?.message || String(err);
+    
+    // 特殊处理400错误 - 使用sonner显示toast而不是让页面卡死
+    if (err && typeof err === 'object' && 'status' in err && err.status === ERROR_CODES.BAD_REQUEST) {
+      let errorMessage: string = ERROR_MESSAGES.BAD_REQUEST;
+      
+      // 尝试从payload中提取业务错误信息
+      if (err.payload && typeof err.payload === 'object') {
+        // 检查是否有业务层的错误代码
+        if (err.payload.data && typeof err.payload.data === 'object' && 'code' in err.payload.data) {
+          errorMessage = getErrorMessage(err.payload.data.code, ERROR_MESSAGES.BAD_REQUEST);
+        } else if (err.payload.message) {
+          errorMessage = err.payload.message;
+        }
+      }
+      
+      // 使用sonner显示错误toast
+      toast.error(errorMessage);
+      
+      // 返回统一的结果对象，避免页面崩溃
+      return {
+        success: false,
+        topCode: err.status,
+        topMessage: errorMessage,
+        bizCode: BusinessCode.INTERNAL_ERROR,
+        bizMessage: errorMessage,
+        data: null as T,
+        raw: err,
+      } as AuthAwareResult<T>;
+    }
+    
     if (shouldResetAuth(ResponseCode.UNAUTHORIZED, undefined, msg)) {
       markAuthReset(err);
     }

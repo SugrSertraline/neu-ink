@@ -146,12 +146,6 @@ function traverseSections(
       });
     }
     
-    // 递归处理子章节
-    if (section.subsections && section.subsections.length > 0) {
-      const subsectionItems = traverseSections(section.subsections, currentPath);
-      sectionItem.children!.push(...subsectionItems);
-    }
-    
     items.push(sectionItem);
   });
   

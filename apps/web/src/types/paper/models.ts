@@ -32,7 +32,6 @@ export interface Section {
   title: string;
   titleZh?: string;
   content: BlockContent[];
-  subsections?: Section[];
 }
 
 // —— 解析状态 ——

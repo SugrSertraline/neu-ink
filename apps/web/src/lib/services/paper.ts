@@ -40,6 +40,26 @@ import {
 import { apiClient, callAndNormalize } from '../http';
 import type { UnifiedResult } from '@/types/api';
 
+// —— 流式传输工具函数 —— //
+function createAuthenticatedEventSource(url: string, params: URLSearchParams): EventSource {
+  // 获取token并添加到URL参数中
+  const token = apiClient.getToken();
+  if (token) {
+    params.append('token', token);
+  }
+  
+  // 使用apiClient的getFullURL方法构建完整URL
+  const baseUrl = apiClient.getFullURL(url);
+  const fullUrl = `${baseUrl}?${params.toString()}`;
+  
+  // 创建EventSource连接，并设置withCredentials以支持cookie认证
+  const eventSource = new EventSource(fullUrl, {
+    withCredentials: true // 支持cookie认证
+  });
+  
+  return eventSource;
+}
+
 
 // —— 参数拼接工具 —— //
 function buildSearchParams(params: Record<string, any>): string {
@@ -207,7 +227,27 @@ export const userPaperService = {
   },
 
   /**
-   * 向个人论文添加新章节
+   * 向个人论文的指定section从文本解析添加block（流式传输）
+   */
+  addBlockFromTextToSectionStream(
+    userPaperId: string,
+    sectionId: string,
+    request: AddBlockFromTextToSectionRequest
+  ): EventSource {
+    const url = `/user/papers/${userPaperId}/sections/${sectionId}/add-block-from-text-stream`;
+    const params = new URLSearchParams();
+    
+    // 添加请求参数到URL
+    if (request.text) params.append('text', request.text);
+    if (request.afterBlockId) params.append('afterBlockId', request.afterBlockId);
+    if (request.sessionId) params.append('sessionId', request.sessionId);
+    
+    // 使用工具函数创建带认证的EventSource
+    return createAuthenticatedEventSource(url, params);
+  },
+
+  /**
+   * 向个人论文添加新章节（已移除subsection支持）
    */
   addSection(
     userPaperId: string,
@@ -216,14 +256,12 @@ export const userPaperService = {
       content?: any[];
     },
     options?: {
-      parentSectionId?: string;
       position?: number;
     }
-  ): Promise<UnifiedResult<AddBlockToSectionResult>> {
-    return callAndNormalize<AddBlockToSectionResult>(
+  ): Promise<UnifiedResult<import('@/types/paper/requests').AddSectionResult>> {
+    return callAndNormalize<import('@/types/paper/requests').AddSectionResult>(
       apiClient.post(`/user/papers/${userPaperId}/add-section`, {
         sectionData,
-        parentSectionId: options?.parentSectionId,
         position: options?.position ?? -1
       })
     );
@@ -317,6 +355,80 @@ export const userPaperService = {
       addedBlocks?: import('@/types/paper/content').BlockContent[];
     }>(
       apiClient.get(`/user/papers/${userPaperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
+    );
+  },
+
+  /**
+   * 获取指定section的所有解析会话
+   */
+  getParsingSessions(
+    userPaperId: string,
+    sectionId: string
+  ): Promise<UnifiedResult<{
+    sessions: Array<{
+      sessionId: string;
+      status: 'pending' | 'processing' | 'completed' | 'failed';
+      progress: number;
+      message: string;
+      createdAt: string;
+      updatedAt: string;
+    }>;
+  }>> {
+    return callAndNormalize<{
+      sessions: Array<{
+        sessionId: string;
+        status: 'pending' | 'processing' | 'completed' | 'failed';
+        progress: number;
+        message: string;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+    }>(
+      apiClient.get(`/user/papers/${userPaperId}/sections/${sectionId}/parsing-sessions`)
+    );
+  },
+
+  /**
+   * 获取指定的解析会话详情
+   */
+  getParsingSession(
+    userPaperId: string,
+    sectionId: string,
+    sessionId: string
+  ): Promise<UnifiedResult<{
+    sessionId: string;
+    status: 'pending' | 'processing' | 'completed' | 'failed';
+    progress: number;
+    message: string;
+    createdAt: string;
+    updatedAt: string;
+    completedBlocks?: any[];
+    paperData?: any;
+  }>> {
+    return callAndNormalize<{
+      sessionId: string;
+      status: 'pending' | 'processing' | 'completed' | 'failed';
+      progress: number;
+      message: string;
+      createdAt: string;
+      updatedAt: string;
+      completedBlocks?: any[];
+      paperData?: any;
+    }>(
+      apiClient.get(`/user/papers/${userPaperId}/sections/${sectionId}/parsing-sessions/${sessionId}`)
+    );
+  },
+
+  /**
+   * 删除指定的解析会话
+   */
+  deleteParsingSession(
+    userPaperId: string,
+    sectionId: string,
+    sessionId: string
+  ): Promise<UnifiedResult<null>> {
+    return callAndNormalize<null>(
+      apiClient.delete(`/user/papers/${userPaperId}/sections/${sectionId}/parsing-sessions/${sessionId}`)
     );
   },
 
@@ -514,7 +626,26 @@ export const adminPaperService = {
   },
 
   /**
-   * 向管理员论文添加新章节
+   * 向管理员论文的指定section从文本解析添加block（流式传输）
+   */
+  addBlockFromTextToSectionStream(
+    paperId: string,
+    sectionId: string,
+    request: AddBlockFromTextToSectionRequest
+  ): EventSource {
+    const url = `/admin/papers/${paperId}/sections/${sectionId}/add-block-from-text-stream`;
+    const params = new URLSearchParams();
+    
+    // 添加请求参数到URL
+    if (request.text) params.append('text', request.text);
+    if (request.afterBlockId) params.append('afterBlockId', request.afterBlockId);
+    
+    // 使用工具函数创建带认证的EventSource
+    return createAuthenticatedEventSource(url, params);
+  },
+
+  /**
+   * 向管理员论文添加新章节（已移除subsection支持）
    */
   addSection(
     paperId: string,
@@ -523,14 +654,12 @@ export const adminPaperService = {
       content?: any[];
     },
     options?: {
-      parentSectionId?: string;
       position?: number;
     }
-  ): Promise<UnifiedResult<AddBlockToSectionResult>> {
-    return callAndNormalize<AddBlockToSectionResult>(
+  ): Promise<UnifiedResult<import('@/types/paper/requests').AddSectionResult>> {
+    return callAndNormalize<import('@/types/paper/requests').AddSectionResult>(
       apiClient.post(`/admin/papers/${paperId}/add-section`, {
         sectionData,
-        parentSectionId: options?.parentSectionId,
         position: options?.position ?? -1
       })
     );
@@ -661,6 +790,81 @@ export const adminPaperService = {
       apiClient.get(`/admin/papers/${paperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
     );
   },
+
+  /**
+   * 获取指定section的所有解析会话
+   */
+  getParsingSessions(
+    paperId: string,
+    sectionId: string
+  ): Promise<UnifiedResult<{
+    sessions: Array<{
+      sessionId: string;
+      status: 'pending' | 'processing' | 'completed' | 'failed';
+      progress: number;
+      message: string;
+      createdAt: string;
+      updatedAt: string;
+    }>;
+  }>> {
+    return callAndNormalize<{
+      sessions: Array<{
+        sessionId: string;
+        status: 'pending' | 'processing' | 'completed' | 'failed';
+        progress: number;
+        message: string;
+        createdAt: string;
+        updatedAt: string;
+      }>;
+    }>(
+      apiClient.get(`/admin/papers/${paperId}/sections/${sectionId}/parsing-sessions`)
+    );
+  },
+
+  /**
+   * 获取指定的解析会话详情
+   */
+  getParsingSession(
+    paperId: string,
+    sectionId: string,
+    sessionId: string
+  ): Promise<UnifiedResult<{
+    sessionId: string;
+    status: 'pending' | 'processing' | 'completed' | 'failed';
+    progress: number;
+    message: string;
+    createdAt: string;
+    updatedAt: string;
+    completedBlocks?: any[];
+    paperData?: any;
+  }>> {
+    return callAndNormalize<{
+      sessionId: string;
+      status: 'pending' | 'processing' | 'completed' | 'failed';
+      progress: number;
+      message: string;
+      createdAt: string;
+      updatedAt: string;
+      completedBlocks?: any[];
+      paperData?: any;
+    }>(
+      apiClient.get(`/admin/papers/${paperId}/sections/${sectionId}/parsing-sessions/${sessionId}`)
+    );
+  },
+
+  /**
+   * 删除指定的解析会话
+   */
+  deleteParsingSession(
+    paperId: string,
+    sectionId: string,
+    sessionId: string
+  ): Promise<UnifiedResult<null>> {
+    return callAndNormalize<null>(
+      apiClient.delete(`/admin/papers/${paperId}/sections/${sectionId}/parsing-sessions/${sessionId}`)
+    );
+  },
+
 };
 
 // —— 统一导出（兼容旧代码） —— //

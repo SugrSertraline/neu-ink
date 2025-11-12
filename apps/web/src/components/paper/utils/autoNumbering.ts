@@ -31,10 +31,6 @@ function calculateSectionNumbers(sections: Section[], prefix: string = ''): void
   sections.forEach((section, index) => {
     const number = prefix ? `${prefix}.${index + 1}` : `${index + 1}`;
     section.number = number;
-    
-    if (section.subsections && section.subsections.length > 0) {
-      calculateSectionNumbers(section.subsections, number);
-    }
   });
 }
 
@@ -44,16 +40,10 @@ function calculateSectionNumbers(sections: Section[], prefix: string = ''): void
 function collectAllBlocks(sections: Section[]): BlockContent[] {
   const blocks: BlockContent[] = [];
   
-  function traverse(secs: Section[]) {
-    secs.forEach(section => {
-      blocks.push(...section.content);
-      if (section.subsections) {
-        traverse(section.subsections);
-      }
-    });
-  }
+  sections.forEach(section => {
+    blocks.push(...section.content);
+  });
   
-  traverse(sections);
   return blocks;
 }
 
@@ -118,9 +108,6 @@ export function stripAllNumbers(content: PaperContent): PaperContent {
         delete (block as any).number;
       }
     });
-    if (section.subsections) {
-      section.subsections.forEach(stripSection);
-    }
   }
   
   newContent.sections.forEach(stripSection);

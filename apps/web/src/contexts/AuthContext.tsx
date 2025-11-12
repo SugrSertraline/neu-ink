@@ -119,8 +119,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           clearRedirectGuard();
           return { ok: true };
         }
+        // 对于400等错误，normalize.ts已经处理了toast，这里只需要返回结果
         return { ok: false, message: uni.bizMessage || '登录失败', businessCode: uni.bizCode };
       } catch (err: any) {
+        // 处理网络错误或其他异常
+        console.error('Login error:', err);
         return { ok: false, message: err?.message || '网络异常或服务器错误，请稍后重试' };
       } finally {
         setIsLoading(false);
@@ -146,6 +149,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         clearRedirectGuard();
         return;
       }
+      // 对于400等错误，normalize.ts已经处理了toast，这里只需要处理状态
       authService.clearToken();
       setUser(null);
 
@@ -154,6 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } catch (error) {
       const err = error as { authReset?: boolean; message?: string };
+      console.error('Refresh user error:', err);
       
       // 只有明确的认证错误才清除token和用户状态
       if (err?.authReset) {

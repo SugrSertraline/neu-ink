@@ -42,12 +42,6 @@ export function usePaperSections(
               touched = true;
               nextSection = apply(section);
             }
-            if (section.subsections?.length) {
-              const nextSubsections = walk(section.subsections);
-              if (nextSubsections !== section.subsections) {
-                nextSection = { ...nextSection, subsections: nextSubsections };
-              }
-            }
             return nextSection;
           });
 
@@ -64,7 +58,6 @@ export function usePaperSections(
     updateData: {
       title?: { en: string; zh: string };
       content?: any[];
-      subsections?: any[];
     },
     paperId: string,
     userPaperId: string | null,
@@ -168,12 +161,6 @@ export function usePaperSections(
                   return;
                 }
                 let nextSection = section;
-                if (section.subsections?.length) {
-                  const nextSubsections = prune(section.subsections);
-                  if (nextSubsections !== section.subsections) {
-                    nextSection = { ...nextSection, subsections: nextSubsections };
-                  }
-                }
                 nextNodes.push(nextSection);
               });
               return nextNodes;
@@ -204,12 +191,6 @@ export function usePaperSections(
                   return;
                 }
                 let nextSection = section;
-                if (section.subsections?.length) {
-                  const nextSubsections = prune(section.subsections);
-                  if (nextSubsections !== section.subsections) {
-                    nextSection = { ...nextSection, subsections: nextSubsections };
-                  }
-                }
                 nextNodes.push(nextSection);
               });
               return nextNodes;
@@ -287,111 +268,6 @@ export function usePaperSections(
     }
   }, [updateSectionTree, handleSectionUpdateWithAPI]);
 
-  // 修改为支持API调用的版本
-  const handleSectionAddSubsection = useCallback(
-    async (
-      sectionId: string,
-      paperId: string,
-      userPaperId: string | null,
-      isPersonalOwner: boolean,
-      onSaveToServer?: () => Promise<void>
-    ) => {
-      const newSection = createEmptySection();
-      
-      // 显示加载状态
-      toast.loading('正在添加子章节...', { id: 'add-subsection' });
-      
-      // 调用API保存
-      const sectionData = {
-        title: {
-          en: newSection.title || '',
-          zh: newSection.titleZh || ''
-        },
-        content: newSection.content || []
-      };
-
-      const result = await handleSectionAddWithAPI(
-        paperId,
-        userPaperId,
-        isPersonalOwner,
-        sectionData,
-        {
-          parentSectionId: sectionId,
-          position: -1 // 添加到末尾
-        }
-      );
-
-      // 如果API调用失败，显示错误信息
-      if (!result.success) {
-        toast.error('添加子章节失败', {
-          id: 'add-subsection',
-          description: result.error
-        });
-      } else {
-        // API调用成功，使用返回的数据更新本地状态
-        if (result.data && result.data.paper) {
-          // 使用服务器返回的更新后的论文数据
-          const updatedPaper = result.data.paper;
-          let updatedSections: Section[] = [];
-          
-          if (isPersonalOwner) {
-            // 对于个人论文，sections 在 paperData 中
-            updatedSections = (updatedPaper as any).paperData?.sections || [];
-          } else {
-            // 对于公共论文，sections 直接在 paper 中
-            updatedSections = (updatedPaper as any).sections || [];
-          }
-            
-          setEditableDraft(prev => {
-            if (!prev) return prev;
-            return { ...prev, sections: updatedSections };
-          });
-          
-          toast.success('子章节添加成功', { id: 'add-subsection' });
-        } else {
-          // 如果返回的数据中没有paper，则重新获取
-          try {
-            let paperResult;
-            if (isPersonalOwner && userPaperId) {
-              const { userPaperService } = await import('@/lib/services/paper');
-              paperResult = await userPaperService.getUserPaperDetail(userPaperId);
-            } else {
-              const { adminPaperService } = await import('@/lib/services/paper');
-              paperResult = await adminPaperService.getAdminPaperDetail(paperId);
-            }
-            
-            if (paperResult && paperResult.bizCode === 0 && paperResult.data) {
-              // 使用服务器返回的最新数据更新本地状态
-              let updatedSections: Section[] = [];
-              
-              if (isPersonalOwner) {
-                // 对于个人论文，sections 在 paperData 中
-                updatedSections = (paperResult.data as any).paperData?.sections || [];
-              } else {
-                // 对于公共论文，sections 直接在 data 中
-                updatedSections = (paperResult.data as any).sections || [];
-              }
-                
-              setEditableDraft(prev => {
-                if (!prev) return prev;
-                return { ...prev, sections: updatedSections };
-              });
-              
-              toast.success('子章节添加成功', { id: 'add-subsection' });
-            } else {
-              // 如果获取最新数据失败，至少显示成功消息
-              toast.success('子章节添加成功，但可能需要刷新页面查看最新内容', { id: 'add-subsection' });
-            }
-          } catch (error) {
-            console.error('获取最新论文数据失败:', error);
-            // 即使获取最新数据失败，也显示成功消息
-            toast.success('子章节添加成功，但可能需要刷新页面查看最新内容', { id: 'add-subsection' });
-          }
-        }
-      }
-    },
-    [handleSectionAddWithAPI, setEditableDraft]
-  );
 
   const handleSectionInsert = useCallback(
     async (
@@ -436,18 +312,8 @@ export function usePaperSections(
           nodes.map(section => {
             if (inserted) return section;
             if (section.id === parentSectionId) {
-              const current = section.subsections ?? [];
-              const nextSubsections = insertIntoList(current);
-              if (nextSubsections !== current) {
-                return { ...section, subsections: nextSubsections };
-              }
+              // 由于已移除subsection功能，不再在section.content中插入新章节
               return section;
-            }
-            if (section.subsections?.length) {
-              const nextSubsections = walk(section.subsections);
-              if (nextSubsections !== section.subsections) {
-                return { ...section, subsections: nextSubsections };
-              }
             }
             return section;
           });
@@ -495,6 +361,59 @@ export function usePaperSections(
           description: result.error
         });
       } else {
+        // API成功，更新临时section的ID
+        const resultData = result.data as any;
+        if (resultData && resultData.addedSectionId) {
+          const addedSectionId = resultData.addedSectionId;
+          console.log('更新临时section ID:', newSection, addedSectionId);
+          
+          // 找到最新添加的临时section并更新其ID
+          updateSections(sections => {
+            let touched = false;
+            
+            // 首先检查是否已经存在这个ID，如果有则跳过更新
+            const idAlreadyExists = sections.some(section => section.id === addedSectionId);
+            if (idAlreadyExists) {
+              console.log('ID已存在，跳过更新:', addedSectionId);
+              return { sections, touched: false };
+            }
+            
+            // 找到需要更新的section
+            const updatedSections = sections.map(section => {
+              // 如果section没有真实ID或者是临时ID格式，匹配最新创建的section
+              if (!section.id || section.id.startsWith('section_')) {
+                // 匹配最近创建的section（使用标题和内容匹配）
+                if (section.title === (newSection.title || '') && section.titleZh === (newSection.titleZh || '')) {
+                  touched = true;
+                  console.log('更新section ID:', section.id, '->', addedSectionId);
+                  return {
+                    ...section,
+                    id: addedSectionId
+                  };
+                }
+              }
+              return section;
+            });
+            
+            // 如果没有找到匹配的section，更新最后一个临时section
+            if (!touched) {
+              const lastIndex = updatedSections.length - 1;
+              if (lastIndex >= 0) {
+                const lastSection = updatedSections[lastIndex];
+                if (!lastSection.id || lastSection.id.startsWith('section_')) {
+                  updatedSections[lastIndex] = {
+                    ...lastSection,
+                    id: addedSectionId
+                  };
+                  touched = true;
+                  console.log('强制更新最后一个section ID:', addedSectionId);
+                }
+              }
+            }
+            
+            return { sections: touched ? updatedSections : sections, touched };
+          });
+        }
         toast.success('章节添加成功', { id: 'add-section' });
       }
     },
@@ -525,18 +444,8 @@ export function usePaperSections(
           nodes.map(section => {
             if (moved) return section;
             if (section.id === parentSectionId) {
-              const current = section.subsections ?? [];
-              const nextSubsections = reorder(current);
-              if (nextSubsections !== current) {
-                return { ...section, subsections: nextSubsections };
-              }
+              // 由于已移除subsection功能，不再在section.content中重新排序
               return section;
-            }
-            if (section.subsections?.length) {
-              const nextSubsections = walk(section.subsections);
-              if (nextSubsections !== section.subsections) {
-                return { ...section, subsections: nextSubsections };
-              }
             }
             return section;
           });
@@ -714,6 +623,21 @@ export function usePaperSections(
             });
             
             if (result.bizCode === 0) {
+              console.log('添加段落API响应(个人):', result);
+              console.log('响应数据(个人):', result.data);
+              
+              // 如果返回了blockId，更新本地状态中的临时ID
+              const blockId = result.data?.blockId || result.data?.addedBlock?.id;
+              if (blockId && newBlockId) {
+                console.log('更新本地block ID(个人):', newBlockId, '->', blockId);
+                updateSectionTree(sectionId, section => {
+                  const nextContent = (section.content ?? []).map(block =>
+                    block.id === newBlockId ? { ...block, id: blockId } : block
+                  );
+                  return { ...section, content: nextContent };
+                });
+              }
+              
               toast.success('段落添加成功');
               setHasUnsavedChanges(false);
             } else {
@@ -822,6 +746,21 @@ export function usePaperSections(
             });
             
             if (result.bizCode === 0) {
+              console.log('添加段落API响应(管理员):', result);
+              console.log('响应数据(管理员):', result.data);
+              
+              // 如果返回了blockId，更新本地状态中的临时ID
+              const blockId = result.data?.blockId || result.data?.addedBlock?.id;
+              if (blockId && newBlockId) {
+                console.log('更新本地block ID(管理员):', newBlockId, '->', blockId);
+                updateSectionTree(sectionId, section => {
+                  const nextContent = (section.content ?? []).map(block =>
+                    block.id === newBlockId ? { ...block, id: blockId } : block
+                  );
+                  return { ...section, content: nextContent };
+                });
+              }
+              
               toast.success('段落添加成功');
               setHasUnsavedChanges(false);
             } else {
@@ -1252,147 +1191,11 @@ export function usePaperSections(
     }
   }, [updateSectionTree]);
 
-  // 新增：从块添加子章节的函数
-  const handleBlockAppendSubsection = useCallback(
-    async (
-      blockId: string,
-      paperId: string,
-      userPaperId: string | null,
-      isPersonalOwner: boolean,
-      onSaveToServer?: () => Promise<void>
-    ) => {
-      // 获取当前的sections
-      let currentSections: Section[] = [];
-      setEditableDraft(prev => {
-        if (prev) {
-          currentSections = prev.sections;
-        }
-        return prev;
-      });
-      
-      // 找到包含该块的章节
-      const findSectionContainingBlock = (sections: Section[], blockId: string): Section | null => {
-        for (const section of sections) {
-          if (section.content?.some(block => block.id === blockId)) {
-            return section;
-          }
-          if (section.subsections) {
-            const found = findSectionContainingBlock(section.subsections, blockId);
-            if (found) return found;
-          }
-        }
-        return null;
-      };
-      
-      const parentSection = findSectionContainingBlock(currentSections, blockId);
-      if (!parentSection) {
-        toast.error('无法找到包含该块的章节');
-        return;
-      }
-      
-      // 使用与 handleSectionAddSubsection 相同的逻辑
-      const newSection = createEmptySection();
-      
-      // 显示加载状态
-      toast.loading('正在添加子章节...', { id: 'add-subsection' });
-      
-      // 调用API保存
-      const sectionData = {
-        title: {
-          en: newSection.title || '',
-          zh: newSection.titleZh || ''
-        },
-        content: newSection.content || []
-      };
-
-      const result = await handleSectionAddWithAPI(
-        paperId,
-        userPaperId,
-        isPersonalOwner,
-        sectionData,
-        {
-          parentSectionId: parentSection.id,
-          position: -1 // 添加到末尾
-        }
-      );
-
-      // 如果API调用失败，显示错误信息
-      if (!result.success) {
-        toast.error('添加子章节失败', {
-          id: 'add-subsection',
-          description: result.error
-        });
-      } else {
-        // API调用成功，使用返回的数据更新本地状态
-        if (result.data && result.data.paper) {
-          // 使用服务器返回的更新后的论文数据
-          const updatedPaper = result.data.paper;
-          let updatedSections: Section[] = [];
-          
-          if (isPersonalOwner) {
-            // 对于个人论文，sections 在 paperData 中
-            updatedSections = (updatedPaper as any).paperData?.sections || [];
-          } else {
-            // 对于公共论文，sections 直接在 paper 中
-            updatedSections = (updatedPaper as any).sections || [];
-          }
-          
-          setEditableDraft(prev => {
-            if (!prev) return prev;
-            return { ...prev, sections: updatedSections };
-          });
-          
-          toast.success('子章节添加成功', { id: 'add-subsection' });
-        } else {
-          // 如果返回的数据中没有paper，则重新获取
-          try {
-            let paperResult;
-            if (isPersonalOwner && userPaperId) {
-              const { userPaperService } = await import('@/lib/services/paper');
-              paperResult = await userPaperService.getUserPaperDetail(userPaperId);
-            } else {
-              const { adminPaperService } = await import('@/lib/services/paper');
-              paperResult = await adminPaperService.getAdminPaperDetail(paperId);
-            }
-            
-            if (paperResult && paperResult.bizCode === 0 && paperResult.data) {
-              // 使用服务器返回的最新数据更新本地状态
-              let updatedSections: Section[] = [];
-              
-              if (isPersonalOwner) {
-                // 对于个人论文，sections 在 paperData 中
-                updatedSections = (paperResult.data as any).paperData?.sections || [];
-              } else {
-                // 对于公共论文，sections 直接在 data 中
-                updatedSections = (paperResult.data as any).sections || [];
-              }
-              
-              setEditableDraft(prev => {
-                if (!prev) return prev;
-                return { ...prev, sections: updatedSections };
-              });
-              
-              toast.success('子章节添加成功', { id: 'add-subsection' });
-            } else {
-              // 如果获取最新数据失败，至少显示成功消息
-              toast.success('子章节添加成功，但可能需要刷新页面查看最新内容', { id: 'add-subsection' });
-            }
-          } catch (error) {
-            console.error('获取最新论文数据失败:', error);
-            // 即使获取最新数据失败，也显示成功消息
-            toast.success('子章节添加成功，但可能需要刷新页面查看最新内容', { id: 'add-subsection' });
-          }
-        }
-      }
-    },
-    [handleSectionAddWithAPI, setEditableDraft]
-  );
 
   return {
     updateSections,
     updateSectionTree,
     handleSectionTitleUpdate,
-    handleSectionAddSubsection,
     handleSectionInsert,
     handleSectionMove,
     handleSectionDelete,
@@ -1402,6 +1205,5 @@ export function usePaperSections(
     handleSectionDeleteWithAPI,
     handleSectionUpdateWithAPI,
     handleAddBlocksFromText,
-    handleBlockAppendSubsection,
   };
 }

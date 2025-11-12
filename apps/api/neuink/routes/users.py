@@ -2,7 +2,7 @@
 用户相关路由 - 只负责HTTP处理
 """
 from flask import Blueprint, jsonify, request, g
-from neuink.config.constants import ResponseCode
+from neuink.config.constants import ResponseCode, BusinessCode
 from neuink.services.userService import get_user_service
 from neuink.utils.auth import login_required, admin_required
 from neuink.utils.common import (
@@ -41,19 +41,28 @@ def login():
         # 调用Service处理业务逻辑
         result = user_service.login(username, password)
         
-        # ✅ 返回标准两层嵌套结构
-        return jsonify(create_response(
-            code=ResponseCode.SUCCESS,
-            message="请求处理完成",
-            data=result
-        )), ResponseCode.SUCCESS
+        # 检查登录是否成功
+        if result.get("code") == BusinessCode.SUCCESS:
+            # 登录成功，返回成功响应
+            return jsonify(create_response(
+                code=ResponseCode.SUCCESS,
+                message="登录成功",
+                data=result.get("data")
+            )), ResponseCode.SUCCESS
+        else:
+            # 登录失败，返回失败响应
+            return jsonify(create_response(
+                code=ResponseCode.SUCCESS,
+                message="请求处理完成",
+                data=result
+            )), ResponseCode.SUCCESS
         
     except Exception as e:
         print(f"Exception异常: {str(e)}")
         import traceback
         traceback.print_exc()
         
-        from neuink.config.constants import BusinessCode, BusinessMessage
+        from neuink.config.constants import BusinessMessage
         error_result = {
             "code": BusinessCode.INTERNAL_ERROR,
             "message": BusinessMessage.INTERNAL_ERROR,

@@ -2,13 +2,54 @@ from flask import Flask
 from flask_cors import CORS
 from dotenv import load_dotenv
 import os
+import sys
 
 def create_app():
+    # 解决Windows下Python输出缓冲问题
+    if sys.platform == "win32":
+        # 在Windows环境下禁用输出缓冲
+        import builtins
+        # 重写print函数，添加flush=True参数
+        original_print = builtins.print
+        def print(*args, **kwargs):
+            kwargs.setdefault('flush', True)
+            return original_print(*args, **kwargs)
+        builtins.print = print
+    
     load_dotenv()
     app = Flask(__name__)
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev")
     app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/NeuInk")
     app.config["API_PREFIX"] = os.getenv("API_PREFIX", "/api/v1")
+    
+    # 配置日志，确保在Windows环境下也能立即输出
+    import logging
+    
+    # 设置日志级别
+    log_level = os.getenv("LOG_LEVEL", "INFO").upper()
+    app.logger.setLevel(getattr(logging, log_level))
+    
+    # 添加StreamHandler，确保日志立即输出
+    handler = logging.StreamHandler(sys.stdout)
+    handler.setLevel(getattr(logging, log_level))
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    handler.setFormatter(formatter)
+    app.logger.addHandler(handler)
+    
+    # 在Windows环境下确保日志不被缓冲
+    if sys.platform == "win32":
+        # 设置流为行缓冲模式
+        if hasattr(handler.stream, 'reconfigure'):
+            handler.stream.reconfigure(line_buffering=True)
+        else:
+            # 对于不支持reconfigure的Python版本，设置缓冲区大小为1
+            import io
+            handler.stream = io.TextIOWrapper(
+                handler.stream.buffer,
+                encoding=handler.stream.encoding,
+                newline=None,
+                line_buffering=True
+            )
 
     CORS(app, resources={
         r"/*": {

@@ -141,7 +141,29 @@ export class ApiClient {
         throw new ApiError(message, { status: res.status, url, payload: data });
       }
 
-      return data as ApiResponse<any>;
+      console.log('[DEBUG] API响应数据:', {
+        status: res.status,
+        url,
+        data
+      });
+
+      // 检查数据结构，如果已经是业务响应格式（{code: 0, message: "...", data: {...}}）
+      // 则包装成标准的 ApiResponse 格式
+      if (data && typeof data === 'object' && 'code' in data && 'message' in data && 'data' in data) {
+        // 这是业务响应格式，需要包装成 ApiResponse 格式
+        return {
+          code: res.status as any,
+          message: data.message || 'Success',
+          data: data.data  // 只提取业务响应的 data 字段
+        } as ApiResponse<any>;
+      } else {
+        // 如果不是业务响应格式，直接包装成 ApiResponse 格式
+        return {
+          code: res.status as any,
+          message: 'Success',
+          data: data
+        } as ApiResponse<any>;
+      }
     } catch (err: any) {
       if (err?.name === 'AbortError') {
         throw new ApiError('Request timeout', { status: 0, url });

@@ -403,13 +403,12 @@ class PaperService:
             # 更新论文可见状态
             update_data = {"isPublic": is_public}
             if self.paper_model.update(paper_id, update_data):
-                updated_paper = self.paper_model.find_by_id(paper_id)
+                # 只返回必要的信息，而不是整个论文对象
                 return self._wrap_success("论文可见状态更新成功", {
                     "paperId": paper_id,
                     "previousVisibility": previous_visibility,
                     "currentVisibility": is_public,
-                    "changed": True,
-                    "paper": updated_paper
+                    "changed": True
                 })
             else:
                 return self._wrap_error("更新论文可见状态失败")
@@ -504,11 +503,10 @@ class PaperService:
             # 更新论文
             update_data = {"sections": sections}
             if self.paper_model.update(paper_id, update_data):
-                updated_paper = self.paper_model.find_by_id(paper_id)
+                # 只返回必要的信息，而不是整个论文对象
                 return self._wrap_success(
                     f"成功向section添加了{len(new_blocks)}个blocks",
                     {
-                        "paper": updated_paper,
                         "addedBlocks": new_blocks,
                         "sectionId": section_id
                     }
@@ -564,8 +562,7 @@ class PaperService:
                     "id": section_data.get("id"),
                     "title": title_data.get("en", "Untitled Section"),
                     "titleZh": title_data.get("zh", title_zh_data or "未命名章节"),
-                    "content": section_data.get("content", []),
-                    "subsections": section_data.get("subsections", [])
+                    "content": section_data.get("content", [])
                 }
             else:
                 # 兼容旧格式或直接字符串
@@ -573,8 +570,7 @@ class PaperService:
                     "id": section_data.get("id"),
                     "title": title_data if title_data else "Untitled Section",
                     "titleZh": title_zh_data if title_zh_data else "未命名章节",
-                    "content": section_data.get("content", []),
-                    "subsections": section_data.get("subsections", [])
+                    "content": section_data.get("content", [])
                 }
             
             # 如果没有提供ID，生成一个
@@ -585,29 +581,23 @@ class PaperService:
             if position is None:
                 position = -1
                 
-            # 如果指定了父章节，添加到子章节中
-            if parent_section_id:
-                sections = self._insert_section_into_subsections(
-                    sections, parent_section_id, new_section, position
-                )
+            # 添加到根级章节（已移除subsection功能）
+            if position == -1:
+                sections.append(new_section)
+            elif 0 <= position < len(sections):
+                sections.insert(position, new_section)
             else:
-                # 添加到根级章节
-                if position == -1:
-                    sections.append(new_section)
-                elif 0 <= position < len(sections):
-                    sections.insert(position, new_section)
-                else:
-                    sections.append(new_section)
+                sections.append(new_section)
             
             # 更新论文
             update_data = {"sections": sections}
             if self.paper_model.update(paper_id, update_data):
-                updated_paper = self.paper_model.find_by_id(paper_id)
+                # 只返回必要的信息，而不是整个论文对象
                 return self._wrap_success(
                     "成功添加章节",
                     {
-                        "paper": updated_paper,
                         "addedSection": new_section,
+                        "addedSectionId": new_section["id"],  # 明确返回新增章节的ID
                         "parentSectionId": parent_section_id,
                         "position": position
                     }
@@ -650,9 +640,14 @@ class PaperService:
 
             # 查找并更新section
             sections = paper.get("sections", [])
-            target_section, section_index, parent_path = self._find_section_by_id(
-                sections, section_id
-            )
+            target_section = None
+            section_index = -1
+            
+            for i, section in enumerate(sections):
+                if section.get("id") == section_id:
+                    target_section = section
+                    section_index = i
+                    break
             
             if target_section is None:
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
@@ -664,34 +659,31 @@ class PaperService:
                     if isinstance(value, dict) and "en" in value:
                         # 新格式：{en: "...", zh: "..."}
                         target_section["title"] = value.get("en", "")
-                        if "zh" in value and value.get("zh"):
-                            target_section["titleZh"] = value.get("zh")
+                        # 只有当zh值存在且不是默认占位符时才更新titleZh
+                        zh_value = value.get("zh", "")
+                        if zh_value and zh_value.strip() != "未命名章节":
+                            target_section["titleZh"] = zh_value
                     else:
                         # 旧格式：直接字符串
                         target_section["title"] = value
                 elif key == "titleZh":
                     # 直接更新titleZh字段
                     target_section["titleZh"] = value
-                elif key in ["content", "subsections"]:
+                elif key == "content":
                     target_section[key] = value
 
-            # 重新更新sections结构
-            if parent_path:
-                # 如果是在子章节中，需要递归更新
-                sections = self._update_section_in_path(sections, parent_path, target_section)
-            else:
-                # 根级章节直接更新
-                sections[section_index] = target_section
+            # 重新更新sections结构（已移除subsection支持）
+            sections[section_index] = target_section
 
             # 更新论文
             update_paper_data = {"sections": sections}
             if self.paper_model.update(paper_id, update_paper_data):
-                updated_paper = self.paper_model.find_by_id(paper_id)
+                # 只返回必要的信息，而不是整个论文对象
                 return self._wrap_success(
                     "章节更新成功",
                     {
-                        "paper": updated_paper,
-                        "updatedSection": target_section
+                        "updatedSection": target_section,
+                        "sectionId": section_id
                     }
                 )
             else:
@@ -728,27 +720,30 @@ class PaperService:
             if not is_admin and paper["createdBy"] != user_id:
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
-            # 查找并删除section
+            # 查找并删除section（简化版本，移除subsection支持）
             sections = paper.get("sections", [])
-            target_section, section_index, parent_path = self._find_section_by_id(
-                sections, section_id
-            )
+            target_section = None
+            section_index = -1
+            
+            for i, section in enumerate(sections):
+                if section.get("id") == section_id:
+                    target_section = section
+                    section_index = i
+                    break
             
             if target_section is None:
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
 
-            # 删除section
-            if parent_path:
-                # 如果是在子章节中，需要递归更新
-                sections = self._delete_section_in_path(sections, parent_path)
-            else:
-                # 根级章节直接删除
-                sections.pop(section_index)
+            # 删除section（直接删除，不再支持subsection）
+            sections.pop(section_index)
 
             # 更新论文
             update_paper_data = {"sections": sections}
             if self.paper_model.update(paper_id, update_paper_data):
-                return self._wrap_success("章节删除成功", {"deletedSectionId": section_id})
+                # 只返回必要的信息，而不是整个论文对象
+                return self._wrap_success("章节删除成功", {
+                    "deletedSectionId": section_id
+                })
             else:
                 return self._wrap_error("更新论文失败")
 
@@ -787,11 +782,16 @@ class PaperService:
             if not is_admin and paper["createdBy"] != user_id:
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
-            # 查找目标section
+            # 查找目标section（简化版本，移除subsection支持）
             sections = paper.get("sections", [])
-            target_section, section_index, parent_path = self._find_section_by_id(
-                sections, section_id
-            )
+            target_section = None
+            section_index = -1
+            
+            for i, section in enumerate(sections):
+                if section.get("id") == section_id:
+                    target_section = section
+                    section_index = i
+                    break
             
             if target_section is None:
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
@@ -817,21 +817,19 @@ class PaperService:
             blocks[target_block_index] = target_block
             target_section["content"] = blocks
 
-            # 重新更新sections结构
-            if parent_path:
-                sections = self._update_section_in_path(sections, parent_path, target_section)
-            else:
-                sections[section_index] = target_section
+            # 重新更新sections结构（简化版本，不再支持subsection）
+            sections[section_index] = target_section
 
             # 更新论文
             update_paper_data = {"sections": sections}
             if self.paper_model.update(paper_id, update_paper_data):
-                updated_paper = self.paper_model.find_by_id(paper_id)
+                # 只返回必要的信息，而不是整个论文对象
                 return self._wrap_success(
                     "block更新成功",
                     {
-                        "paper": updated_paper,
-                        "updatedBlock": target_block
+                        "updatedBlock": target_block,
+                        "blockId": target_block["id"],
+                        "sectionId": section_id
                     }
                 )
             else:
@@ -870,11 +868,16 @@ class PaperService:
             if not is_admin and paper["createdBy"] != user_id:
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
-            # 查找目标section
+            # 查找目标section（简化版本，移除subsection支持）
             sections = paper.get("sections", [])
-            target_section, section_index, parent_path = self._find_section_by_id(
-                sections, section_id
-            )
+            target_section = None
+            section_index = -1
+            
+            for i, section in enumerate(sections):
+                if section.get("id") == section_id:
+                    target_section = section
+                    section_index = i
+                    break
             
             if target_section is None:
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
@@ -895,16 +898,17 @@ class PaperService:
             deleted_block = blocks.pop(target_block_index)
             target_section["content"] = blocks
 
-            # 重新更新sections结构
-            if parent_path:
-                sections = self._update_section_in_path(sections, parent_path, target_section)
-            else:
-                sections[section_index] = target_section
+            # 重新更新sections结构（简化版本，不再支持subsection）
+            sections[section_index] = target_section
 
             # 更新论文
             update_paper_data = {"sections": sections}
             if self.paper_model.update(paper_id, update_paper_data):
-                return self._wrap_success("block删除成功", {"deletedBlockId": block_id})
+                # 只返回必要的信息，而不是整个论文对象
+                return self._wrap_success("block删除成功", {
+                    "deletedBlockId": block_id,
+                    "sectionId": section_id
+                })
             else:
                 return self._wrap_error("更新论文失败")
 
@@ -975,9 +979,18 @@ class PaperService:
                         insert_index = i + 1  # 插入到指定block后面
                         break
             
-            # 创建新block
+            # 创建新block，确保生成唯一ID
+            # 如果前端提供了ID，使用前端ID；否则生成新ID
+            frontend_id = block_data.get("id")
+            if frontend_id and isinstance(frontend_id, str):
+                # 使用前端提供的ID，但记录这是前端ID
+                new_block_id = frontend_id
+            else:
+                # 生成新的后端ID
+                new_block_id = f"block_{int(time.time())}_{uuid.uuid4().hex[:8]}"
+            
             new_block = {
-                "id": block_data.get("id", f"block_{int(time.time())}_{hash(block_data.get('type', 'unknown'))}"),
+                "id": new_block_id,
                 "type": block_data.get("type"),
                 "content": block_data.get("content", {}),
                 "metadata": block_data.get("metadata", {}),
@@ -1026,12 +1039,12 @@ class PaperService:
             # 更新论文
             update_data = {"sections": sections}
             if self.paper_model.update(paper_id, update_data):
-                updated_paper = self.paper_model.find_by_id(paper_id)
+                # 只返回必要的信息，而不是整个论文对象
                 return self._wrap_success(
                     "成功添加block",
                     {
-                        "paper": updated_paper,
                         "addedBlock": new_block,
+                        "blockId": new_block["id"],  # 明确返回新创建的block ID
                         "sectionId": section_id
                     }
                 )
@@ -1091,21 +1104,23 @@ class PaperService:
             if target_section is None:
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
 
-            # 创建加载块
-            loading_block_id = f"loading_{int(time.time())}_{hash(text) % 10000}"
-            loading_block = {
-                "id": loading_block_id,
-                "type": "loading",
-                "status": "pending",
-                "message": "准备解析文本...",
-                "progress": 0,
-                "originalText": text,
-                "sectionId": section_id,
-                "afterBlockId": after_block_id,
-                "createdAt": get_current_time().isoformat()
-            }
+            # 获取section上下文信息
+            section_context = f"Section标题: {target_section.get('title', '未知')}"
+            if target_section.get('content'):
+                section_context += f", Section内容: {target_section['content'][:200]}..."
 
-            # 将加载块添加到section中
+            # 使用LLM解析文本为blocks
+            llm_utils = get_llm_utils()
+            try:
+                new_blocks = llm_utils.parse_text_to_blocks(text, section_context)
+            except Exception as llm_exc:
+                # 直接抛出异常，不使用降级方案
+                raise Exception(f"LLM文本解析失败: {llm_exc}")
+
+            if not new_blocks:
+                return self._wrap_error("文本解析失败，无法生成有效的blocks")
+
+            # 将新blocks添加到section中
             if "content" not in target_section:
                 target_section["content"] = []
             
@@ -1119,23 +1134,19 @@ class PaperService:
                         insert_index = i + 1  # 插入到指定block后面
                         break
             
-            # 插入加载块
-            current_blocks.insert(insert_index, loading_block)
-            target_section["content"] = current_blocks
+            # 插入新blocks
+            current_blocks[insert_index:insert_index] = new_blocks
             sections[section_index] = target_section
 
-            # 更新论文，添加加载块
+            # 更新论文
             update_data = {"sections": sections}
             if self.paper_model.update(paper_id, update_data):
-                # 启动异步解析任务
-                self._start_async_text_parsing(paper_id, loading_block_id, section_id, text, after_block_id)
-                
+                # 只返回必要的信息，而不是整个论文对象
                 return self._wrap_success(
-                    "文本解析任务已启动",
+                    f"成功向section添加了{len(new_blocks)}个blocks",
                     {
-                        "loadingBlockId": loading_block_id,
-                        "sectionId": section_id,
-                        "status": "pending"
+                        "addedBlocks": new_blocks,
+                        "sectionId": section_id
                     }
                 )
             else:
@@ -1147,443 +1158,15 @@ class PaperService:
             error_details = f"从文本添加block到section失败: {exc}\n详细错误: {traceback.format_exc()}"
             return self._wrap_error(error_details)
 
-    def _start_async_text_parsing(
-        self,
-        paper_id: str,
-        loading_block_id: str,
-        section_id: str,
-        text: str,
-        after_block_id: Optional[str] = None,
-    ) -> None:
-        """
-        启动异步文本解析任务
-        
-        Args:
-            paper_id: 论文ID
-            loading_block_id: 加载块ID
-            section_id: 章节ID
-            text: 要解析的文本
-            after_block_id: 在指定block后插入
-        """
-        import threading
-        
-        def parse_text_task():
-            try:
-                # 更新状态为处理中
-                self.paper_model.update_loading_block(paper_id, loading_block_id, {
-                    "status": "processing",
-                    "message": "正在解析文本内容...",
-                    "progress": 10
-                })
-                
-                # 获取论文和section信息
-                paper = self.paper_model.find_by_id(paper_id)
-                if not paper:
-                    self.paper_model.update_loading_block(paper_id, loading_block_id, {
-                        "status": "failed",
-                        "message": "找不到论文信息",
-                        "completedAt": get_current_time().isoformat()
-                    })
-                    return
-                
-                sections = paper.get("sections", [])
-                target_section = None
-                section_index = -1
-                
-                for i, section in enumerate(sections):
-                    if section.get("id") == section_id:
-                        target_section = section
-                        section_index = i
-                        break
-                
-                if not target_section:
-                    self.paper_model.update_loading_block(paper_id, loading_block_id, {
-                        "status": "failed",
-                        "message": "找不到目标章节",
-                        "completedAt": get_current_time().isoformat()
-                    })
-                    return
-                
-                # 更新进度
-                self.paper_model.update_loading_block(paper_id, loading_block_id, {
-                    "progress": 30,
-                    "message": "正在调用AI服务解析文本..."
-                })
-                
-                # 获取section上下文信息
-                section_context = f"Section标题: {target_section.get('title', '未知')}"
-                if target_section.get('content'):
-                    section_context += f", Section内容: {str(target_section['content'])[:200]}..."
+    # _start_async_text_parsing 方法已删除，因为现在使用同步处理
 
-                # 使用LLM解析文本为blocks
-                try:
-                    llm_utils = get_llm_utils()
-                    new_blocks = llm_utils.parse_text_to_blocks(text, section_context)
-                except Exception as llm_exc:
-                    # 捕获LLM解析异常
-                    error_msg = str(llm_exc)
-                    if "GLM_API_KEY" in error_msg:
-                        message = "LLM服务未正确配置：缺少有效的API密钥。请联系管理员配置GLM_API_KEY。"
-                    elif "timeout" in error_msg.lower() or "超时" in error_msg:
-                        message = "文本解析超时：文本内容可能过多或服务器响应较慢，请减少文本量或稍后重试。"
-                    elif "network" in error_msg.lower() or "网络" in error_msg:
-                        message = "网络连接错误：无法连接到LLM服务，请检查网络连接后重试。"
-                    else:
-                        message = f"文本解析失败：{error_msg}"
-                    
-                    self.paper_model.update_loading_block(paper_id, loading_block_id, {
-                        "status": "failed",
-                        "message": message,
-                        "completedAt": get_current_time().isoformat()
-                    })
-                    return
+    # get_loading_block_status 方法已删除，因为不再使用loading blocks
+    # get_all_loading_blocks_status 方法已删除，因为不再使用loading blocks
 
-                # 更新进度
-                self.paper_model.update_loading_block(paper_id, loading_block_id, {
-                    "progress": 80,
-                    "message": "正在保存解析结果..."
-                })
-
-                if not new_blocks:
-                    self.paper_model.update_loading_block(paper_id, loading_block_id, {
-                        "status": "failed",
-                        "message": "文本解析失败，无法生成有效的blocks。请检查文本内容是否合适。",
-                        "completedAt": get_current_time().isoformat()
-                    })
-                    return
-
-                # 移除加载块并添加解析后的blocks
-                if self.paper_model.remove_loading_block(paper_id, loading_block_id, new_blocks):
-                    self.paper_model.update_loading_block(paper_id, loading_block_id, {
-                        "status": "completed",
-                        "message": f"成功解析并添加了{len(new_blocks)}个段落",
-                        "progress": 100,
-                        "completedAt": get_current_time().isoformat()
-                    })
-                else:
-                    self.paper_model.update_loading_block(paper_id, loading_block_id, {
-                        "status": "failed",
-                        "message": "保存解析结果失败",
-                        "completedAt": get_current_time().isoformat()
-                    })
-                
-            except Exception as exc:
-                # 记录完整的异常信息以便调试
-                import traceback
-                error_details = f"异步文本解析失败: {exc}\n详细错误: {traceback.format_exc()}"
-                self.paper_model.update_loading_block(paper_id, loading_block_id, {
-                    "status": "failed",
-                    "message": f"解析过程中发生错误: {str(exc)}",
-                    "completedAt": get_current_time().isoformat()
-                })
-        
-        # 启动后台线程执行解析任务
-        thread = threading.Thread(target=parse_text_task)
-        thread.daemon = True
-        thread.start()
-
-    def get_loading_block_status(self, paper_id: str, loading_block_id: str) -> Dict[str, Any]:
-        """
-        获取加载块的状态
-        
-        Args:
-            paper_id: 论文ID
-            loading_block_id: 加载块ID
-            
-        Returns:
-            加载块状态信息
-        """
-        try:
-            loading_blocks = self.paper_model.find_loading_blocks(paper_id)
-            
-            for block in loading_blocks:
-                if block.get("blockId") == loading_block_id:
-                    return self._wrap_success("获取加载块状态成功", block)
-            
-            return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "找不到指定的加载块")
-        except Exception as exc:
-            return self._wrap_error(f"获取加载块状态失败: {exc}")
-
-    def get_all_loading_blocks_status(self, paper_id: str) -> Dict[str, Any]:
-        """
-        获取论文中所有加载块的状态
-        
-        Args:
-            paper_id: 论文ID
-            
-        Returns:
-            所有加载块的状态信息
-        """
-        try:
-            loading_blocks = self.paper_model.find_loading_blocks(paper_id)
-            return self._wrap_success("获取所有加载块状态成功", {
-                "loadingBlocks": loading_blocks,
-                "count": len(loading_blocks)
-            })
-        except Exception as exc:
-            return self._wrap_error(f"获取所有加载块状态失败: {exc}")
-
-    # 全局缓存，用于减少数据库查询
-    _loading_block_cache = {}
-    _cache_timestamps = {}
-    _cache_ttl = 5  # 缓存5秒
-    
-    def check_loading_block_status(
-        self,
-        paper_id: str,
-        section_id: str,
-        block_id: str,
-        user_id: str,
-        is_admin: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        检查指定加载块的状态，使用缓存减少数据库查询
-        
-        Args:
-            paper_id: 论文ID
-            section_id: 章节ID
-            block_id: 加载块ID
-            user_id: 用户ID
-            is_admin: 是否为管理员
-            
-        Returns:
-            加载块状态信息
-        """
-        try:
-            # 检查缓存
-            cache_key = f"{paper_id}_{section_id}_{block_id}"
-            current_time = time.time()
-            
-            # 如果缓存存在且未过期，直接返回缓存结果
-            if (cache_key in self._loading_block_cache and
-                cache_key in self._cache_timestamps and
-                current_time - self._cache_timestamps[cache_key] < self._cache_ttl):
-                
-                cached_result = self._loading_block_cache[cache_key]
-                # 如果是已完成或失败状态，可以长期缓存
-                if cached_result.get("status") in ["completed", "failed"]:
-                    return cached_result
-            
-            # 检查论文是否存在及权限
-            paper = self.paper_model.find_by_id(paper_id)
-            if not paper:
-                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
-
-            if not is_admin and paper["createdBy"] != user_id:
-                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权访问此论文")
-
-            # 查找加载块
-            loading_blocks = self.paper_model.find_loading_blocks(paper_id)
-            target_block = None
-            
-            for block in loading_blocks:
-                if block.get("blockId") == block_id and block.get("sectionId") == section_id:
-                    target_block = block
-                    break
-            
-            if not target_block:
-                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "找不到指定的加载块")
-            
-            status = target_block.get("status", "unknown")
-            progress = target_block.get("progress", 0)
-            message = target_block.get("message", "")
-            
-            # 构建结果
-            result = None
-            
-            # 如果解析完成，返回更新后的论文数据
-            if status == "completed":
-                updated_paper = self.paper_model.find_by_id(paper_id)
-                result = self._wrap_success("解析已完成", {
-                    "status": status,
-                    "progress": progress,
-                    "message": message,
-                    "paper": updated_paper
-                })
-            # 如果解析失败，返回错误信息
-            elif status == "failed":
-                result = self._wrap_success("解析失败", {
-                    "status": status,
-                    "progress": progress,
-                    "message": message,
-                    "error": target_block.get("error", "未知错误")
-                })
-            # 如果仍在解析中，返回当前状态
-            else:
-                result = self._wrap_success("解析中", {
-                    "status": status,
-                    "progress": progress,
-                    "message": message
-                })
-            
-            # 更新缓存
-            self._loading_block_cache[cache_key] = result
-            self._cache_timestamps[cache_key] = current_time
-            
-            return result
-            
-        except Exception as exc:
-            return self._wrap_error(f"检查加载块状态失败: {exc}")
-    
-    def clear_loading_block_cache(self, paper_id: str = None) -> None:
-        """
-        清除加载块状态缓存
-        
-        Args:
-            paper_id: 如果提供，只清除指定论文的缓存；否则清除所有缓存
-        """
-        if paper_id:
-            # 清除指定论文的缓存
-            keys_to_remove = [key for key in self._loading_block_cache.keys() if key.startswith(f"{paper_id}_")]
-            for key in keys_to_remove:
-                self._loading_block_cache.pop(key, None)
-                self._cache_timestamps.pop(key, None)
-        else:
-            # 清除所有缓存
-            self._loading_block_cache.clear()
-            self._cache_timestamps.clear()
-
-    def _insert_section_into_subsections(
-        self,
-        sections: List[Dict[str, Any]],
-        parent_section_id: str,
-        new_section: Dict[str, Any],
-        position: int
-    ) -> List[Dict[str, Any]]:
-        """在指定章节的子章节中插入新章节"""
-        for i, section in enumerate(sections):
-            if section.get("id") == parent_section_id:
-                # 找到父章节
-                current_subsections = section.get("subsections", [])
-                if position == -1 or position >= len(current_subsections):
-                    current_subsections.append(new_section)
-                elif 0 <= position < len(current_subsections):
-                    current_subsections.insert(position, new_section)
-                else:
-                    current_subsections.append(new_section)
-                
-                sections[i]["subsections"] = current_subsections
-                return sections
-            
-            # 递归检查子章节
-            if section.get("subsections"):
-                updated_subsections = self._insert_section_into_subsections(
-                    section["subsections"], parent_section_id, new_section, position
-                )
-                if updated_subsections != section["subsections"]:
-                    sections[i]["subsections"] = updated_subsections
-                    return sections
-        
-        return sections
-
-    def _find_section_by_id(
-        self, sections: List[Dict[str, Any]], section_id: str, parent_path: str = ""
-    ) -> Tuple[Optional[Dict[str, Any]], int, Optional[str]]:
-        """
-        根据ID查找章节，返回章节、索引和父路径
-        
-        Args:
-            sections: 章节列表
-            section_id: 章节ID
-            parent_path: 父路径
-            
-        Returns:
-            (章节对象, 索引, 父路径)
-        """
-        for i, section in enumerate(sections):
-            current_path = f"{parent_path}/{i}" if parent_path else str(i)
-            
-            if section.get("id") == section_id:
-                return section, i, parent_path if parent_path else None
-            
-            # 递归查找子章节
-            if section.get("subsections"):
-                found, index, path = self._find_section_by_id(
-                    section["subsections"], section_id, current_path
-                )
-                if found:
-                    return found, index, path
-        
-        return None, -1, None
-
-    def _update_section_in_path(
-        self,
-        sections: List[Dict[str, Any]],
-        parent_path: str,
-        updated_section: Dict[str, Any]
-    ) -> List[Dict[str, Any]]:
-        """
-        根据路径更新章节
-        
-        Args:
-            sections: 章节列表
-            parent_path: 父路径
-            updated_section: 更新后的章节
-            
-        Returns:
-            更新后的章节列表
-        """
-        if not parent_path:
-            return sections
-        
-        path_parts = parent_path.split("/")
-        if not path_parts:
-            return sections
-        
-        # 找到要更新的章节索引
-        section_index = int(path_parts[0])
-        
-        if len(path_parts) == 1:
-            # 根级章节，直接更新
-            sections[section_index] = updated_section
-        else:
-            # 子章节，递归更新
-            remaining_path = "/".join(path_parts[1:])
-            sections[section_index]["subsections"] = self._update_section_in_path(
-                sections[section_index].get("subsections", []),
-                remaining_path,
-                updated_section
-            )
-        
-        return sections
-
-    def _delete_section_in_path(
-        self,
-        sections: List[Dict[str, Any]],
-        parent_path: str
-    ) -> List[Dict[str, Any]]:
-        """
-        根据路径删除章节
-        
-        Args:
-            sections: 章节列表
-            parent_path: 父路径
-            
-        Returns:
-            更新后的章节列表
-        """
-        if not parent_path:
-            return sections
-        
-        path_parts = parent_path.split("/")
-        if not path_parts:
-            return sections
-        
-        # 找到要删除的章节索引
-        section_index = int(path_parts[0])
-        
-        if len(path_parts) == 1:
-            # 根级章节，直接删除
-            sections.pop(section_index)
-        else:
-            # 子章节，递归删除
-            remaining_path = "/".join(path_parts[1:])
-            sections[section_index]["subsections"] = self._delete_section_in_path(
-                sections[section_index].get("subsections", []),
-                remaining_path
-            )
-        
-        return sections
+    # loading block相关方法已删除，因为不再使用loading blocks
+    # _loading_block_cache 缓存已删除
+    # check_loading_block_status 方法已删除
+    # clear_loading_block_cache 方法已删除
 
     # ------------------------------------------------------------------
     # 统计 & 个人论文库占位
@@ -1945,15 +1528,12 @@ class PaperService:
             # 更新论文
             update_data = {"references": current_references}
             if self.paper_model.update(paper_id, update_data):
-                updated_paper = self.paper_model.find_by_id(paper_id)
-                
-                # 构建详细的结果信息
+                # 构建详细的结果信息，但不返回整个论文对象
                 result_message = f"成功添加{len(added_references)}条参考文献"
                 
                 return self._wrap_success(
                     result_message,
                     {
-                        "paper": updated_paper,
                         "addedReferences": added_references,
                         "totalProcessed": len(sorted_references),
                         "totalReferences": len(current_references)
@@ -1998,11 +1578,10 @@ class PaperService:
                 }
                 
                 if self.paper_model.update(paper_id, update_data):
-                    final_paper = self.paper_model.find_by_id(paper_id)
+                    # 只返回必要的信息，而不是整个论文对象
                     return self._wrap_success(
                         "翻译检查和补全完成",
                         {
-                            "paper": final_paper,
                             "translationResult": translation_result
                         }
                     )
@@ -2045,8 +1624,8 @@ class PaperService:
         title = metadata.get("title", "")
         title_zh = metadata.get("titleZh", "")
         
-        # 检查是否有英文标题但没有中文标题
-        if title and not title_zh:
+        # 检查是否有英文标题但没有中文标题，或者中文标题是默认的占位文本
+        if title and (not title_zh or title_zh.strip() == "未命名论文"):
             try:
                 translated_text = llm_utils.simple_text_chat(
                     f"将以下英文标题翻译为中文，只返回翻译结果：\n\n{title}",
@@ -2191,8 +1770,8 @@ class PaperService:
             section_title = section.get("title", "")
             section_title_zh = section.get("titleZh", "")
             
-            # 检查是否有英文标题但没有中文标题
-            if section_title and not section_title_zh:
+            # 检查是否有英文标题但没有中文标题，或者中文标题是默认的"未命名章节"
+            if section_title and (not section_title_zh or section_title_zh == "未命名章节"):
                 try:
                     translated_text = llm_utils.simple_text_chat(
                         f"将以下英文章节标题翻译为中文，只返回翻译结果：\n\n{section_title}",
@@ -2319,7 +1898,7 @@ class PaperService:
         source_lang = ""
         target_lang = ""
         
-        if has_en and not has_zh:
+        if has_en and (not has_zh or self._is_default_chinese_text(field_data.get("zh", []))):
             # 有英文，翻译为中文
             source_text = self._extract_text_from_content(field_data.get("en", []))
             source_lang = "en"
@@ -2389,6 +1968,32 @@ class PaperService:
             translation_result["errors"].append(f"翻译失败 {field_path}: {str(e)}")
         
         return field_data
+    
+    def _is_default_chinese_text(self, zh_content: Any) -> bool:
+        """
+        检查中文内容是否是默认的占位文本
+        
+        Args:
+            zh_content: 中文内容，可能是字符串或数组
+            
+        Returns:
+            如果是默认占位文本返回True，否则返回False
+        """
+        if not zh_content:
+            return True  # 空内容视为需要翻译
+            
+        if isinstance(zh_content, str):
+            return zh_content.strip() == "未命名章节"
+        
+        if isinstance(zh_content, list):
+            # 检查数组中的文本内容
+            for item in zh_content:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    text = item.get("text", "").strip()
+                    if text == "未命名章节":
+                        return True
+        
+        return False
     
     def _extract_text_from_content(self, content: Any) -> str:
         """
@@ -2699,32 +2304,9 @@ class PaperService:
                 
                 sections_updated = True
             
-            # 递归处理子章节
-            if "subsections" in section and section["subsections"]:
-                updated_subsections = []
-                for subsection in section["subsections"]:
-                    updated_subsection = subsection.copy()
-                    
-                    if "title" in subsection and isinstance(subsection["title"], dict):
-                        title_obj = subsection["title"]
-                        
-                        if "en" in title_obj:
-                            updated_subsection["title"] = title_obj["en"]
-                            updated_count += 1
-                        
-                        if "zh" in title_obj:
-                            updated_subsection["titleZh"] = title_obj["zh"]
-                            updated_count += 1
-                        
-                        sections_updated = True
-                    
-                    updated_subsections.append(updated_subsection)
-                
-                updated_section["subsections"] = updated_subsections
-            
             updated_sections.append(updated_section)
         
-        # 更新sections
+        # 更新sections（已移除subsection支持）
         if sections_updated:
             self.paper_model.update(paper_id, {"sections": updated_sections})
         

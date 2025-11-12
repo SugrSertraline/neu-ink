@@ -195,3 +195,65 @@
   background-color: rgba(59, 130, 246, 0.2);
   border-left-color: rgb(96, 165, 250);
 }
+
+/* Sonner Toast 样式 */
+.toaster.group {
+  --width: 356px;
+  --height: auto;
+  --border-radius: var(--radius);
+  --background: var(--popover);
+  --foreground: var(--popover-foreground);
+  --border: var(--border);
+}
+
+.toaster.group [data-sonner-toast] {
+  background: var(--background);
+  border: 1px solid var(--border);
+  border-radius: var(--border-radius);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  animation: slide-in 0.3s ease-out;
+}
+
+.toaster.group [data-sonner-toast][data-type="error"] {
+  background: var(--destructive);
+  border-color: var(--destructive);
+  color: white;
+}
+
+.toaster.group [data-sonner-toast][data-type="success"] {
+  background: hsl(142 76% 36%);
+  border-color: hsl(142 76% 36%);
+  color: white;
+}
+
+.toaster.group [data-sonner-toast][data-type="warning"] {
+  background: hsl(38 92% 50%);
+  border-color: hsl(38 92% 50%);
+  color: white;
+}
+
+@keyframes slide-in {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.toaster.group [data-sonner-toast][data-state="closed"] {
+  animation: slide-out 0.3s ease-out forwards;
+}
+
+@keyframes slide-out {
+  from {
+    transform: translateX(0);
+    opacity: 1;
+  }
+  to {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+}

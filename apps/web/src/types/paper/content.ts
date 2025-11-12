@@ -202,6 +202,7 @@ export interface LoadingBlock {
   afterBlockId?: string;
   createdAt?: string;
   completedAt?: string;
+  sessionId?: string;
 }
 
 export type BlockContent =

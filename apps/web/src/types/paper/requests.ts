@@ -163,8 +163,9 @@ export interface DeleteResult {
 
 // —— 请求：向section添加blocks（从文本解析）——
 export interface AddBlockFromTextToSectionRequest {
-  text: string;
+  text?: string;  // 可选：如果是恢复会话，则不需要text
   afterBlockId?: string;  // 可选：指定在哪个block后插入
+  sessionId?: string;  // 可选：会话ID，用于恢复会话
 }
 
 // —— 响应：添加block结果（从文本解析）——
@@ -194,6 +195,7 @@ export interface AddBlockToSectionRequest {
 export interface AddBlockToSectionResult {
   paper: Paper;
   addedBlock: import('./content').BlockContent;
+  blockId: string;  // 后端创建的真实block ID
   sectionId: string;
 }
 
@@ -230,6 +232,15 @@ export interface UpdateBlockResult {
 // —— 响应：删除block结果 ——
 export interface DeleteBlockResult {
   deletedBlockId: string;
+}
+
+// —— 响应：添加section结果 ——
+export interface AddSectionResult {
+  paper: Paper;
+  addedSection: any;
+  addedSectionId: string;
+  parentSectionId?: string | null;
+  position?: number;
 }
 
 // —— 请求：更新论文可见状态 ——
