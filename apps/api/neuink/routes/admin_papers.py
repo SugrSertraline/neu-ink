@@ -7,6 +7,9 @@ from datetime import datetime
 from flask import Blueprint, request, g
 
 from ..services.paperService import get_paper_service
+from ..services.paperContentService import PaperContentService
+from ..services.paperTranslationService import PaperTranslationService
+from ..models.paper import PaperModel
 from ..utils.auth import login_required, admin_required
 from ..utils.common import (
     success_response,
@@ -189,12 +192,14 @@ def add_section(paper_id):
         section_data = data.get("sectionData")
         position = data.get("position", -1)
         
-        service = get_paper_service()
-        result = service.add_section(
+        paper_model = PaperModel()
+        content_service = PaperContentService(paper_model)
+        result = content_service.add_section(
             paper_id=paper_id,
             section_data=section_data,
             user_id=g.current_user["user_id"],
             is_admin=True,
+            parent_section_id=None,
             position=position
         )
         
@@ -341,8 +346,9 @@ def add_block_to_section(paper_id, section_id):
         if not block_data.get("type"):
             return bad_request_response("block类型不能为空")
         
-        service = get_paper_service()
-        result = service.add_block_directly(
+        paper_model = PaperModel()
+        content_service = PaperContentService(paper_model)
+        result = content_service.add_block_directly(
             paper_id=paper_id,
             section_id=section_id,
             block_data=block_data,
@@ -387,8 +393,9 @@ def add_block_from_text_to_section(paper_id, section_id):
         text = data.get("text")
         after_block_id = data.get("afterBlockId")  # 获取插入位置
         
-        service = get_paper_service()
-        result = service.add_block_from_text(
+        paper_model = PaperModel()
+        content_service = PaperContentService(paper_model)
+        result = content_service.add_block_from_text(
             paper_id=paper_id,
             section_id=section_id,
             text=text,
@@ -433,8 +440,9 @@ def update_section(paper_id, section_id):
         if not data:
             return bad_request_response("更新数据不能为空")
         
-        service = get_paper_service()
-        result = service.update_section(
+        paper_model = PaperModel()
+        content_service = PaperContentService(paper_model)
+        result = content_service.update_section(
             paper_id=paper_id,
             section_id=section_id,
             update_data=data,
@@ -461,8 +469,9 @@ def delete_section(paper_id, section_id):
     管理员删除指定论文的指定section
     """
     try:
-        service = get_paper_service()
-        result = service.delete_section(
+        paper_model = PaperModel()
+        content_service = PaperContentService(paper_model)
+        result = content_service.delete_section(
             paper_id=paper_id,
             section_id=section_id,
             user_id=g.current_user["user_id"],
@@ -499,8 +508,9 @@ def update_block(paper_id, section_id, block_id):
         if not data:
             return bad_request_response("更新数据不能为空")
         
-        service = get_paper_service()
-        result = service.update_block(
+        paper_model = PaperModel()
+        content_service = PaperContentService(paper_model)
+        result = content_service.update_block(
             paper_id=paper_id,
             section_id=section_id,
             block_id=block_id,
@@ -579,8 +589,9 @@ def parse_references(paper_id):
         text = data.get("text")
         
         # 首先解析参考文献
-        service = get_paper_service()
-        parse_result = service.parse_references(text)
+        paper_model = PaperModel()
+        content_service = PaperContentService(paper_model)
+        parse_result = content_service.parse_references(text)
         
         # 即使解析失败，也继续处理，因为解析结果中包含了错误信息
         # 这样前端可以显示部分解析成功的结果和错误信息
@@ -592,7 +603,7 @@ def parse_references(paper_id):
             return bad_request_response("未能从文本中解析出有效的参考文献")
         
         # 将解析后的参考文献添加到论文中
-        add_result = service.add_references_to_paper(
+        add_result = content_service.add_references_to_paper(
             paper_id=paper_id,
             references=parsed_references,
             user_id=g.current_user["user_id"],
@@ -628,8 +639,9 @@ def check_and_complete_translation(paper_id):
     3. 更新论文数据和翻译状态
     """
     try:
-        service = get_paper_service()
-        result = service.check_and_complete_translation(paper_id)
+        paper_model = PaperModel()
+        translation_service = PaperTranslationService(paper_model)
+        result = translation_service.check_and_complete_translation(paper_id)
         
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
@@ -654,8 +666,9 @@ def get_translation_status(paper_id):
     - updatedAt: 最后更新时间
     """
     try:
-        service = get_paper_service()
-        result = service.get_translation_status(paper_id)
+        paper_model = PaperModel()
+        translation_service = PaperTranslationService(paper_model)
+        result = translation_service.get_translation_status(paper_id)
         
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
@@ -682,8 +695,9 @@ def migrate_title_format():
         data = request.get_json()
         paper_id = data.get("paperId") if data else None
         
-        service = get_paper_service()
-        result = service.migrate_title_format(paper_id)
+        paper_model = PaperModel()
+        translation_service = PaperTranslationService(paper_model)
+        result = translation_service.migrate_title_format(paper_id)
         
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
@@ -710,8 +724,9 @@ def migrate_abstract_format():
         data = request.get_json()
         paper_id = data.get("paperId") if data else None
         
-        service = get_paper_service()
-        result = service.migrate_abstract_format(paper_id)
+        paper_model = PaperModel()
+        translation_service = PaperTranslationService(paper_model)
+        result = translation_service.migrate_abstract_format(paper_id)
         
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
@@ -738,8 +753,9 @@ def migrate_translation_status():
         data = request.get_json()
         paper_id = data.get("paperId") if data else None
         
-        service = get_paper_service()
-        result = service.migrate_paper_translation_status(paper_id)
+        paper_model = PaperModel()
+        translation_service = PaperTranslationService(paper_model)
+        result = translation_service.migrate_paper_translation_status(paper_id)
         
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
@@ -748,7 +764,6 @@ def migrate_translation_status():
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
-
 
 @bp.route("/<paper_id>/sections/<section_id>/add-block-from-text-stream", methods=["GET"])
 @login_required
@@ -783,6 +798,7 @@ def add_block_from_text_to_section_stream(paper_id, section_id):
         existing_session = None
         progress_block_id = None
         insert_index = None
+        should_create_new_task = True  # 🔧 标志位：是否需要创建新任务
         
         # 检查是否为恢复会话
         if session_id:
@@ -816,14 +832,21 @@ def add_block_from_text_to_section_stream(paper_id, section_id):
                 print(f"DEBUG: 会话已失败 - error: {existing_session.get('error')}")
                 return bad_request_response(existing_session.get("error", "解析失败"))
             
-            # 检查是否有后台任务正在运行
+            # 🔧 关键修复：检查是否有后台任务正在运行
             task = task_manager.get_task(session_id)
             if task and task.status.value in ["pending", "running"]:
-                print(f"DEBUG: 任务正在运行 - status: {task.status.value}, progress: {task.progress}")
-                # 任务正在运行，直接进入SSE流式响应，不返回JSON
-                pass
+                print(f"✅ 任务正在运行，直接返回SSE流 - sessionId: {session_id}, status: {task.status.value}, progress: {task.progress}")
+                should_create_new_task = False  # 不需要创建新任务
+            else:
+                # 任务不存在或已结束，但会话状态是processing，说明出现异常
+                if existing_session["status"] == "processing":
+                    print(f"⚠️ 会话处于processing状态但任务不存在，需要重新创建任务 - sessionId: {session_id}")
+                    should_create_new_task = True
+                else:
+                    print(f"⚠️ 会话状态异常 - sessionId: {session_id}, status: {existing_session['status']}")
+                    should_create_new_task = False
             
-            # 获取已保存的进度块ID
+            # 获取已保存的进度块ID和其他数据
             progress_block_id = existing_session.get("progressBlockId")
             text = existing_session["text"]
             after_block_id = existing_session.get("afterBlockId")
@@ -848,6 +871,7 @@ def add_block_from_text_to_section_stream(paper_id, section_id):
         
         # 如果是新会话，创建会话和进度块
         if not existing_session:
+            print(f"DEBUG: 创建新会话")
             # 生成会话ID
             session_id = generate_id()
             
@@ -905,109 +929,140 @@ def add_block_from_text_to_section_stream(paper_id, section_id):
                 message="准备解析文本...",
                 progress_block_id=progress_block_id
             )
+            
+            should_create_new_task = True  # 新会话需要创建任务
         
-        # 定义后台解析任务
-        def background_parsing_task():
-            """后台解析任务"""
-            try:
-                from ..utils.llm_utils import get_llm_utils
-                llm_utils = get_llm_utils()
+        # 🔧 关键修复：只有在需要时才提交后台任务
+        if should_create_new_task:
+            # 🔧 再次确认任务不存在（双重检查，确保幂等性）
+            existing_task = task_manager.get_task(session_id)
+            if existing_task and existing_task.status.value in ["pending", "running"]:
+                print(f"⚠️ 任务已存在，跳过提交 - sessionId: {session_id}, status: {existing_task.status.value}")
+            else:
+                print(f"🚀 提交新的后台任务 - sessionId: {session_id}")
                 
-                # 获取section上下文
-                section_title = target_section.get("title", "") or target_section.get("titleZh", "")
-                section_context = f"章节: {section_title}"
-                
-                # 获取任务对象以便更新进度
-                task = task_manager.get_task(session_id)
-                
-                # 流式解析文本
-                for chunk in llm_utils.parse_text_to_blocks_stream(text, section_context):
-                    if chunk.get("type") == "error":
+                # 定义后台解析任务
+                def background_parsing_task():
+                    """后台解析任务"""
+                    try:
+                        from ..utils.llm_utils import get_llm_utils
+                        llm_utils = get_llm_utils()
+                        
+                        # 获取section上下文
+                        section_title = target_section.get("title", "") or target_section.get("titleZh", "")
+                        section_context = f"章节: {section_title}"
+                        
+                        # 获取任务对象以便更新进度
+                        task = task_manager.get_task(session_id)
+                        
+                        print(f"🔄 开始流式解析 - sessionId: {session_id}")
+                        
+                        # 流式解析文本
+                        for chunk in llm_utils.parse_text_to_blocks_stream(text, section_context):
+                            if chunk.get("type") == "error":
+                                print(f"❌ 解析错误 - sessionId: {session_id}, error: {chunk.get('message')}")
+                                # 更新会话状态为错误
+                                session_model.fail_session(session_id, chunk.get("message", "解析失败"))
+                                
+                                # 更新progress block为错误状态
+                                progress_block = {
+                                    "id": progress_block_id,
+                                    "type": "loading",
+                                    "status": "failed",
+                                    "message": chunk.get("message", "解析失败"),
+                                    "progress": 0,
+                                    "sessionId": session_id  # 保留sessionId
+                                }
+                                
+                                # 更新论文中的progress block
+                                _update_progress_block_in_paper(service, paper_id, section_id, progress_block_id, progress_block)
+                                break
+                            
+                            elif chunk.get("type") == "progress":
+                                print(f"📊 进度更新 - sessionId: {session_id}, progress: {chunk.get('progress')}%, message: {chunk.get('message')}")
+                                # 更新会话进度
+                                session_model.update_progress(
+                                    session_id=session_id,
+                                    status="processing",
+                                    progress=chunk.get("progress", 0),
+                                    message=chunk.get("message", "处理中...")
+                                )
+                                
+                                # 更新任务进度
+                                if task:
+                                    task.update_progress(chunk.get("progress", 0), chunk.get("message", "处理中..."))
+                                
+                                # 更新progress block
+                                progress_block = {
+                                    "id": progress_block_id,
+                                    "type": "loading",
+                                    "status": chunk.get("stage", "processing"),
+                                    "message": chunk.get("message", "处理中..."),
+                                    "progress": chunk.get("progress", 0),
+                                    "sessionId": session_id  # 保留sessionId
+                                }
+                                
+                                # 更新论文中的progress block
+                                _update_progress_block_in_paper(service, paper_id, section_id, progress_block_id, progress_block)
+                            
+                            elif chunk.get("type") == "complete":
+                                print(f"✅ 解析完成 - sessionId: {session_id}")
+                                # 解析完成，移除progress block并添加解析后的blocks
+                                parsed_blocks = chunk.get("blocks", [])
+                                
+                                # 更新section：移除progress block，添加解析后的blocks
+                                _complete_parsing_in_paper(
+                                    service, paper_id, section_id, progress_block_id,
+                                    insert_index, parsed_blocks, session_model, session_id
+                                )
+                                break
+                    
+                    except Exception as e:
+                        print(f"❌ 后台任务异常 - sessionId: {session_id}, error: {str(e)}")
+                        import traceback
+                        print(traceback.format_exc())
+                        
                         # 更新会话状态为错误
-                        session_model.fail_session(session_id, chunk.get("message", "解析失败"))
+                        session_model.fail_session(session_id, f"流式解析失败: {str(e)}")
                         
                         # 更新progress block为错误状态
                         progress_block = {
                             "id": progress_block_id,
                             "type": "loading",
                             "status": "failed",
-                            "message": chunk.get("message", "解析失败"),
+                            "message": f"流式解析失败: {str(e)}",
                             "progress": 0,
                             "sessionId": session_id  # 保留sessionId
                         }
                         
                         # 更新论文中的progress block
-                        _update_progress_block_in_paper(service, paper_id, section_id, progress_block_id, progress_block)
-                        break
-                    
-                    elif chunk.get("type") == "progress":
-                        # 更新会话进度
-                        session_model.update_progress(
-                            session_id=session_id,
-                            status="processing",
-                            progress=chunk.get("progress", 0),
-                            message=chunk.get("message", "处理中...")
-                        )
-                        
-                        # 更新任务进度
-                        if task:
-                            task.update_progress(chunk.get("progress", 0), chunk.get("message", "处理中..."))
-                        
-                        # 更新progress block
-                        progress_block = {
-                            "id": progress_block_id,
-                            "type": "loading",
-                            "status": chunk.get("stage", "processing"),
-                            "message": chunk.get("message", "处理中..."),
-                            "progress": chunk.get("progress", 0),
-                            "sessionId": session_id  # 保留sessionId
-                        }
-                        
-                        # 更新论文中的progress block
-                        _update_progress_block_in_paper(service, paper_id, section_id, progress_block_id, progress_block)
-                    
-                    elif chunk.get("type") == "complete":
-                        # 解析完成，移除progress block并添加解析后的blocks
-                        parsed_blocks = chunk.get("blocks", [])
-                        
-                        # 更新section：移除progress block，添加解析后的blocks
-                        _complete_parsing_in_paper(
-                            service, paper_id, section_id, progress_block_id,
-                            insert_index, parsed_blocks, session_model, session_id
-                        )
-                        break
-            
-            except Exception as e:
-                # 更新会话状态为错误
-                session_model.fail_session(session_id, f"流式解析失败: {str(e)}")
+                        try:
+                            _update_progress_block_in_paper(service, paper_id, section_id, progress_block_id, progress_block)
+                        except:
+                            pass  # 如果更新失败，忽略错误
                 
-                # 更新progress block为错误状态
-                progress_block = {
-                    "id": progress_block_id,
-                    "type": "loading",
-                    "status": "failed",
-                    "message": f"流式解析失败: {str(e)}",
-                    "progress": 0,
-                    "sessionId": session_id  # 保留sessionId
-                }
-                
-                # 更新论文中的progress block
+                # 提交后台任务
                 try:
-                    _update_progress_block_in_paper(service, paper_id, section_id, progress_block_id, progress_block)
-                except:
-                    pass  # 如果更新失败，忽略错误
-        
-        # 提交后台任务
-        task_manager.submit_task(
-            task_id=session_id,
-            func=background_parsing_task,
-            callback=lambda task_id, result: None  # 不需要额外的回调
-        )
+                    task_manager.submit_task(
+                        task_id=session_id,
+                        func=background_parsing_task,
+                        callback=lambda task_id, result: print(f"✅ 任务完成回调 - task_id: {task_id}")
+                    )
+                    print(f"✅ 后台任务已提交 - sessionId: {session_id}")
+                except Exception as e:
+                    print(f"❌ 提交后台任务失败 - sessionId: {session_id}, error: {str(e)}")
+                    return bad_request_response(f"提交后台任务失败: {str(e)}")
+        else:
+            print(f"⏭️ 跳过创建新任务（任务已存在或不需要） - sessionId: {session_id}")
         
         # 使用Server-Sent Events (SSE)进行流式响应
         def generate():
             try:
                 print(f"DEBUG: 开始生成流式响应 - sessionId: {session_id}")
+                
+                # 🔧 等待任务创建完成（给一点时间让submit_task完成）
+                import time
+                time.sleep(5)
                 
                 # 获取任务对象
                 task = task_manager.get_task(session_id)
@@ -1040,7 +1095,9 @@ def add_block_from_text_to_section_stream(paper_id, section_id):
                             paper_data = completed_session.get('paperData')
                             if paper_data:
                                 paper_data = _serialize_datetime_in_dict(paper_data)
-                            yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'completed', 'progress': 100, 'message': '解析完成', 'paper': paper_data, 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
+                            
+                            completed_blocks = completed_session.get('completedBlocks', [])
+                            yield f"data: {json.dumps({'type': 'complete', 'blocks': completed_blocks, 'paper': paper_data, 'message': '解析完成', 'sessionId': session_id}, ensure_ascii=False)}\n\n"
                         break
                     elif current_task.status.value == "failed":
                         print(f"DEBUG: 任务失败 - sessionId: {session_id}, error: {current_task.error}")
@@ -1062,8 +1119,7 @@ def add_block_from_text_to_section_stream(paper_id, section_id):
                         yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'processing', 'progress': current_task.progress, 'message': current_task.message, 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
                     
                     # 等待一段时间再检查
-                    import time
-                    time.sleep(0.5)  # 每0.5秒检查一次
+                    time.sleep(5)  # 每0.5秒检查一次
                     
                     # 防止无限循环
                     if check_count > 1200:  # 最多检查10分钟
@@ -1073,13 +1129,19 @@ def add_block_from_text_to_section_stream(paper_id, section_id):
             
             except Exception as e:
                 print(f"DEBUG: 流式响应异常 - sessionId: {session_id}, error: {str(e)}")
+                import traceback
+                print(traceback.format_exc())
                 yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': f'流式响应失败: {str(e)}', 'error': f'流式响应失败: {str(e)}', 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
         
         from flask import Response
         return Response(generate(), mimetype="text/event-stream")
     
     except Exception as exc:
+        print(f"❌ 路由处理异常: {str(exc)}")
+        import traceback
+        print(traceback.format_exc())
         return internal_error_response(f"服务器错误: {exc}")
+
 
 def _update_progress_block_in_paper(service, paper_id, section_id, progress_block_id, progress_block):
     """更新论文中进度块的辅助函数"""
@@ -1329,8 +1391,9 @@ def delete_block(paper_id, section_id, block_id):
     管理员删除指定论文的指定section中的指定block
     """
     try:
-        service = get_paper_service()
-        result = service.delete_block(
+        paper_model = PaperModel()
+        content_service = PaperContentService(paper_model)
+        result = content_service.delete_block(
             paper_id=paper_id,
             section_id=section_id,
             block_id=block_id,

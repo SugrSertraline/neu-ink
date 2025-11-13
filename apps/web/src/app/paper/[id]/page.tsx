@@ -1198,6 +1198,8 @@ export default function PaperPage() {
                     onBlockAddComponent={handleBlockAddComponent}
                     onParseTextAdd={canEditContent ? handleParseTextAdd : undefined}
                     onParseTextComplete={canEditContent ? (sectionId, blocks, afterBlockId) => {
+                       const isTempProgressBlock =
+                        blocks?.length === 1 && (blocks[0] as any).type === 'loading';
                       // 处理流式解析完成后的blocks
                       updateSections(sections => {
                         let touched = false;
@@ -1205,7 +1207,13 @@ export default function PaperPage() {
                         const updatedSections = sections.map(section => {
                           if (section.id === sectionId) {
                             touched = true;
-                            const currentBlocks = section.content || [];
+                            let currentBlocks = section.content || [];
+                            
+                            // ★ 关键修复：先删除所有临时进度块(type='loading')
+                            currentBlocks = currentBlocks.filter(block =>
+                              (block as any).type !== 'loading'
+                            );
+                            
                             let insertIndex = currentBlocks.length; // 默认在末尾
                             
                             if (afterBlockId) {
@@ -1233,7 +1241,9 @@ export default function PaperPage() {
                       });
                       
                       // 显示成功消息
-                      toast.success(`成功解析并添加了${blocks.length}个段落`);
+                         if (!isTempProgressBlock && blocks && blocks.length > 0) {
+                        toast.success(`成功解析并添加了${blocks.length}个段落`);
+                      }
                     } : undefined}
                     onSaveToServer={async () => {
                       if (currentEditingId) {
@@ -1255,6 +1265,7 @@ export default function PaperPage() {
                     isPersonalOwner={isPersonalOwner}
                     paperId={paperId}
                     userPaperId={resolvedUserPaperId}
+                    updateSections={updateSections}
                   />
 
                   <PaperReferences

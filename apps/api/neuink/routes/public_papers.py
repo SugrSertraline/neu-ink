@@ -5,6 +5,8 @@
 from flask import Blueprint, request
 
 from ..services.paperService import get_paper_service
+from ..services.paperTranslationService import PaperTranslationService
+from ..models.paper import PaperModel
 from ..utils.common import (
     success_response,
     bad_request_response,
@@ -124,8 +126,9 @@ def check_and_complete_translation_public(paper_id):
     注意：此接口仅对公开论文开放
     """
     try:
-        service = get_paper_service()
-        result = service.check_and_complete_translation(paper_id)
+        paper_model = PaperModel()
+        translation_service = PaperTranslationService(paper_model)
+        result = translation_service.check_and_complete_translation(paper_id)
         
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
@@ -152,8 +155,9 @@ def get_translation_status_public(paper_id):
     注意：此接口仅对公开论文开放
     """
     try:
-        service = get_paper_service()
-        result = service.get_translation_status(paper_id)
+        paper_model = PaperModel()
+        translation_service = PaperTranslationService(paper_model)
+        result = translation_service.get_translation_status(paper_id)
         
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])

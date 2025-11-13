@@ -24,6 +24,7 @@ import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsC
 import { useEditingState } from '@/stores/useEditingState';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { calculateAllNumbers } from './utils/autoNumbering';
+import { toast } from 'sonner';
 
 type Lang = 'en' | 'both';
 
@@ -74,6 +75,7 @@ interface PaperContentProps {
   isPersonalOwner?: boolean;
   paperId?: string;
   userPaperId?: string | null;
+  updateSections?: (updater: (sections: Section[]) => { sections: Section[]; touched: boolean }) => void;
 }
 
 type ContentBlock = HeadingBlock | ParagraphBlock | QuoteBlock;
@@ -117,6 +119,7 @@ export default function PaperContent({
   isPersonalOwner = false,
   paperId,
   userPaperId,
+  updateSections,
 }: PaperContentProps) {
   // 应用自动编号的内容
   const contentWithNumbers = useMemo(() => {
@@ -301,6 +304,26 @@ export default function PaperContent({
   const [hoveredSectionId, setHoveredSectionId] = useState<string | null>(null);
   const [textParseSectionId, setTextParseSectionId] = useState<string | null>(null);
   const [textParseBlockId, setTextParseBlockId] = useState<string | null>(null);
+  
+  // ★ 新增：管理流式解析进度数据
+  const [streamProgressData, setStreamProgressData] = useState<Record<string, {
+    message: string;
+    progress: number;
+    sessionId?: string;
+  }>>({});
+
+  // ★ 新增：处理流式进度更新
+  const handleStreamProgressUpdate = useCallback((sectionId: string, progressData: {
+    message: string;
+    progress: number;
+    sessionId?: string;
+  }) => {
+    console.log('PaperContent: 更新进度数据', { sectionId, progressData });
+    setStreamProgressData(prev => ({
+      ...prev,
+      [sectionId]: progressData
+    }));
+  }, []);
 
   useEffect(() => {
     if (!canEditContent) {
@@ -393,7 +416,7 @@ export default function PaperContent({
     setTextParseBlockId(null);
   }, []);
 
-  // 处理流式解析完成后的blocks
+    // 处理流式解析完成后的blocks
   const handleStreamParseComplete = useCallback((
     sectionId: string,
     blocks: BlockContent[],
@@ -401,24 +424,94 @@ export default function PaperContent({
     paperData?: any
   ) => {
     console.log('handleStreamParseComplete called:', { sectionId, blocks: blocks?.length, afterBlockId, paperData });
-    if (blocks?.length === 1 && (blocks[0] as any).type === 'parse-progress') {
+    
+    // ★ 关键修复：区分临时进度块和最终结果
+    const isTempProgressBlock = blocks?.length === 1 && (blocks[0] as any).type === 'loading';
+    
+    if (isTempProgressBlock) {
+      // 临时进度块：只插入进度块，不关闭编辑器
+      console.log('插入临时进度块');
       onParseTextComplete?.(sectionId, blocks, afterBlockId);
-      // 不关闭编辑器，这里 InlineTextParserEditor 已有 500ms 后自动 onCancel()
-      return;
-    }
-    if (onParseTextComplete && blocks?.length) {
-      onParseTextComplete(sectionId, blocks, afterBlockId);
-    }
-  
-    // 若你后端在 progress/complete 时也回了 paperData，可在父层用 paperData 全量替换
-    // 这里只 log，保持最小改动
-    if (paperData && paperData.sections) {
-      console.log('收到完整的paper数据:', paperData);
+      return; // ★ 重要：临时进度块时直接返回，不关闭编辑器
     }
     
-    // 关闭文本解析编辑器
+    // 最终结果blocks：删除临时进度块，插入实际blocks，然后关闭编辑器
+    if (onParseTextComplete && blocks?.length && (blocks[0] as any).type !== 'loading') {
+      console.log('传递解析后的blocks给父组件:', blocks);
+      onParseTextComplete(sectionId, blocks, afterBlockId);
+    }
+   
+    // 如果收到了完整的paperData，可以用于更新整个paper数据
+    if (paperData && paperData.sections) {
+      console.log('收到完整的paper数据:', paperData);
+      // 这里可以根据需要触发paper数据的更新
+      // 例如调用某个更新paper的函数
+    }
+    
+    // ★ 最终结果：关闭文本解析编辑器
     handleParseTextComplete();
   }, [onParseTextComplete, handleParseTextComplete]);
+
+  // 处理ParseProgressBlock的onCompleted回调
+  const handleParseProgressComplete = useCallback((result: any) => {
+    console.log('handleParseProgressComplete called:', result);
+    
+    // 处理重新开始的请求
+    if (result.status === 'restart') {
+      console.log('处理重新开始解析请求:', result);
+      // 删除对应的loading block
+      if (onBlockDelete) {
+        onBlockDelete(result.blockId);
+      }
+      return;
+    }
+    
+    // 处理解析完成的情况
+    if (result.status === 'completed' && result.blocks && result.blocks.length > 0) {
+      console.log('ParseProgressBlock: 解析完成，更新blocks', result.blocks);
+      
+      // 更新sections，删除loading block并添加实际内容
+      updateSections?.((sections: Section[]) => {
+        let touched = false;
+        
+        const updatedSections = sections.map((section: Section) => {
+          // 查找包含对应loading block的section
+          const hasLoadingBlock = section.content?.some((block: BlockContent) =>
+            (block as any).type === 'loading' &&
+            (block as any).sessionId === result.sessionId
+          );
+          
+          if (hasLoadingBlock) {
+            touched = true;
+            let currentBlocks = section.content || [];
+            
+            // 删除所有临时进度块(type='loading')
+            currentBlocks = currentBlocks.filter((block: BlockContent) =>
+              (block as any).type !== 'loading'
+            );
+            
+            // 添加解析后的实际blocks
+            const newBlocks = [...currentBlocks, ...result.blocks];
+            
+            return {
+              ...section,
+              content: newBlocks
+            };
+          }
+          
+          return section;
+        });
+        
+        return { sections: touched ? updatedSections : sections, touched };
+      });
+      
+      // 显示成功消息
+      toast.success(`成功解析并添加了${result.blocks.length}个段落`);
+    }
+    
+    // 其他完成状态的处理
+    onParseComplete?.(result);
+  }, [onParseComplete, onBlockDelete, updateSections]);
 
   const renderedTree = useMemo(() => {
     // 辅助函数：从 contentWithNumbers 中找到对应 ID 的章节
@@ -570,8 +663,10 @@ export default function PaperContent({
                   isPersonalOwner={isPersonalOwner}
                   paperId={paperId}
                   sectionId={numberedSection.id}
-                  onParseComplete={onParseComplete}
+                  onParseComplete={handleParseProgressComplete}
                   userPaperId={userPaperId}
+                  // ★ 新增：传递进度数据给loading block
+                  streamProgressData={streamProgressData}
                 />
               );
 
@@ -644,6 +739,7 @@ export default function PaperContent({
                       paperId={paperId || ''}
                       userPaperId={userPaperId}
                       onParseComplete={(blocks, paperData) => handleStreamParseComplete(numberedSection.id, blocks, block.id, paperData)}
+                      onProgressUpdate={(progressData) => handleStreamProgressUpdate(numberedSection.id, progressData)}
                     />
                   </React.Fragment>
                 );
@@ -721,6 +817,7 @@ export default function PaperContent({
               paperId={paperId || ''}
               userPaperId={userPaperId}
               onParseComplete={(blocks, paperData) => handleStreamParseComplete(numberedSection.id, blocks, undefined, paperData)}
+              onProgressUpdate={(progressData) => handleStreamProgressUpdate(numberedSection.id, progressData)}
             />
           )}
 
@@ -765,12 +862,17 @@ export default function PaperContent({
     isEditing,
     clearEditing,
     setHoveredSectionId,
-    onBlockClick,
+      onBlockClick,
     contentRef,
     onSaveToServer,
     notesByBlock,
     isPersonalOwner,
-  ]);
+    handleStreamParseComplete,
+    handleParseProgressComplete,
+    paperId,
+    userPaperId,
+    onParseComplete,
+  ]); 
 
   const emptyState = canEditContent && onSectionInsert ? (
     <RootSectionContextMenu onAddSection={() => onSectionInsert(null, 'below', null)}>

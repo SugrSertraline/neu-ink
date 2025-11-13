@@ -107,7 +107,7 @@ class LLMUtils:
         model: LLMModel = LLMModel.GLM_4_6,
         temperature: float = 0.1,
         max_tokens: int = 100000,
-        stream: bool = False,
+        stream: bool = True,
         **kwargs
     ) -> Optional[Dict[str, Any]]:
         """
@@ -289,7 +289,7 @@ class LLMUtils:
             **kwargs: 其他参数
             
         Yields:
-            流式响应的每个chunk
+            流式响应的每个chunk，包含GLM的原始数据
         """
         safe_print("开始调用GLM API (流式)")
         safe_print(f"请求消息数量: {len(messages)}")
@@ -344,7 +344,7 @@ class LLMUtils:
             
             response.raise_for_status()
             
-            # 处理流式响应
+            # 处理流式响应，直接传递GLM的原始数据
             for line in response.iter_lines():
                 if line:
                     line = line.decode('utf-8')
@@ -352,16 +352,22 @@ class LLMUtils:
                         data_str = line[6:]  # 去掉 'data: ' 前缀
                         
                         if data_str.strip() == '[DONE]':
+                            yield {"type": "done", "data": "[DONE]"}
                             break
                             
                         try:
+                            # 直接传递GLM的原始JSON数据
                             data = json.loads(data_str)
                             if 'choices' in data and len(data['choices']) > 0:
                                 delta = data['choices'][0].get('delta', {})
                                 if 'content' in delta:
+                                    # 返回GLM的原始数据，包含token使用信息等
                                     yield {
-                                        "type": "content",
-                                        "content": delta['content']
+                                        "type": "glm_stream",
+                                        "raw_data": data,  # GLM的原始数据
+                                        "content": delta['content'],
+                                        "model": data.get("model", payload["model"]),
+                                        "usage": data.get("usage", {})  # token使用信息
                                     }
                         except json.JSONDecodeError:
                             # 忽略无法解析的行
@@ -807,72 +813,92 @@ class LLMUtils:
             from ..services.paperService import get_paper_service
             paper_service = get_paper_service()
             
-            # 直接更新论文，不调用可能不兼容的add_blocks_to_section方法
+            # 获取当前论文数据
             paper = paper_service.paper_model.find_by_id(paper_id)
-            if paper:
-                sections = paper.get("sections", [])
-                target_section = None
-                section_index = -1
-                
-                for i, section in enumerate(sections):
-                    if section.get("id") == section_id:
-                        target_section = section
-                        section_index = i
-                        break
-                
-                if target_section:
-                    # 确保section有content字段
-                    if "content" not in target_section:
-                        target_section["content"] = []
-                    
-                    # 根据after_block_id确定插入位置
-                    current_blocks = target_section["content"]
-                    insert_index = len(current_blocks)  # 默认在末尾
-                    
-                    if after_block_id:
-                        for i, block in enumerate(current_blocks):
-                            if block.get("id") == after_block_id:
-                                insert_index = i + 1  # 插入到指定block后面
-                                break
-                    
-                    # 安全地插入新blocks
-                    safe_print(f"在位置 {insert_index} 插入 {len(parsed_blocks)} 个blocks")
-                    new_blocks = current_blocks[:insert_index] + parsed_blocks + current_blocks[insert_index:]
-                    target_section["content"] = new_blocks
-                    sections[section_index] = target_section
-                    
-                    # 更新论文
-                    update_data = {"sections": sections}
-                    if paper_service.paper_model.update(paper_id, update_data):
-                        updated_paper = paper_service.paper_model.find_by_id(paper_id)
-                        return {
-                            "success": True,
-                            "message": f"成功向section添加了{len(parsed_blocks)}个blocks",
-                            "data": {
-                                "paper": updated_paper,
-                                "addedBlocks": parsed_blocks,
-                                "sectionId": section_id,
-                                "totalBlocks": len(parsed_blocks)
-                            }
-                        }
-                    else:
-                        return {
-                            "success": False,
-                            "error": "更新论文失败"
-                        }
-                else:
-                    return {
-                        "success": False,
-                        "error": f"未找到指定的section: {section_id}"
-                    }
-            else:
+            if not paper:
                 return {
                     "success": False,
                     "error": f"未找到指定的论文: {paper_id}"
                 }
             
+            # 查找目标section
+            sections = paper.get("sections", [])
+            target_section = None
+            section_index = -1
+            
+            for i, section in enumerate(sections):
+                if section.get("id") == section_id:
+                    target_section = section
+                    section_index = i
+                    break
+            
+            if not target_section:
+                return {
+                    "success": False,
+                    "error": f"未找到指定的section: {section_id}"
+                }
+            
+            # 确保section有content字段
+            if "content" not in target_section:
+                target_section["content"] = []
+            
+            # 根据after_block_id确定插入位置
+            current_blocks = target_section["content"]
+            insert_index = len(current_blocks)  # 默认在末尾
+            
+            if after_block_id:
+                for i, block in enumerate(current_blocks):
+                    if block.get("id") == after_block_id:
+                        insert_index = i + 1  # 插入到指定block后面
+                        break
+            
+            # 使用MongoDB的原子更新操作，避免替换整个sections数组
+            safe_print(f"在位置 {insert_index} 插入 {len(parsed_blocks)} 个blocks")
+            
+            # 构建更新操作：使用$push操作符将新blocks插入到指定位置
+            if insert_index == len(current_blocks):
+                # 如果在末尾添加，使用$push
+                update_operation = {
+                    "$push": {
+                        f"sections.{section_index}.content": {
+                            "$each": parsed_blocks
+                        }
+                    }
+                }
+            else:
+                # 如果在中间插入，使用$push配合$position，避免替换整个数组
+                update_operation = {
+                    "$push": {
+                        f"sections.{section_index}.content": {
+                            "$each": parsed_blocks,
+                            "$position": insert_index
+                        }
+                    }
+                }
+            
+            # 执行原子更新
+            if paper_service.paper_model.update(paper_id, update_operation):
+                updated_paper = paper_service.paper_model.find_by_id(paper_id)
+                return {
+                    "success": True,
+                    "message": f"成功向section添加了{len(parsed_blocks)}个blocks",
+                    "data": {
+                        "paper": updated_paper,
+                        "addedBlocks": parsed_blocks,
+                        "sectionId": section_id,
+                        "totalBlocks": len(parsed_blocks)
+                    }
+                }
+            else:
+                return {
+                    "success": False,
+                    "error": "更新论文失败"
+                }
+            
         except Exception as e:
             safe_print(f"解析并保存失败: {e}")
+            import traceback
+            safe_print(traceback.format_exc())
             return {
                 "success": False,
                 "error": f"解析并保存失败: {str(e)}"
@@ -924,16 +950,17 @@ class LLMUtils:
     ## 核心任务
     解析Markdown格式的学术论文，输出符合规范的JSON数组，每个元素代表一个内容块(block)。
 
-    ## 输出格式要求
-    1. **必须输出纯JSON数组**，以[开头，以]结尾
-    2. **不包含任何额外文字、注释或markdown代码块标记**
-    3. **所有文本内容使用InlineContent数组格式**
+    ## 重要要求
+    1. **必须同时包含中英文内容** - 每个block的content字段必须同时包含en和zh两个语言数组
+    2. **必须输出纯JSON数组**，以[开头，以]结尾
+    3. **不包含任何额外文字、注释或markdown代码块标记**
+    4. **所有文本内容使用InlineContent数组格式**
 
     ## Markdown识别规则
 
     ### 标题 (heading)
-    - # 开头为一级标题 (level: 1)
-    - ## 开头为二级标题 (level: 2)
+    - # 开头的是标题 #可能有多个
+    - 1.为一级标题 1.1为二级标题 1.1.1为三级标题
     - 以此类推至六级标题
     - 输出格式示例：
     {
@@ -1115,6 +1142,7 @@ class LLMUtils:
     3. **删除所有引用标记**
     4. **保持学术术语的准确性**"""
 
+        # 移除单独的翻译提示词，因为现在解析和翻译合并为一次调用
         TRANSLATION_PROMPT = """你是一个专业的学术翻译专家。
 
     ## 任务
@@ -1132,35 +1160,6 @@ class LLMUtils:
     ## 输出格式
     返回完整的JSON数组，其中每个包含content字段的对象都应该同时包含en和zh两个字段。
 
-    ## 示例
-
-    输入：
-    [
-    {
-        "type": "paragraph",
-        "content": {
-        "en": [
-            {"type": "text", "content": "Deep learning models have achieved remarkable success in computer vision tasks."}
-        ]
-        }
-    }
-    ]
-
-    输出：
-    [
-    {
-        "type": "paragraph",
-        "content": {
-        "en": [
-            {"type": "text", "content": "Deep learning models have achieved remarkable success in computer vision tasks."}
-        ],
-        "zh": [
-            {"type": "text", "content": "深度学习模型在计算机视觉任务中取得了显著的成功。"}
-        ]
-        }
-    }
-    ]
-
     **重要**：只输出JSON数组，不要任何额外文字。"""
 
         # 使用全局的safe_print函数，避免重复定义
@@ -1175,7 +1174,7 @@ class LLMUtils:
             # 替换行内公式格式 $...$ -> \(...\)
             cleaned_text = re.sub(r'\$([^$]+)\$', r'\\(\1\\)', cleaned_text)
             
-            # 替换行间公式格式 $$...$$ -> \[...\]
+            # 替换行间公式格式 $...$ -> \\[...\\]
             cleaned_text = re.sub(r'\$\$([^$]+)\$\$', r'\\[\1\\]', cleaned_text, flags=re.DOTALL)
             
             # 限制文本长度
@@ -1191,7 +1190,8 @@ class LLMUtils:
     1. 只输出JSON数组
     2. 删除所有引用
     3. inline-math使用latex字段
-    4. 去除公式编号如\\tag{{}}"""
+    4. 去除公式编号如\\tag{{}}
+    5. **重要：必须同时包含中英文内容，每个block的content字段必须同时包含en和zh两个语言数组**"""
 
             messages = [
                 {"role": "system", "content": PARSER_SYSTEM_PROMPT},
@@ -1224,6 +1224,97 @@ class LLMUtils:
             except json.JSONDecodeError as e:
                 safe_print(f"❌ JSON解析失败: {e}")
                 safe_print(f"响应内容: {content[:500]}...")
+                
+                # 保存错误内容到本地文件以便调试
+                import os
+                import traceback
+                from datetime import datetime
+                
+                # 尝试多个可能的目录位置
+                possible_dirs = [
+                    "error_logs",
+                    "apps/api/error_logs",
+                    "apps/api/neuink/error_logs",
+                    "/tmp/error_logs" if os.name != 'nt' else "C:\\temp\\error_logs"
+                ]
+                
+                error_dir = None
+                for dir_path in possible_dirs:
+                    try:
+                        if not os.path.exists(dir_path):
+                            os.makedirs(dir_path, exist_ok=True)
+                        # 测试是否可以写入
+                        test_file = os.path.join(dir_path, "test_write.tmp")
+                        with open(test_file, 'w') as f:
+                            f.write("test")
+                        os.remove(test_file)
+                        error_dir = dir_path
+                        safe_print(f"✅ 使用错误日志目录: {error_dir}")
+                        break
+                    except Exception as dir_error:
+                        safe_print(f"⚠️ 无法使用目录 {dir_path}: {dir_error}")
+                        continue
+                
+                if not error_dir:
+                    # 如果所有预设目录都不可用，尝试在当前目录创建
+                    try:
+                        error_dir = os.getcwd()
+                        safe_print(f"⚠️ 使用当前目录作为错误日志目录: {error_dir}")
+                    except Exception as cwd_error:
+                        safe_print(f"❌ 无法获取当前目录: {cwd_error}")
+                        error_dir = "."
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                error_file = os.path.join(error_dir, f"json_parse_error_sync_{timestamp}.txt")
+                
+                try:
+                    with open(error_file, 'w', encoding='utf-8') as f:
+                        f.write(f"JSON解析错误时间: {datetime.now()}\n")
+                        f.write(f"错误类型: {type(e).__name__}\n")
+                        f.write(f"错误信息: {str(e)}\n")
+                        f.write(f"错误位置: line {e.lineno}, column {e.colno}, character {e.pos}\n")
+                        f.write(f"错误详情: {e.msg if hasattr(e, 'msg') else '无详细信息'}\n")
+                        f.write("=" * 50 + "\n")
+                        f.write("完整响应内容:\n")
+                        f.write(content)
+                        f.write("\n" + "=" * 50 + "\n")
+                        f.write(f"响应内容长度: {len(content)} 字符\n")
+                        f.write(f"前500字符预览: {content[:500]}\n")
+                        f.write(f"后500字符预览: {content[-500:] if len(content) > 500 else '无'}\n")
+                        f.write("\n" + "=" * 50 + "\n")
+                        f.write("错误位置上下文:\n")
+                        if hasattr(e, 'pos') and e.pos is not None:
+                            start_pos = max(0, e.pos - 100)
+                            end_pos = min(len(content), e.pos + 100)
+                            f.write(f"位置 {e.pos} 附近内容:\n")
+                            f.write(repr(content[start_pos:end_pos]))
+                            f.write("\n")
+                        f.write("\n" + "=" * 50 + "\n")
+                        f.write("完整堆栈跟踪:\n")
+                        f.write(traceback.format_exc())
+                    safe_print(f"✅ 错误内容已保存到: {error_file}")
+                    
+                    # 尝试在Windows桌面也保存一份
+                    try:
+                        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+                        if os.path.exists(desktop_path):
+                            desktop_error_file = os.path.join(desktop_path, f"neuink_json_error_{timestamp}.txt")
+                            with open(desktop_error_file, 'w', encoding='utf-8') as f:
+                                f.write(f"NeuInk JSON解析错误 - {datetime.now()}\n")
+                                f.write(f"错误类型: {type(e).__name__}\n")
+                                f.write(f"错误信息: {str(e)}\n")
+                                f.write("=" * 50 + "\n")
+                                f.write("完整响应内容:\n")
+                                f.write(content)
+                            safe_print(f"✅ 错误副本已保存到桌面: {desktop_error_file}")
+                    except Exception as desktop_error:
+                        safe_print(f"⚠️ 无法保存到桌面: {desktop_error}")
+                        
+                except Exception as save_error:
+                    safe_print(f"❌ 保存错误日志失败: {save_error}")
+                    safe_print(f"❌ 尝试保存的路径: {error_file}")
+                    safe_print(f"❌ 错误详情: {traceback.format_exc()}")
+                
                 raise
 
         def _add_translations(blocks):
@@ -1466,15 +1557,11 @@ class LLMUtils:
 
         # 主执行流程
         try:
-            # 步骤1：解析Markdown
+            # 步骤1：解析Markdown（现在包含翻译）
             blocks = _parse_markdown()
             safe_print(f"✅ 解析完成，得到 {len(blocks)} 个blocks")
             
-            # 步骤2：添加翻译
-            blocks = _add_translations(blocks)
-            safe_print(f"✅ 翻译完成")
-            
-            # 步骤3：修复和验证
+            # 步骤2：修复和验证
             validated_blocks = _fix_and_validate(blocks)
             safe_print(f"✅ 最终生成 {len(validated_blocks)} 个有效blocks")
             
@@ -1503,133 +1590,200 @@ class LLMUtils:
 
         PARSER_SYSTEM_PROMPT = """你是一个专业的学术论文Markdown解析助手，负责将Markdown格式的论文文本转换为结构化的JSON数据。
 
-## 核心任务
-解析Markdown格式的学术论文，输出符合规范的JSON数组，每个元素代表一个内容块(block)。
+    ## 核心任务
+    解析Markdown格式的学术论文，输出符合规范的JSON数组，每个元素代表一个内容块(block)。
 
-## 输出格式要求
-1. **必须输出纯JSON数组**，以[开头，以]结尾
-2. **不包含任何额外文字、注释或markdown代码块标记**
-3. **所有文本内容使用InlineContent数组格式**
+    ## 重要要求
+    1. **必须同时包含中英文内容** - 每个block的content字段必须同时包含en和zh两个语言数组
+    2. **必须输出纯JSON数组**，以[开头，以]结尾
+    3. **不包含任何额外文字、注释或markdown代码块标记**
+    4. **所有文本内容使用InlineContent数组格式**
 
-## Markdown识别规则
+    ## Markdown识别规则
 
-### 标题 (heading)
-- # 开头为一级标题 (level: 1)
-- ## 开头为二级标题 (level: 2)
-- 以此类推至六级标题
-- 输出格式示例：
-{
-"type": "heading",
-"level": 2,
-"content": {
-    "en": [{"type": "text", "content": "Introduction"}]
-}
-}
+    ### 标题 (heading)
+    - #开头为标题，如果有编号，例如3.1为二级标题 3.1.2为三级标题
+    - 以此类推至六级标题
+    - 输出格式示例：
+    {
+    "type": "heading",
+    "level": 2,
+    "content": {
+        "en": [{"type": "text", "content": "Introduction"}]
+    }
+    }
 
-### 段落 (paragraph)
-- 非特殊格式的连续文本行
-- 空行分隔不同段落
-- 输出格式示例：
-{
-"type": "paragraph",
-"content": {
-    "en": [{"type": "text", "content": "This is a paragraph."}]
-}
-}
+    ### 段落 (paragraph)
+    - 非特殊格式的连续文本行
+    - 空行分隔不同段落
+    - 输出格式示例：
+    {
+    "type": "paragraph",
+    "content": {
+        "en": [{"type": "text", "content": "This is a paragraph."}]
+    }
+    }
 
-### 行间公式 (math)
-- 独立成行的 $$...$$ 或 \[...\] 格式
-- **重要**：去除\tag{...}等编号，只保留公式本体
-- 输出格式示例：
-{
-"type": "math",
-"latex": "E = mc^2"
-}
+    ### 行间公式 (math)
+    - 独立成行的 $$...$$ 或 \\[...\\] 格式
+    - **重要**：去除\\tag{...}等编号，只保留公式本体
+    - 输出格式示例：
+    {
+    "type": "math",
+    "latex": "E = mc^2"
+    }
 
-### 行内公式 (inline-math)
-- 文本中的 $...$ 或 \(...\) 格式
-- **必须使用latex字段，不能使用content字段**
-- 输出格式示例：
-{"type": "inline-math", "latex": "x^2 + y^2 = z^2"}
+    ### 行内公式 (inline-math)
+    - 文本中的 $...$ 或 \\(...\\) 格式
+    - **必须使用latex字段，不能使用content字段**
+    - 输出格式示例：
+    {"type": "inline-math", "latex": "x^2 + y^2 = z^2"}
 
-### 有序列表 (ordered-list)
-- 以 1. , 2. 等数字开头
-- 输出格式示例：
-{
-"type": "ordered-list",
-"items": [
-    {"content": {"en": [{"type": "text", "content": "First item"}]}},
-    {"content": {"en": [{"type": "text", "content": "Second item"}]}}
-]
-}
+    ### 有序列表 (ordered-list)
+    - 以 1. , 2. 等数字开头
+    - 输出格式示例：
+    {
+    "type": "ordered-list",
+    "items": [
+        {"content": {"en": [{"type": "text", "content": "First item"}]}},
+        {"content": {"en": [{"type": "text", "content": "Second item"}]}}
+    ]
+    }
 
-### 无序列表 (unordered-list)
-- 以 - , * , + 开头
-- 输出格式同有序列表，type为"unordered-list"
+    ### 无序列表 (unordered-list)
+    - 以 - , * , + 开头
+    - 输出格式同有序列表，type为"unordered-list"
 
-### 代码块 (code)
-- 三个反引号包围的代码块
-- 识别语言标记（如python）
-- 输出格式示例：
-{
-"type": "code",
-"language": "python",
-"code": "def hello():\n    print('Hello')"
-}
+    ### 代码块 (code)
+    - 三个反引号包围的代码块
+    - 识别语言标记（如python）
+    - 输出格式示例：
+    {
+    "type": "code",
+    "language": "python",
+    "code": "def hello():\\n    print('Hello')"
+    }
 
-### 表格 (table)
-- Markdown表格格式：|列1|列2|
-- HTML表格格式：<table>...</table>
-- 输出格式示例：
-{
-"type": "table",
-"headers": ["Column 1", "Column 2"],
-"rows": [
-    ["Cell 1", "Cell 2"],
-    ["Cell 3", "Cell 4"]
-]
-}
+    ### 表格 (table)
+    - Markdown表格格式：|列1|列2| 
+    - HTML表格格式：<table>...</table>
+    - 输出格式示例：
+    {
+    "type": "table",
+    "headers": ["Column 1", "Column 2"],
+    "rows": [
+        ["Cell 1", "Cell 2"],
+        ["Cell 3", "Cell 4"]
+    ]
+    }
 
-### 引用 (quote)
-- 以 > 开头的行
-- 输出格式示例：
-{
-"type": "quote",
-"content": {
-    "en": [{"type": "text", "content": "This is a quote"}]
-}
-}
+    ### 引用 (quote)
+    - 以 > 开头的行
+    - 输出格式示例：
+    {
+    "type": "quote",
+    "content": {
+        "en": [{"type": "text", "content": "This is a quote"}]
+    }
+    }
 
-### 分割线 (divider)
-- ---, ***, ___ 等
-- 输出格式示例：
-{"type": "divider"}
+    ### 分割线 (divider)
+    - ---, ***, ___ 等
+    - 输出格式示例：
+    {"type": "divider"}
 
-## 特殊处理规则
+    ## 特殊处理规则
 
-### 引用删除
-**完全删除**以下内容，不要包含在输出中：
-- 参考文献引用：如 [1], [2,3], [Smith et al., 2020]
-- 图片引用：如 Fig. 1, Figure 2, 图1
-- 表格引用：如 Table 1, Tab. 2, 表1
-- 公式引用：如 Eq. (1), Equation 2, 式(1)
-- 脚注标记：如 [^1], [^note]
-- 交叉引用：如 see Section 2, as shown in Chapter 3
+    ### 引用删除
+    **完全删除**脚注标记：如 [^1], [^note]不要包含在输出中
 
-### 文本处理
-混合文本和公式时，将公式识别为inline-math类型。例如：
-输入："The equation $x^2 + y^2 = z^2$ represents..."
-输出：[
-{"type": "text", "content": "The equation "},
-{"type": "inline-math", "latex": "x^2 + y^2 = z^2"},
-{"type": "text", "content": " represents..."}
-]
+    ### 文本处理
+    混合文本和公式时，将公式识别为inline-math类型。例如：
+    输入："The equation $x^2 + y^2 = z^2$ represents..."
+    输出：[
+    {"type": "text", "content": "The equation "},
+    {"type": "inline-math", "latex": "x^2 + y^2 = z^2"},
+    {"type": "text", "content": " represents..."}
+    ]
 
-## 重要提醒
-1. **只输出JSON数组，不要任何其他内容**
-2. **inline-math必须用latex字段，不能用content字段**
-3. **删除所有引用标记**
-4. **保持学术术语的准确性**"""
+    ## 完整示例
+
+    输入Markdown：
+    ## Introduction
+
+    Machine learning has revolutionized many fields. The basic equation $y = wx + b$ represents a linear model.
+
+    $$
+    L = \\frac{1}{n}\\sum_{i=1}^{n}(y_i - \\hat{y}_i)^2 \\tag{1}
+    $$
+
+    Key advantages include:
+    - High accuracy
+    - Fast processing
+
+    | Method | Accuracy |
+    |--------|----------|
+    | SVM    | 95%      |
+    | CNN    | 98%      |
+
+    输出JSON：
+    [
+    {
+        "type": "heading",
+        "level": 2,
+        "content": {
+        "en": [{"type": "text", "content": "Introduction"}]
+        }
+    },
+    {
+        "type": "paragraph",
+        "content": {
+        "en": [
+            {"type": "text", "content": "Machine learning has revolutionized many fields. The basic equation "},
+            {"type": "inline-math", "latex": "y = wx + b"},
+            {"type": "text", "content": " represents a linear model."}
+        ]
+        }
+    },
+    {
+        "type": "math",
+        "latex": "L = \\\\frac{1}{n}\\\\sum_{i=1}^{n}(y_i - \\\\hat{y}_i)^2"
+    },
+    {
+        "type": "paragraph",
+        "content": {
+        "en": [{"type": "text", "content": "Key advantages include:"}]
+        }
+    },
+    {
+        "type": "unordered-list",
+        "items": [
+        {"content": {"en": [{"type": "text", "content": "High accuracy"}]}},
+        {"content": {"en": [{"type": "text", "content": "Fast processing"}]}}
+        ]
+    },
+    {
+        "type": "table",
+        "headers": ["Method", "Accuracy"],
+        "rows": [
+        ["SVM", "95%"],
+        ["CNN", "98%"]
+        ]
+    }
+    ]
+    要求：
+    - 所有出现在 JSON 字符串中的双引号 " 必须写成 \"。
+    - 如果是自然语言中的引号，优先使用单引号 ' 而不是双引号 "。
+    - 所有 LaTeX 公式只能出现在 "latex" 字段中，不能直接放在 content 文本字符串里。
+    - content 字符串中禁止出现未转义的反斜杠 \，如有需要请使用 \\。
+    ## 重要提醒
+    1. **只输出JSON数组，不要任何其他内容**
+    2. **inline-math必须用latex字段，不能用content字段**
+    3. **删除所有引用标记**
+    4. **保持学术术语的准确性**
+    5. JSON 中的字符串必须是合法 JSON 字符串，所有内部的双引号要写成 \"，反斜杠写成 \\。
+    6. 不要在 JSON 外输出任何解释文字
+    """
 
         TRANSLATION_PROMPT = """你是一个专业的学术翻译专家。
 
@@ -1663,9 +1817,9 @@ class LLMUtils:
             # 替换行内公式格式 $...$ -> \(...\)
             cleaned_text = re.sub(r'\$([^$]+)\$', r'\\(\1\\)', cleaned_text)
             
-            # 替换行间公式格式 $$...$$ -> \[...\]
+            # 替换行间公式格式 $...$ -> \\[...\\]
             cleaned_text = re.sub(r'\$\$([^$]+)\$\$', r'\\[\1\\]', cleaned_text, flags=re.DOTALL)
-            
+            cleaned_text = cleaned_text.replace('"', "'")
             # 限制文本长度
             if len(cleaned_text) > 30000:
                 safe_print(f"⚠️ 文本过长({len(cleaned_text)}字符)，截断至30000字符")
@@ -1680,7 +1834,8 @@ class LLMUtils:
 1. 只输出JSON数组
 2. 删除所有引用
 3. inline-math使用latex字段
-4. 去除公式编号如\\tag{{}}"""
+4. 去除公式编号如\\tag{{}}
+5. **重要：必须同时包含中英文内容，每个block的content字段必须同时包含en和zh两个语言数组**"""
 
             messages = [
                 {"role": "system", "content": PARSER_SYSTEM_PROMPT},
@@ -1690,18 +1845,84 @@ class LLMUtils:
             safe_print("📤 发送流式解析请求...")
             yield {"type": "progress", "stage": "parsing", "message": "正在调用大模型解析文本...", "progress": 20}
             
-            # 收集流式响应
+            # 收集流式响应，同时传递GLM的原始数据
             full_content = ""
+            content_preview = ""  # 用于生成进度消息的内容预览
+            last_progress_update = 0  # 记录上次进度更新的内容长度，避免频繁更新
+            
             for chunk in self.call_llm_stream(messages, temperature=0.1, max_tokens=50000):
                 if "error" in chunk:
                     yield {"type": "error", "message": chunk["error"]}
                     return
                 
-                if "content" in chunk:
+                if chunk.get("type") == "glm_stream":
+                    # 直接传递GLM的原始流式数据到前端
+                    yield {
+                        "type": "glm_stream",
+                        "raw_data": chunk["raw_data"],
+                        "content": chunk["content"],
+                        "model": chunk["model"],
+                        "usage": chunk["usage"]
+                    }
+                    
+                    # 同时收集内容用于后续解析
                     full_content += chunk["content"]
-                    # 计算进度（假设解析阶段占总进度的40%）
-                    progress = min(20 + int(len(full_content) / 100), 60)
-                    yield {"type": "progress", "stage": "parsing", "message": "正在解析文本内容...", "progress": progress}
+                    content_preview += chunk["content"]
+                    
+                    # 计算进度（解析阶段现在占总进度的90%，因为包含翻译且不再有单独翻译步骤）
+                    progress = min(20 + int(len(full_content) / 50), 90)
+                    
+                    # 根据内容生成更详细的进度消息
+                    # 只有当内容增长超过一定量时才更新消息，避免过于频繁
+                    if len(full_content) - last_progress_update > 100 or progress % 10 == 0:
+                        last_progress_update = len(full_content)
+                        
+                        # 生成基于内容的进度消息
+                        if len(content_preview.strip()) > 0:
+                            # 获取最新的内容片段用于生成进度消息
+                            preview_text = content_preview.strip()[-200:] if len(content_preview.strip()) > 200 else content_preview.strip()
+                            
+                            # 根据内容特征生成不同的进度消息
+                            if progress < 30:
+                                message = f"开始解析文本内容...已接收 {len(full_content)} 字符"
+                            elif progress < 60:
+                                # 尝试识别内容类型
+                                if any(keyword in preview_text.lower() for keyword in ['abstract', '摘要', 'introduction', '引言', 'background', '背景']):
+                                    message = f"正在解析论文摘要和引言部分...({progress}%)"
+                                elif any(keyword in preview_text.lower() for keyword in ['method', '方法', 'approach', '方法', 'experiment', '实验']):
+                                    message = f"正在解析方法和实验部分...({progress}%)"
+                                else:
+                                    message = f"正在解析论文主体内容...({progress}%)"
+                            elif progress < 85:
+                                # 尝试识别更多内容类型
+                                if any(keyword in preview_text.lower() for keyword in ['result', '结果', 'conclusion', '结论', 'discussion', '讨论']):
+                                    message = f"正在解析结果和结论部分...({progress}%)"
+                                elif any(keyword in preview_text.lower() for keyword in ['table', '表格', 'figure', '图', 'chart', '图表']):
+                                    message = f"正在解析表格和图表内容...({progress}%)"
+                                else:
+                                    message = f"继续解析论文内容...({progress}%)"
+                            else:
+                                message = f"即将完成解析...({progress}%)"
+                            
+                            # 如果内容中包含JSON结构，说明正在生成结构化数据
+                            if '{' in preview_text and '}' in preview_text and ('type' in preview_text or '"content"' in preview_text):
+                                message = f"正在生成结构化内容...({progress}%)"
+                        else:
+                            message = f"正在解析和翻译文本内容...({progress}%)"
+                        
+                        yield {"type": "progress", "stage": "parsing", "message": message, "progress": progress}
+                        
+                elif "content" in chunk:
+                    # 兼容旧格式
+                    full_content += chunk["content"]
+                    content_preview += chunk["content"]
+                    progress = min(20 + int(len(full_content) / 50), 90)
+                    
+                    # 根据内容生成更详细的进度消息
+                    if len(full_content) - last_progress_update > 100 or progress % 10 == 0:
+                        last_progress_update = len(full_content)
+                        message = f"正在解析和翻译文本内容...({progress}%)"
+                        yield {"type": "progress", "stage": "parsing", "message": message, "progress": progress}
             
             # 清理响应内容
             content = full_content.strip()
@@ -1719,158 +1940,133 @@ class LLMUtils:
             try:
                 blocks = json.loads(content)
                 safe_print(f"✅ 解析完成，得到 {len(blocks)} 个blocks")
-                yield {"type": "progress", "stage": "parsing", "message": f"解析完成，得到 {len(blocks)} 个内容块", "progress": 60}
+                yield {"type": "progress", "stage": "parsing", "message": f"解析和翻译完成，得到 {len(blocks)} 个内容块", "progress": 90}
                 return blocks
             except json.JSONDecodeError as e:
                 safe_print(f"❌ JSON解析失败: {e}")
                 safe_print(f"响应内容: {content[:500]}...")
+                
+                # 保存错误内容到本地文件以便调试
+                import os
+                import traceback
+                from datetime import datetime
+                
+                # 尝试多个可能的目录位置
+                possible_dirs = [
+                    "error_logs",
+                    "apps/api/error_logs",
+                    "apps/api/neuink/error_logs",
+                    "/tmp/error_logs" if os.name != 'nt' else "C:\\temp\\error_logs"
+                ]
+                
+                error_dir = None
+                for dir_path in possible_dirs:
+                    try:
+                        if not os.path.exists(dir_path):
+                            os.makedirs(dir_path, exist_ok=True)
+                        # 测试是否可以写入
+                        test_file = os.path.join(dir_path, "test_write.tmp")
+                        with open(test_file, 'w') as f:
+                            f.write("test")
+                        os.remove(test_file)
+                        error_dir = dir_path
+                        safe_print(f"✅ 使用错误日志目录: {error_dir}")
+                        break
+                    except Exception as dir_error:
+                        safe_print(f"⚠️ 无法使用目录 {dir_path}: {dir_error}")
+                        continue
+                
+                if not error_dir:
+                    # 如果所有预设目录都不可用，尝试在当前目录创建
+                    try:
+                        error_dir = os.getcwd()
+                        safe_print(f"⚠️ 使用当前目录作为错误日志目录: {error_dir}")
+                    except Exception as cwd_error:
+                        safe_print(f"❌ 无法获取当前目录: {cwd_error}")
+                        error_dir = "."
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                error_file = os.path.join(error_dir, f"json_parse_error_stream_{timestamp}.txt")
+                
+                try:
+                    with open(error_file, 'w', encoding='utf-8') as f:
+                        f.write(f"流式JSON解析错误时间: {datetime.now()}\n")
+                        f.write(f"错误类型: {type(e).__name__}\n")
+                        f.write(f"错误信息: {str(e)}\n")
+                        f.write(f"错误位置: line {e.lineno}, column {e.colno}, character {e.pos}\n")
+                        f.write(f"错误详情: {e.msg if hasattr(e, 'msg') else '无详细信息'}\n")
+                        f.write("=" * 50 + "\n")
+                        f.write("完整响应内容:\n")
+                        f.write(content)
+                        f.write("\n" + "=" * 50 + "\n")
+                        f.write(f"响应内容长度: {len(content)} 字符\n")
+                        f.write(f"前500字符预览: {content[:500]}\n")
+                        f.write(f"后500字符预览: {content[-500:] if len(content) > 500 else '无'}\n")
+                        f.write("\n" + "=" * 50 + "\n")
+                        f.write("错误位置上下文:\n")
+                        if hasattr(e, 'pos') and e.pos is not None:
+                            start_pos = max(0, e.pos - 100)
+                            end_pos = min(len(content), e.pos + 100)
+                            f.write(f"位置 {e.pos} 附近内容:\n")
+                            f.write(repr(content[start_pos:end_pos]))
+                            f.write("\n")
+                        f.write("\n" + "=" * 50 + "\n")
+                        f.write("完整堆栈跟踪:\n")
+                        f.write(traceback.format_exc())
+                    safe_print(f"✅ 流式错误内容已保存到: {error_file}")
+                    
+                    # 尝试在Windows桌面也保存一份
+                    try:
+                        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+                        if os.path.exists(desktop_path):
+                            desktop_error_file = os.path.join(desktop_path, f"neuink_stream_json_error_{timestamp}.txt")
+                            with open(desktop_error_file, 'w', encoding='utf-8') as f:
+                                f.write(f"NeuInk 流式JSON解析错误 - {datetime.now()}\n")
+                                f.write(f"错误类型: {type(e).__name__}\n")
+                                f.write(f"错误信息: {str(e)}\n")
+                                f.write("=" * 50 + "\n")
+                                f.write("完整响应内容:\n")
+                                f.write(content)
+                            safe_print(f"✅ 流式错误副本已保存到桌面: {desktop_error_file}")
+                    except Exception as desktop_error:
+                        safe_print(f"⚠️ 无法保存到桌面: {desktop_error}")
+                        
+                except Exception as save_error:
+                    safe_print(f"❌ 保存流式错误日志失败: {save_error}")
+                    safe_print(f"❌ 尝试保存的路径: {error_file}")
+                    safe_print(f"❌ 错误详情: {traceback.format_exc()}")
+                
                 yield {"type": "error", "message": f"解析失败，JSON格式错误: {e}"}
                 return None
 
         def _add_translations_stream(blocks):
-            """为blocks流式添加中文翻译"""
+            """为blocks流式添加中文翻译 - 已优化：解析步骤已包含翻译，此函数现在只做验证"""
             if not blocks:
                 return blocks
                 
-            safe_print("🌐 开始流式添加中文翻译")
-            yield {"type": "progress", "stage": "translating", "message": "开始翻译内容...", "progress": 65}
+            safe_print("🌐 验证翻译内容（解析步骤已包含翻译）")
+            yield {"type": "progress", "stage": "validating_translations", "message": "验证翻译完整性...", "progress": 92}
             
-            # 检查是否需要翻译
-            needs_translation = False
+            # 检查是否需要补全翻译
+            needs_completion = False
             for block in blocks:
                 if "content" in block and isinstance(block["content"], dict):
-                    if "en" in block["content"] and "zh" not in block["content"]:
-                        needs_translation = True
-                        break
+                    if "en" in block["content"] and not block["content"].get("zh"):
+                        # 如果有英文但没有中文，复制英文内容作为中文
+                        block["content"]["zh"] = block["content"]["en"].copy()
+                        needs_completion = True
+                    elif "zh" in block["content"] and not block["content"].get("en"):
+                        # 如果有中文但没有英文，复制中文内容作为英文
+                        block["content"]["en"] = block["content"]["zh"].copy()
+                        needs_completion = True
             
-            if not needs_translation:
-                safe_print("✅ 所有内容已有中文翻译，跳过翻译步骤")
-                yield {"type": "progress", "stage": "translating", "message": "内容已有中文翻译", "progress": 85}
-                return blocks
+            if needs_completion:
+                safe_print("✅ 补全了缺失的翻译内容")
+                yield {"type": "progress", "stage": "validating_translations", "message": "补全缺失的翻译内容", "progress": 95}
+            else:
+                safe_print("✅ 所有内容翻译完整")
+                yield {"type": "progress", "stage": "validating_translations", "message": "翻译内容完整", "progress": 95}
             
-            # 批量处理，每次处理10个block
-            batch_size = 10
-            total_batches = (len(blocks) + batch_size - 1) // batch_size
-            
-            for i in range(0, len(blocks), batch_size):
-                batch = blocks[i:i+batch_size]
-                batch_num = i // batch_size + 1
-                
-                # 只选择需要翻译的blocks
-                batch_to_translate = []
-                for block in batch:
-                    if "content" in block or (block["type"] in ["ordered-list", "unordered-list"] and "items" in block):
-                        batch_to_translate.append(block)
-                
-                if not batch_to_translate:
-                    continue
-                
-                # 计算翻译进度（翻译阶段占总进度的25%，从65%到90%）
-                base_progress = 65
-                translation_progress = base_progress + int((batch_num - 1) * 25 / total_batches)
-                yield {"type": "progress", "stage": "translating", "message": f"正在翻译第 {batch_num}/{total_batches} 批内容...", "progress": translation_progress}
-                
-                user_prompt = f"""请为以下JSON数组中的英文内容添加中文翻译：
-
-{json.dumps(batch_to_translate, ensure_ascii=False, indent=2)}
-
-只输出完整的JSON数组。"""
-
-                messages = [
-                    {"role": "system", "content": TRANSLATION_PROMPT},
-                    {"role": "user", "content": user_prompt}
-                ]
-                
-                try:
-                    # 收集流式翻译响应
-                    full_translation = ""
-                    has_content = False
-                    
-                    for chunk in self.call_llm_stream(messages, temperature=0.1, max_tokens=50000):
-                        if "error" in chunk:
-                            yield {"type": "error", "message": chunk["error"]}
-                            continue
-                        
-                        if "content" in chunk:
-                            full_translation += chunk["content"]
-                            has_content = True
-                    
-                    # 检查是否有内容
-                    if not has_content:
-                        safe_print(f"❌ 翻译批次 {batch_num} 失败: 流式响应无内容")
-                        yield {"type": "warning", "message": f"翻译批次 {batch_num} 失败: 响应无内容"}
-                        continue
-                    
-                    if not full_translation or not full_translation.strip():
-                        safe_print(f"❌ 翻译批次 {batch_num} 失败: 收集的翻译内容为空")
-                        yield {"type": "warning", "message": f"翻译批次 {batch_num} 失败: 内容为空"}
-                        continue
-                    
-                    # 清理响应内容
-                    original_content = full_translation  # 保存原始内容用于调试
-                    content = full_translation.strip()
-                    
-                    # 提取JSON内容（支持多种格式）
-                    json_extracted = False
-                    if "```json" in content:
-                        start = content.find("```json") + 7
-                        end = content.find("```", start)
-                        if end != -1:
-                            content = content[start:end].strip()
-                            json_extracted = True
-                    elif "```" in content:
-                        start = content.find("```") + 3
-                        end = content.find("```", start)
-                        if end != -1:
-                            content = content[start:end].strip()
-                            json_extracted = True
-                    
-                    # 检查清理后的内容是否为空
-                    if not content:
-                        safe_print(f"❌ 翻译批次 {batch_num} 失败: 提取JSON后内容为空")
-                        yield {"type": "warning", "message": f"翻译批次 {batch_num} 失败: JSON内容为空"}
-                        continue
-                    
-                    # 尝试解析JSON
-                    try:
-                        translated_batch = json.loads(content)
-                    except json.JSONDecodeError as json_e:
-                        safe_print(f"❌ 翻译批次 {batch_num} 失败: JSON解析错误 {json_e}")
-                        yield {"type": "warning", "message": f"翻译批次 {batch_num} 失败: JSON格式错误"}
-                        continue
-                    
-                    # 验证解析结果
-                    if not isinstance(translated_batch, list):
-                        safe_print(f"❌ 翻译批次 {batch_num} 失败: 返回的不是数组格式")
-                        yield {"type": "warning", "message": f"翻译批次 {batch_num} 失败: 格式错误"}
-                        continue
-                    
-                    # 更新原始blocks中对应的内容
-                    translated_idx = 0
-                    updated_count = 0
-                    for j in range(len(batch)):
-                        if i+j < len(blocks):
-                            block = blocks[i+j]
-                            # 只更新被翻译的blocks
-                            if "content" in block or (block["type"] in ["ordered-list", "unordered-list"] and "items" in block):
-                                if translated_idx < len(translated_batch):
-                                    blocks[i+j] = translated_batch[translated_idx]
-                                    translated_idx += 1
-                                    updated_count += 1
-                    
-                    if updated_count == 0:
-                        safe_print(f"⚠️ 翻译批次 {batch_num}: 没有blocks被更新")
-                        yield {"type": "warning", "message": f"翻译批次 {batch_num}: 无blocks更新"}
-                    else:
-                        safe_print(f"✅ 完成批次 {batch_num} 的翻译，更新了 {updated_count} 个blocks")
-                        yield {"type": "progress", "stage": "translating", "message": f"完成第 {batch_num}/{total_batches} 批翻译", "progress": translation_progress}
-                    
-                except Exception as e:
-                    safe_print(f"❌ 翻译批次 {batch_num} 失败: 未知错误 {e}")
-                    yield {"type": "warning", "message": f"翻译批次 {batch_num} 失败: {str(e)}"}
-                    continue
-            
-            yield {"type": "progress", "stage": "translating", "message": "翻译完成", "progress": 90}
             return blocks
 
         def _fix_and_validate_stream(blocks):
@@ -1879,7 +2075,7 @@ class LLMUtils:
                 return blocks
                 
             safe_print("🔧 开始流式修复和验证blocks")
-            yield {"type": "progress", "stage": "validating", "message": "开始验证和修复内容格式...", "progress": 92}
+            yield {"type": "progress", "stage": "validating", "message": "开始验证和修复内容格式...", "progress": 90}
             
             # 导入必要的工具函数
             try:
@@ -1986,17 +2182,12 @@ class LLMUtils:
 
         # 主执行流程
         try:
-            # 步骤1：解析Markdown
+            # 步骤1：解析Markdown（现在包含翻译）
             blocks = yield from _parse_markdown_stream()
             if blocks is None:
                 return
             
-            # 步骤2：添加翻译
-            blocks = yield from _add_translations_stream(blocks)
-            if blocks is None:
-                return
-            
-            # 步骤3：修复和验证
+            # 步骤2：修复和验证
             validated_blocks = yield from _fix_and_validate_stream(blocks)
             if validated_blocks is None:
                 return
@@ -2160,6 +2351,97 @@ class LLMUtils:
             except json.JSONDecodeError as e:
                 safe_print(f"❌ JSON解析失败: {e}")
                 safe_print(f"原始内容: {content}")
+                
+                # 保存错误内容到本地文件以便调试
+                import os
+                import traceback
+                from datetime import datetime
+                
+                # 尝试多个可能的目录位置
+                possible_dirs = [
+                    "error_logs",
+                    "apps/api/error_logs",
+                    "apps/api/neuink/error_logs",
+                    "/tmp/error_logs" if os.name != 'nt' else "C:\\temp\\error_logs"
+                ]
+                
+                error_dir = None
+                for dir_path in possible_dirs:
+                    try:
+                        if not os.path.exists(dir_path):
+                            os.makedirs(dir_path, exist_ok=True)
+                        # 测试是否可以写入
+                        test_file = os.path.join(dir_path, "test_write.tmp")
+                        with open(test_file, 'w') as f:
+                            f.write("test")
+                        os.remove(test_file)
+                        error_dir = dir_path
+                        safe_print(f"✅ 使用错误日志目录: {error_dir}")
+                        break
+                    except Exception as dir_error:
+                        safe_print(f"⚠️ 无法使用目录 {dir_path}: {dir_error}")
+                        continue
+                
+                if not error_dir:
+                    # 如果所有预设目录都不可用，尝试在当前目录创建
+                    try:
+                        error_dir = os.getcwd()
+                        safe_print(f"⚠️ 使用当前目录作为错误日志目录: {error_dir}")
+                    except Exception as cwd_error:
+                        safe_print(f"❌ 无法获取当前目录: {cwd_error}")
+                        error_dir = "."
+                
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                error_file = os.path.join(error_dir, f"references_parse_error_{timestamp}.txt")
+                
+                try:
+                    with open(error_file, 'w', encoding='utf-8') as f:
+                        f.write(f"参考文献JSON解析错误时间: {datetime.now()}\n")
+                        f.write(f"错误类型: {type(e).__name__}\n")
+                        f.write(f"错误信息: {str(e)}\n")
+                        f.write(f"错误位置: line {e.lineno}, column {e.colno}, character {e.pos}\n")
+                        f.write(f"错误详情: {e.msg if hasattr(e, 'msg') else '无详细信息'}\n")
+                        f.write("=" * 50 + "\n")
+                        f.write("完整响应内容:\n")
+                        f.write(content)
+                        f.write("\n" + "=" * 50 + "\n")
+                        f.write(f"响应内容长度: {len(content)} 字符\n")
+                        f.write(f"前500字符预览: {content[:500]}\n")
+                        f.write(f"后500字符预览: {content[-500:] if len(content) > 500 else '无'}\n")
+                        f.write("\n" + "=" * 50 + "\n")
+                        f.write("错误位置上下文:\n")
+                        if hasattr(e, 'pos') and e.pos is not None:
+                            start_pos = max(0, e.pos - 100)
+                            end_pos = min(len(content), e.pos + 100)
+                            f.write(f"位置 {e.pos} 附近内容:\n")
+                            f.write(repr(content[start_pos:end_pos]))
+                            f.write("\n")
+                        f.write("\n" + "=" * 50 + "\n")
+                        f.write("完整堆栈跟踪:\n")
+                        f.write(traceback.format_exc())
+                    safe_print(f"✅ 参考文献解析错误内容已保存到: {error_file}")
+                    
+                    # 尝试在Windows桌面也保存一份
+                    try:
+                        desktop_path = os.path.join(os.path.expanduser("~"), "Desktop")
+                        if os.path.exists(desktop_path):
+                            desktop_error_file = os.path.join(desktop_path, f"neuink_references_error_{timestamp}.txt")
+                            with open(desktop_error_file, 'w', encoding='utf-8') as f:
+                                f.write(f"NeuInk 参考文献JSON解析错误 - {datetime.now()}\n")
+                                f.write(f"错误类型: {type(e).__name__}\n")
+                                f.write(f"错误信息: {str(e)}\n")
+                                f.write("=" * 50 + "\n")
+                                f.write("完整响应内容:\n")
+                                f.write(content)
+                            safe_print(f"✅ 参考文献解析错误副本已保存到桌面: {desktop_error_file}")
+                    except Exception as desktop_error:
+                        safe_print(f"⚠️ 无法保存到桌面: {desktop_error}")
+                        
+                except Exception as save_error:
+                    safe_print(f"❌ 保存参考文献错误日志失败: {save_error}")
+                    safe_print(f"❌ 尝试保存的路径: {error_file}")
+                    safe_print(f"❌ 错误详情: {traceback.format_exc()}")
+                
                 raise Exception(f"参考文献解析失败，无法解析JSON: {e}")
             except Exception as e:
                 safe_print(f"❌ 参考文献解析失败: {e}")
