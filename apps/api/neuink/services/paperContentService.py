@@ -5,7 +5,7 @@ Paper 内容操作服务
 import time
 import uuid
 import re
-from typing import Dict, Any, Optional, List
+from typing import Dict, Any, Optional, List, Tuple
 from ..models.paper import PaperModel
 from ..config.constants import BusinessCode
 from ..utils.llm_utils import get_llm_utils
