@@ -98,7 +98,10 @@ export default function PaperHeader({
 
   return (
     <div className="relative w-full px-6 py-4">
-      <div className="mx-auto flex max-w-6xl items-center gap-4 rounded-2xl border border-white/45 bg-linear-to-tr from-white/30 via-white/15 to-white/35 px-6 py-4 shadow-[0_30px_60px_rgba(15,23,42,0.18)] backdrop-blur-[18px] dark:border-white/10 dark:from-slate-900/60 dark:via-slate-900/45 dark:to-slate-900/55">
+      <div
+        className="mx-auto flex max-w-6xl items-center gap-4 rounded-2xl border border-white/45 bg-linear-to-tr from-white/30 via-white/15 to-white/35 px-6 py-4 shadow-[0_30px_60px_rgba(15,23,42,0.18)] backdrop-blur-[18px] dark:border-white/10 dark:from-slate-900/60 dark:via-slate-900/45 dark:to-slate-900/55 transition-all duration-200"
+        style={{ willChange: 'transform' }}
+      >
         <span className="inline-flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-white/45 bg-white/40 shadow-[0_16px_32px_rgba(37,99,235,0.25)] backdrop-blur-xl dark:border-slate-700/45 dark:bg-slate-800/50">
           <BookOpen className="h-5 w-5 text-blue-600 dark:text-blue-300" />
         </span>

@@ -1,7 +1,7 @@
 // apps/web/src/components/library/LibraryPage.tsx
 'use client';
 
-import React, { useEffect } from 'react';
+import React, { useEffect, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { BookOpen, Lock, ShieldCheck, User } from 'lucide-react';
 
@@ -103,7 +103,7 @@ function PersonalLibraryPlaceholder({ username }: { username?: string | null }) 
   );
 }
 
-export default function LibraryPage() {
+function LibraryPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const { isAuthenticated, user } = useAuth();
@@ -140,4 +140,12 @@ export default function LibraryPage() {
   }
 
   return <PublicLibraryPage />;
+}
+
+export default function LibraryPage() {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen">加载中...</div>}>
+      <LibraryPageContent />
+    </Suspense>
+  );
 }

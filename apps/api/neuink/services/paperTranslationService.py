@@ -715,7 +715,7 @@ class PaperTranslationService:
         
         # 更新sections
         if sections_updated:
-            self.paper_model.update(paper_id, {"sections": updated_sections})
+            self.paper_model.update_direct(paper_id, {"$set": {"sections": updated_sections}})
         
         return updated_count
 

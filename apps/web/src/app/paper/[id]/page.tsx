@@ -10,12 +10,12 @@ import {
   type CSSProperties,
   type ChangeEvent,
   type FormEvent,
+  Suspense,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useParams, useSearchParams } from 'next/navigation';
 import { Loader2 } from 'lucide-react';
 import { toast } from 'sonner';
-// NEW: 动画库
 import { motion, AnimatePresence } from 'framer-motion';
 
 import { useTabStore } from '@/stores/useTabStore';
@@ -322,6 +322,7 @@ function ReferenceEditorOverlay({
 
 function useAutoHeaderHeight(varName = '--app-header-h', extraScrollPad = 24, stickyOffset = 0,) {
   const ref = useRef<HTMLDivElement>(null);
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
   useEffect(() => {
     const el = ref.current;
@@ -331,18 +332,37 @@ function useAutoHeaderHeight(varName = '--app-header-h', extraScrollPad = 24, st
       const actual = Math.round(h);
       const total = actual + stickyOffset;
       const root = document.documentElement;
+      
+      // 使用更稳定的更新方式，减少布局抖动
       root.style.setProperty(varName, `${total}px`);
     };
 
-    const ro = new ResizeObserver(entries => {
+    const handleResize = (entries: ResizeObserverEntry[]) => {
       const rect = entries[0]?.contentRect;
-      if (rect) setVars(rect.height);
-    });
+      if (rect) {
+        // 使用防抖处理，减少频繁更新
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+        }
+        timeoutRef.current = setTimeout(() => {
+          setVars(rect.height);
+        }, 50);
+      }
+    };
 
+    const ro = new ResizeObserver(handleResize);
+
+    // 初始设置高度
     setVars(el.getBoundingClientRect().height);
     ro.observe(el);
-    return () => ro.disconnect();
-  }, [varName, extraScrollPad]);
+    
+    return () => {
+      ro.disconnect();
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, [varName, extraScrollPad, stickyOffset]);
 
   return ref;
 }
@@ -357,8 +377,7 @@ function useEnsureWindowScroll() {
   }, []);
 }
 
-export default function PaperPage() {
-
+function PaperPageContent() {
   const params = useParams();
   const searchParams = useSearchParams();
   const { tabs } = useTabStore();
@@ -1081,17 +1100,38 @@ export default function PaperPage() {
   }
 
   if (error || !paper || !displayContent) {
+    // 如果是500错误或论文不存在，自动跳转到默认页面
+    if (error?.includes('500') || error?.includes('论文内容不存在')) {
+      useEffect(() => {
+        // 延迟跳转，让用户看到错误信息
+        const timer = setTimeout(() => {
+          window.location.href = '/library';
+        }, 3000);
+        
+        return () => clearTimeout(timer);
+      }, []);
+    }
+    
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex items-center justify-center">
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg p-8 max-w-md">
           <h2 className="text-xl font-bold text-red-600 mb-2">加载失败</h2>
           <p className="text-gray-700 dark:text-slate-300">{error || '论文内容不存在'}</p>
-          <button
-            onClick={() => window.history.back()}
-            className="mt-4 px-4 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-all"
-          >
-            返回
-          </button>
+          <p className="text-sm text-gray-500 dark:text-slate-400 mt-2">3秒后自动跳转到论文库...</p>
+          <div className="mt-4 flex gap-3">
+            <button
+              onClick={() => window.location.href = '/library'}
+              className="px-4 py-2 bg-blue-600 text-white rounded-full hover:bg-blue-700 transition-all"
+            >
+              前往论文库
+            </button>
+            <button
+              onClick={() => window.history.back()}
+              className="px-4 py-2 border border-gray-300 text-gray-700 rounded-full hover:bg-gray-50 transition-all dark:border-gray-600 dark:text-gray-300 dark:hover:bg-slate-800"
+            >
+              返回上页
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -1105,7 +1145,10 @@ export default function PaperPage() {
         <div
           ref={headerRef}
           className="sticky z-50 px-4 transition-all duration-200 ease-out"
-          style={{ top: HEADER_STICKY_OFFSET }}
+          style={{
+            top: HEADER_STICKY_OFFSET,
+            willChange: 'transform'
+          }}
         >
           <PaperHeader
             lang={lang}
@@ -1465,5 +1508,20 @@ export default function PaperPage() {
         )}
       </div>
     </PaperEditPermissionsContext.Provider>
+  );
+}
+
+export default function PaperPage() {
+  return (
+    <Suspense fallback={
+      <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="w-12 h-12 text-blue-600 animate-spin" />
+          <p className="text-gray-600 dark:text-slate-400">加载论文中...</p>
+        </div>
+      </div>
+    }>
+      <PaperPageContent />
+    </Suspense>
   );
 }

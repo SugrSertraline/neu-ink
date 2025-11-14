@@ -16,12 +16,13 @@ import {
 
 import { useAuth } from '@/contexts/AuthContext';
 import { userService, isSuccess } from '@/lib/services/user';
-import type { 
-  User as UserType, 
-  UserListResponse, 
-  CreateUserDto, 
+import { cn } from '@/lib/utils';
+import type {
+  User as UserType,
+  UserListResponse,
+  CreateUserDto,
   UpdateUserDto,
-  Role 
+  Role
 } from '@/types/user';
 
 import { Button } from '@/components/ui/button';
@@ -211,10 +212,12 @@ export default function UsersPage() {
     <div className="container mx-auto p-6">
       <div className="flex items-center justify-between mb-6">
         <div className="flex items-center gap-3">
-          <Users className="h-8 w-8 text-blue-600" />
+          <div className="h-12 w-12 rounded-xl flex items-center justify-center bg-white/55 backdrop-blur-xl border border-white/45 shadow-[0_8px_22px_rgba(40,65,138,0.14)]">
+            <Users className="h-6 w-6 text-[#28418A]" />
+          </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">用户管理</h1>
-            <p className="text-sm text-gray-500">
+            <h1 className="text-2xl font-bold text-slate-900">用户管理</h1>
+            <p className="text-sm text-slate-500">
               共 {pagination.total} 个用户
               {searchKeyword && ` (搜索: "${searchKeyword}")`}
             </p>
@@ -222,7 +225,8 @@ export default function UsersPage() {
         </div>
         <Button
           onClick={() => setIsCreateDialogOpen(true)}
-          className="flex items-center gap-2"
+          className="flex items-center gap-2 bg-linear-to-r from-[#28418A] to-[#3F66B0] text-white shadow-[0_12px_30px_rgba(40,65,138,0.32)] hover:shadow-[0_14px_32px_rgba(40,65,138,0.38)] hover:scale-[1.01] transition-all duration-250 border-0"
+          data-glow="true"
         >
           <Plus className="h-4 w-4" />
           新增用户
@@ -232,53 +236,60 @@ export default function UsersPage() {
       {/* 搜索栏 */}
       <div className="flex gap-4 mb-6">
         <div className="flex-1 flex gap-2">
-          <Input
-            placeholder="搜索用户名或昵称..."
-            value={searchKeyword}
-            onChange={(e) => setSearchKeyword(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            className="max-w-md"
-          />
-          <Button onClick={handleSearch} variant="outline">
+          <div className="relative max-w-md flex-1">
+            <Input
+              placeholder="搜索用户名或昵称..."
+              value={searchKeyword}
+              onChange={(e) => setSearchKeyword(e.target.value)}
+              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
+              className="backdrop-blur-xl bg-white/55 border border-white/45 shadow-[0_8px_22px_rgba(40,65,138,0.14)] focus:bg-white/78 focus:border-white/60 focus:shadow-[0_12px_32px_rgba(40,65,138,0.16)] transition-all duration-250"
+            />
+          </div>
+          <Button
+            onClick={handleSearch}
+            variant="outline"
+            className="backdrop-blur-xl bg-white/55 border border-white/45 shadow-[0_8px_22px_rgba(40,65,138,0.14)] hover:bg-white/78 hover:shadow-[0_12px_32px_rgba(40,65,138,0.16)] transition-all duration-250"
+          >
             <Search className="h-4 w-4" />
           </Button>
         </div>
-        <Button 
-          onClick={() => fetchUsers(pagination.page, searchKeyword)} 
+        <Button
+          onClick={() => fetchUsers(pagination.page, searchKeyword)}
           variant="outline"
           disabled={loading}
+          className="backdrop-blur-xl bg-white/55 border border-white/45 shadow-[0_8px_22px_rgba(40,65,138,0.14)] hover:bg-white/78 hover:shadow-[0_12px_32px_rgba(40,65,138,0.16)] transition-all duration-250"
         >
           <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
         </Button>
       </div>
 
       {/* 用户列表 */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      <div className="rounded-2xl border border-white/60 bg-white/72 backdrop-blur-3xl shadow-[0_20px_54px_rgba(15,23,42,0.16)] overflow-hidden" data-glow="true">
         <div className="overflow-x-auto">
-          <table className="min-w-full divide-y divide-gray-200">
-            <thead className="bg-gray-50">
+          <table className="min-w-full divide-y divide-white/30">
+            <thead className="bg-white/55 backdrop-blur-xl">
               <tr>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                   用户信息
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                   角色
                 </th>
-                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase tracking-wider">
                   创建时间
                 </th>
-                <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">
+                <th className="px-6 py-3 text-right text-xs font-medium text-slate-600 uppercase tracking-wider">
                   操作
                 </th>
               </tr>
             </thead>
-            <tbody className="bg-white divide-y divide-gray-200">
+            <tbody className="bg-white/40 backdrop-blur-xl divide-y divide-white/20">
               {loading ? (
                 <tr>
                   <td colSpan={4} className="px-6 py-12 text-center">
                     <div className="flex items-center justify-center">
-                      <RefreshCw className="h-6 w-6 animate-spin text-blue-600 mr-2" />
-                      加载中...
+                      <RefreshCw className="h-6 w-6 animate-spin text-[#28418A] mr-2" />
+                      <span className="text-slate-700">加载中...</span>
                     </div>
                   </td>
                 </tr>
@@ -286,14 +297,17 @@ export default function UsersPage() {
                 <tr>
                   <td colSpan={4} className="px-6 py-12 text-center">
                     <div className="flex flex-col items-center">
-                      <AlertCircle className="h-12 w-12 text-gray-400 mb-4" />
-                      <h3 className="text-lg font-medium text-gray-900 mb-2">暂无用户数据</h3>
-                      <p className="text-gray-500 mb-4">
+                      <div className="h-16 w-16 rounded-full flex items-center justify-center bg-white/55 backdrop-blur-xl border border-white/45 shadow-[0_8px_22px_rgba(40,65,138,0.14)] mb-4">
+                        <AlertCircle className="h-8 w-8 text-slate-400" />
+                      </div>
+                      <h3 className="text-lg font-medium text-slate-900 mb-2">暂无用户数据</h3>
+                      <p className="text-slate-500 mb-4">
                         {searchKeyword ? '没有找到匹配的用户' : '系统中暂无用户'}
                       </p>
                       <Button
                         onClick={() => setIsCreateDialogOpen(true)}
-                        className="mt-2"
+                        className="mt-2 bg-linear-to-r from-[#28418A] to-[#3F66B0] text-white shadow-[0_12px_30px_rgba(40,65,138,0.32)] hover:shadow-[0_14px_32px_rgba(40,65,138,0.38)] hover:scale-[1.01] transition-all duration-250 border-0"
+                        data-glow="true"
                       >
                         <Plus className="h-4 w-4 mr-2" />
                         创建第一个用户
@@ -303,19 +317,19 @@ export default function UsersPage() {
                 </tr>
               ) : (
                 users.map((user) => (
-                  <tr key={user.id} className="hover:bg-gray-50">
+                  <tr key={user.id} className="hover:bg-white/60 transition-colors duration-200">
                     <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
                         <div className="shrink-0 h-10 w-10">
-                          <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                            <User className="h-6 w-6 text-gray-600" />
+                          <div className="h-10 w-10 rounded-full bg-white/55 backdrop-blur-xl border border-white/45 flex items-center justify-center shadow-[0_8px_22px_rgba(40,65,138,0.14)]">
+                            <User className="h-5 w-5 text-slate-600" />
                           </div>
                         </div>
                         <div className="ml-4">
-                          <div className="text-sm font-medium text-gray-900">
+                          <div className="text-sm font-medium text-slate-900">
                             {user.username}
                           </div>
-                          <div className="text-sm text-gray-500">
+                          <div className="text-sm text-slate-500">
                             {user.nickname}
                           </div>
                         </div>
@@ -327,16 +341,20 @@ export default function UsersPage() {
                         onValueChange={(value: Role) => handleChangeRole(user, value)}
                         disabled={user.id === currentUser?.id}
                       >
-                        <SelectTrigger className={`w-32 ${getRoleBadgeClass(user.role)}`}>
+                        <SelectTrigger className={`w-32 backdrop-blur-xl bg-white/55 border border-white/45 shadow-[0_8px_22px_rgba(40,65,138,0.14)] hover:bg-white/78 transition-all duration-250 ${
+                          user.role === 'admin'
+                            ? 'bg-gradient-to-r from-[#28418A]/20 to-[#3F66B0]/20 text-[#28418A]'
+                            : 'bg-gradient-to-r from-[#3F66B0]/20 to-[#6CAAD6]/20 text-[#3F66B0]'
+                        }`}>
                           <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="backdrop-blur-xl bg-white/85 border border-white/45">
                           <SelectItem value="user">普通用户</SelectItem>
                           <SelectItem value="admin">管理员</SelectItem>
                         </SelectContent>
                       </Select>
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-500">
                       {new Date(user.createdAt).toLocaleString('zh-CN')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
@@ -345,15 +363,16 @@ export default function UsersPage() {
                           variant="ghost"
                           size="sm"
                           onClick={() => openEditDialog(user)}
+                          className="backdrop-blur-xl bg-white/55 border border-white/45 shadow-[0_8px_22px_rgba(40,65,138,0.14)] hover:bg-white/78 hover:shadow-[0_12px_32px_rgba(40,65,138,0.16)] transition-all duration-250"
                         >
-                          <Edit className="h-4 w-4" />
+                          <Edit className="h-4 w-4 text-slate-600" />
                         </Button>
                         <Button
                           variant="ghost"
                           size="sm"
                           onClick={() => openDeleteDialog(user)}
                           disabled={user.id === currentUser?.id}
-                          className="text-red-600 hover:text-red-800"
+                          className="backdrop-blur-xl bg-white/55 border border-white/45 shadow-[0_8px_22px_rgba(40,65,138,0.14)] hover:bg-red-50/60 hover:border-red-200/60 hover:text-red-600 transition-all duration-250"
                         >
                           <Trash2 className="h-4 w-4" />
                         </Button>
@@ -370,7 +389,7 @@ export default function UsersPage() {
       {/* 分页信息 */}
       {pagination.pages > 0 && (
         <div className="mt-6 flex items-center justify-between">
-          <div className="text-sm text-gray-700">
+          <div className="text-sm text-slate-700 bg-white/55 backdrop-blur-xl border border-white/45 rounded-lg px-4 py-2 shadow-[0_8px_22px_rgba(40,65,138,0.14)]">
             显示第 {((pagination.page - 1) * pagination.limit) + 1} - {Math.min(pagination.page * pagination.limit, pagination.total)} 条，共 {pagination.total} 条
           </div>
           
@@ -381,7 +400,10 @@ export default function UsersPage() {
                 <PaginationItem>
                   <PaginationPrevious
                     onClick={() => handlePageChange(pagination.page - 1)}
-                    className={pagination.page <= 1 ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                    className={cn(
+                      'backdrop-blur-xl bg-white/55 border border-white/45 shadow-[0_8px_22px_rgba(40,65,138,0.14)] hover:bg-white/78 hover:shadow-[0_12px_32px_rgba(40,65,138,0.16)] transition-all duration-250',
+                      pagination.page <= 1 ? 'pointer-events-none opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                    )}
                   />
                 </PaginationItem>
                 
@@ -390,7 +412,12 @@ export default function UsersPage() {
                     <PaginationLink
                       onClick={() => handlePageChange(page)}
                       isActive={page === pagination.page}
-                      className="cursor-pointer"
+                      className={cn(
+                        'cursor-pointer backdrop-blur-xl border border-white/45 shadow-[0_8px_22px_rgba(40,65,138,0.14)] hover:bg-white/78 hover:shadow-[0_12px_32px_rgba(40,65,138,0.16)] transition-all duration-250',
+                        page === pagination.page
+                          ? 'bg-gradient-to-r from-[#28418A]/20 to-[#3F66B0]/20 text-[#28418A] border-[#28418A]/30'
+                          : 'bg-white/55 text-slate-700'
+                      )}
                     >
                       {page}
                     </PaginationLink>
@@ -400,7 +427,10 @@ export default function UsersPage() {
                 <PaginationItem>
                   <PaginationNext
                     onClick={() => handlePageChange(pagination.page + 1)}
-                    className={pagination.page >= pagination.pages ? 'pointer-events-none opacity-50' : 'cursor-pointer'}
+                    className={cn(
+                      'backdrop-blur-xl bg-white/55 border border-white/45 shadow-[0_8px_22px_rgba(40,65,138,0.14)] hover:bg-white/78 hover:shadow-[0_12px_32px_rgba(40,65,138,0.16)] transition-all duration-250',
+                      pagination.page >= pagination.pages ? 'pointer-events-none opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                    )}
                   />
                 </PaginationItem>
               </PaginationContent>

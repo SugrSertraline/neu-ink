@@ -124,6 +124,26 @@ export interface FigureBlock {
   uploadedFilename?: string;
 }
 
+// 表格单元格内容类型
+export type TableCellContent = string | {
+  en?: InlineContent[];
+  zh?: InlineContent[];
+};
+
+// 表格单元格定义
+export interface TableCell {
+  content: TableCellContent;
+  colspan?: number; // 跨列数，默认为1
+  rowspan?: number; // 跨行数，默认为1
+  isHeader?: boolean; // 是否为表头单元格
+  align?: 'left' | 'center' | 'right'; // 单元格对齐方式
+}
+
+// 表格行定义
+export interface TableRow {
+  cells: TableCell[];
+}
+
 export interface TableBlock {
   id: string;
   type: 'table';
@@ -136,9 +156,17 @@ export interface TableBlock {
     en?: InlineContent[];
     zh?: InlineContent[];
   };
-  headers?: string[];
-  rows: (string | { en?: string; zh?: string })[][];
+  // 使用新的表格结构
+  headers?: TableRow[]; // 表头行数组，支持多行表头
+  rows: TableRow[]; // 数据行数组
+  // 保持向后兼容的默认对齐方式
   align?: ('left' | 'center' | 'right')[];
+  // 新增：表格整体样式
+  style?: {
+    borderless?: boolean; // 无边框
+    compact?: boolean; // 紧凑模式
+    striped?: boolean; // 条纹行
+  };
 }
 
 export interface CodeBlock {

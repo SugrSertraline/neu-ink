@@ -5,10 +5,15 @@ Paper 内容操作服务
 import time
 import uuid
 import re
+import logging
 from typing import Dict, Any, Optional, List, Tuple
 from ..models.paper import PaperModel
 from ..config.constants import BusinessCode
 from ..utils.llm_utils import get_llm_utils
+from ..utils.common import get_current_time
+
+# 初始化logger
+logger = logging.getLogger(__name__)
 
 
 class PaperContentService:
@@ -122,6 +127,10 @@ class PaperContentService:
             target_section = None
             section_index = -1
             
+            # 添加调试日志
+            logger.info(f"尝试更新章节 - 请求的section_id: {section_id}")
+            logger.info(f"论文中的所有section IDs: {[s.get('id') for s in sections]}")
+            
             for i, section in enumerate(sections):
                 if section.get("id") == section_id:
                     target_section = section
@@ -129,6 +138,7 @@ class PaperContentService:
                     break
             
             if target_section is None:
+                logger.error(f"未找到匹配的section - 请求的section_id: {section_id}")
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
 
             # 更新section数据
@@ -137,7 +147,8 @@ class PaperContentService:
                     if isinstance(value, dict) and "en" in value:
                         target_section["title"] = value.get("en", "")
                         zh_value = value.get("zh", "")
-                        if zh_value and zh_value.strip() != "未命名章节":
+                        # 修复：只要zh_value不为空就设置，不要排除特定值
+                        if zh_value and zh_value.strip():
                             target_section["titleZh"] = zh_value
                     else:
                         target_section["title"] = value
@@ -148,9 +159,17 @@ class PaperContentService:
 
             sections[section_index] = target_section
 
-            # 更新论文
-            update_paper_data = {"sections": sections}
-            if self.paper_model.update(paper_id, update_paper_data):
+            # 更新论文 - 使用MongoDB的数组索引更新特定section
+            # 使用正确的MongoDB更新语法
+            update_operation = {
+                "$set": {
+                    f"sections.{section_index}": target_section,
+                    "updatedAt": get_current_time()  # 添加更新时间
+                }
+            }
+            
+            # 使用update_direct方法执行MongoDB操作
+            if self.paper_model.update_direct(paper_id, update_operation):
                 return self._wrap_success(
                     "章节更新成功",
                     {
@@ -200,9 +219,9 @@ class PaperContentService:
             # 删除section
             sections.pop(section_index)
 
-            # 更新论文
-            update_paper_data = {"sections": sections}
-            if self.paper_model.update(paper_id, update_paper_data):
+            # 更新论文 - 使用MongoDB的$pull操作删除特定section
+            update_paper_data = {"$pull": {"sections": {"id": section_id}}}
+            if self.paper_model.update_direct(paper_id, update_paper_data):
                 return self._wrap_success("章节删除成功", {
                     "deletedSectionId": section_id
                 })
@@ -304,8 +323,8 @@ class PaperContentService:
                     }
                 }
             
-            # 执行原子更新
-            if self.paper_model.update(paper_id, update_operation):
+            # 执行原子更新 - 使用update_direct处理MongoDB操作符
+            if self.paper_model.update_direct(paper_id, update_operation):
                 return self._wrap_success(
                     f"成功向section添加了{len(new_blocks)}个blocks",
                     {
@@ -376,8 +395,8 @@ class PaperContentService:
             target_section["content"] = blocks
             sections[section_index] = target_section
 
-            # 更新论文
-            update_paper_data = {"sections": sections}
+            # 更新论文 - 使用MongoDB的数组索引更新特定section
+            update_paper_data = {f"sections.{section_index}": target_section}
             if self.paper_model.update(paper_id, update_paper_data):
                 return self._wrap_success(
                     "block更新成功",
@@ -444,8 +463,8 @@ class PaperContentService:
             target_section["content"] = blocks
             sections[section_index] = target_section
 
-            # 更新论文
-            update_paper_data = {"sections": sections}
+            # 更新论文 - 使用MongoDB的数组索引更新特定section
+            update_paper_data = {f"sections.{section_index}": target_section}
             if self.paper_model.update(paper_id, update_paper_data):
                 return self._wrap_success("block删除成功", {
                     "deletedBlockId": block_id,
@@ -524,6 +543,12 @@ class PaperContentService:
                 "metadata": block_data.get("metadata", {}),
             }
             
+            # 处理常见的可选字段
+            optional_fields = ["align", "start", "level", "author", "language", "showLineNumbers", "width", "height"]
+            for field in optional_fields:
+                if field in block_data:
+                    new_block[field] = block_data[field]
+            
             # 根据不同类型设置默认值
             if block_data.get("type") == "math" and "latex" in block_data:
                 new_block["latex"] = block_data["latex"]
@@ -558,6 +583,13 @@ class PaperContentService:
             elif block_data.get("type") == "heading":
                 new_block["level"] = block_data.get("level", 2)
             
+            # 特别处理图片类字段
+            if block_data.get("type") == "figure":
+                image_fields = ["src", "uploadedFilename", "caption", "description"]
+                for field in image_fields:
+                    if field in block_data:
+                        new_block[field] = block_data[field]
+            
             # 使用MongoDB原子更新操作
             if insert_index == len(current_blocks):
                 # 在末尾添加，使用$push
@@ -577,8 +609,8 @@ class PaperContentService:
                     }
                 }
             
-            # 执行原子更新
-            if self.paper_model.update(paper_id, update_operation):
+            # 执行原子更新 - 使用update_direct处理MongoDB操作符
+            if self.paper_model.update_direct(paper_id, update_operation):
                 return self._wrap_success(
                     "成功添加block",
                     {
@@ -682,8 +714,8 @@ class PaperContentService:
                     }
                 }
             
-            # 执行原子更新
-            if self.paper_model.update(paper_id, update_operation):
+            # 执行原子更新 - 使用update_direct处理MongoDB操作符
+            if self.paper_model.update_direct(paper_id, update_operation):
                 return self._wrap_success(
                     f"成功向section添加了{len(new_blocks)}个blocks",
                     {

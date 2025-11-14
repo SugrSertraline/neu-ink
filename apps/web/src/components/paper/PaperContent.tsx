@@ -40,7 +40,7 @@ interface PaperContentProps {
   contentRef: React.RefObject<HTMLDivElement | null>;
   setSearchResults: (results: string[]) => void;
   setCurrentSearchIndex: (index: number) => void;
-  onSectionTitleUpdate?: (sectionId: string, title: { en: string; zh: string }) => void;
+  onSectionTitleUpdate?: (sectionId: string, title: { en: string; zh: string }, paperId?: string, userPaperId?: string | null, isPersonalOwner?: boolean, onSaveToServer?: () => Promise<void>) => void;
   onSectionInsert?: (
     targetSectionId: string | null,
     position: 'above' | 'below',
@@ -334,12 +334,19 @@ export default function PaperContent({
 
   const handleSectionRenameConfirm = useCallback(
     (sectionId: string, title: { en: string; zh: string }) => {
+      // 添加调试日志
+      console.log('章节重命名确认 - sectionId:', sectionId);
+      console.log('章节重命名确认 - title:', title);
+      console.log('章节重命名确认 - paperId:', paperId);
+      console.log('章节重命名确认 - userPaperId:', userPaperId);
+      console.log('章节重命名确认 - isPersonalOwner:', isPersonalOwner);
+      
       // 直接使用后端期望的格式
-      onSectionTitleUpdate?.(sectionId, title);
+      onSectionTitleUpdate?.(sectionId, title, paperId, userPaperId, isPersonalOwner, onSaveToServer);
       setRenamingSectionId(null);
       setHasUnsavedChanges(false);
     },
-    [onSectionTitleUpdate, setHasUnsavedChanges],
+    [onSectionTitleUpdate, setHasUnsavedChanges, paperId, userPaperId, isPersonalOwner, onSaveToServer],
   );
 
   const handleBlockEditConfirm = useCallback(
@@ -598,7 +605,7 @@ export default function PaperContent({
               onMouseEnter={() => setHoveredSectionId(section.id)}
               onMouseLeave={() => setHoveredSectionId(null)}
             >
-              <span className="text-blue-600 dark:text-blue-400 font-semibold">{sectionNumber}.</span>
+              <span className="text-blue-600 dark:text-blue-400 text-2xl font-bold">{sectionNumber}.</span>
               <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-baseline gap-3">
                 <span>{highlightText(String(numberedSection.title ?? ''), searchQuery)}</span>
                 <span className="text-gray-400 mx-1">/</span>
@@ -621,7 +628,11 @@ export default function PaperContent({
               initialTitle={numberedSection}
               lang={lang}
               onCancel={() => setRenamingSectionId(null)}
-              onConfirm={(title) => handleSectionRenameConfirm(numberedSection.id, title)}
+              onConfirm={(title) => {
+                console.log('章节重命名确认 - sectionId:', numberedSection.id);
+                console.log('章节重命名确认 - title:', title);
+                handleSectionRenameConfirm(numberedSection.id, title);
+              }}
             />
           )}
 
@@ -769,6 +780,11 @@ export default function PaperContent({
                         canEditContent ? type => onBlockAddComponent?.(block.id, type) : undefined
                       }
                       onStartTextParse={canEditContent ? () => handleStartBlockTextParse(numberedSection.id, block.id) : undefined}
+                      onAddSectionBelow={
+                        canEditContent && onSectionInsert
+                          ? () => onSectionInsert(numberedSection.id, 'below', null)
+                          : undefined
+                      }
                       onDelete={
                         canEditContent
                           ? async () => {

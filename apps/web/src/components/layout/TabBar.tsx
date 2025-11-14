@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import { X, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { useTabStore } from '@/stores/useTabStore';
@@ -38,7 +38,7 @@ const gradientMap = {
 
 type Badge = { label: string; variant: 'public' | 'personal' };
 
-export default function TabBar({
+function TabBarContent({
   navItems,
   onNavigate,
   onCloseTab: _onCloseTab,
@@ -206,15 +206,12 @@ export default function TabBar({
       const tabToClose = tabs.find(tab => tab.id === tabId);
       if (!tabToClose) return;
 
-      // 保存当前滚动位置 - 优先使用 main 元素的滚动位置
+      // 保存当前滚动位置
       const mainElement = document.querySelector('main');
-      const scrollY = window.scrollY;
-      const mainScrollTop = mainElement ? mainElement.scrollTop : 0;
+      const currentScrollY = window.scrollY;
+      const currentMainScrollTop = mainElement ? mainElement.scrollTop : 0;
       
-      // 确定使用哪种滚动方式
-      const useMainScroll = mainElement && mainElement.scrollTop > 0;
-      const savedScrollPosition = useMainScroll ? mainScrollTop : scrollY;
-
+      // 如果是关闭当前活动标签页，需要切换到其他标签页
       if (tabId === activeTabId) {
         const currentIndex = visibleTabs.findIndex(tab => tab.id === tabId);
         let targetTab: (typeof visibleTabs)[number] | null = null;
@@ -236,26 +233,25 @@ export default function TabBar({
           } else {
             setLoading(true, targetTab.id);
             try {
-              if (pathname === targetPathname && currentHref !== targetHref) {
-                await router.push(targetHref);
-              } else {
-                await router.push(targetHref);
-              }
+              await router.push(targetHref);
               
-              // 恢复滚动位置 - 使用多重延迟确保 DOM 完全更新完成
+              // 延迟恢复滚动位置，等待 DOM 完全更新
               setTimeout(() => {
+                // 等待下一个事件循环，确保布局稳定
+                const restoreScroll = () => {
+                  const updatedMainElement = document.querySelector('main');
+                  if (currentMainScrollTop > 0 && updatedMainElement) {
+                    updatedMainElement.scrollTop = currentMainScrollTop;
+                  } else {
+                    window.scrollTo(0, currentScrollY);
+                  }
+                };
+                
+                // 使用 requestAnimationFrame 确保 DOM 更新完成
                 requestAnimationFrame(() => {
-                  requestAnimationFrame(() => {
-                    // 重新获取 main 元素，因为 DOM 可能已经更新
-                    const updatedMainElement = document.querySelector('main');
-                    if (useMainScroll && updatedMainElement) {
-                      updatedMainElement.scrollTop = savedScrollPosition;
-                    } else {
-                      window.scrollTo(0, savedScrollPosition);
-                    }
-                  });
+                  requestAnimationFrame(restoreScroll);
                 });
-              }, 100); // 增加额外延迟确保页面完全渲染
+              }, 150);
             } catch (error) {
               // 静默处理导航错误
               setLoading(false, null);
@@ -265,23 +261,6 @@ export default function TabBar({
       }
 
       removeTab(tabId);
-      
-      // 如果不是关闭当前活动标签页，也要恢复滚动位置以防万一
-      if (tabId !== activeTabId) {
-        setTimeout(() => {
-          requestAnimationFrame(() => {
-            requestAnimationFrame(() => {
-              // 重新获取 main 元素
-              const updatedMainElement = document.querySelector('main');
-              if (useMainScroll && updatedMainElement) {
-                updatedMainElement.scrollTop = savedScrollPosition;
-              } else {
-                window.scrollTo(0, savedScrollPosition);
-              }
-            });
-          });
-        }, 100);
-      }
     },
     [
       activeTabId,
@@ -568,5 +547,13 @@ export default function TabBar({
         `}</style>
       </div>
     </TooltipProvider>
+  );
+}
+
+export default function TabBar(props: TabBarProps) {
+  return (
+    <Suspense fallback={<div className="h-14 flex items-center justify-center">加载中...</div>}>
+      <TabBarContent {...props} />
+    </Suspense>
   );
 }

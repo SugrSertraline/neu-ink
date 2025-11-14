@@ -221,6 +221,20 @@ export function usePaperSections(
     isPersonalOwner: boolean,
     onSaveToServer?: () => Promise<void>
   ) => {
+    // 先获取原始标题，以便在失败时回滚
+    let originalTitle: { en: string; zh: string } = { en: '', zh: '' };
+    
+    updateSections(sections => {
+      const section = sections.find(s => s.id === sectionId);
+      if (section) {
+        originalTitle = {
+          en: section.title || '',
+          zh: section.titleZh || ''
+        };
+      }
+      return { sections, touched: false };
+    });
+    
     try {
       // 显示加载状态
       toast.loading('正在更新章节标题...', { id: 'update-section-title' });
@@ -237,6 +251,13 @@ export function usePaperSections(
         title: nextTitle
       };
       
+      // 添加调试日志
+      console.log('更新章节标题 - sectionId:', sectionId);
+      console.log('更新章节标题 - updateData:', updateData);
+      console.log('更新章节标题 - paperId:', paperId);
+      console.log('更新章节标题 - userPaperId:', userPaperId);
+      console.log('更新章节标题 - isPersonalOwner:', isPersonalOwner);
+      
       const result = await handleSectionUpdateWithAPI(
         sectionId,
         updateData,
@@ -247,6 +268,13 @@ export function usePaperSections(
       
       // 不再调用 handleSaveToServer，因为 handleSectionUpdateWithAPI 已经更新了数据库
       if (!result.success) {
+        // API失败，回滚本地更改
+        updateSectionTree(sectionId, section => ({
+          ...section,
+          title: originalTitle.en,
+          titleZh: originalTitle.zh,
+        }));
+        
         toast.error('更新章节标题失败', {
           id: 'update-section-title',
           description: result.error
@@ -261,12 +289,19 @@ export function usePaperSections(
         }
       }
     } catch (error) {
+      // 异常情况，回滚本地更改
+      updateSectionTree(sectionId, section => ({
+        ...section,
+        title: originalTitle.en,
+        titleZh: originalTitle.zh,
+      }));
+      
       toast.error('更新章节标题失败', {
         id: 'update-section-title',
         description: error instanceof Error ? error.message : '未知错误'
       });
     }
-  }, [updateSectionTree, handleSectionUpdateWithAPI]);
+  }, [updateSectionTree, handleSectionUpdateWithAPI, updateSections]);
 
 
   const handleSectionInsert = useCallback(

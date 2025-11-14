@@ -1,7 +1,7 @@
 // apps/web/src/components/layout/MainLayout.tsx
 'use client';
 
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, Suspense } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { BookOpen, Library, Settings, CheckSquare, Users } from 'lucide-react';
 
@@ -24,7 +24,7 @@ function useCurrentHref(
   }, [pathname, searchParams]);
 }
 
-export default function MainLayout({ children }: { children: React.ReactNode }) {
+function MainLayoutContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -307,5 +307,13 @@ export default function MainLayout({ children }: { children: React.ReactNode }) 
         </div>
       </div>
     </div>
+  );
+}
+
+export default function MainLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<div className="flex items-center justify-center h-screen">加载中...</div>}>
+      <MainLayoutContent>{children}</MainLayoutContent>
+    </Suspense>
   );
 }

@@ -8,6 +8,7 @@ import React, {
   useMemo,
   useRef,
   useState,
+  Suspense,
 } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 
@@ -49,7 +50,7 @@ function isPublicPath(pathname: string): boolean {
   });
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+function AuthProviderContent({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -223,6 +224,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+}
+
+export function AuthProvider({ children }: { children: React.ReactNode }) {
+  return (
+    <Suspense fallback={<div>加载中...</div>}>
+      <AuthProviderContent>{children}</AuthProviderContent>
+    </Suspense>
+  );
 }
 
 export function useAuth() {

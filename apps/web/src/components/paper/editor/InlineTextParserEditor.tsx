@@ -263,6 +263,7 @@ export default function InlineTextParserEditor({
               // ★ 关键：本次解析结束，允许下一次重新插入 loading block
               setInsertedProgressBlock(false);
 
+              // 关闭EventSource并清除引用
               eventSource.close();
               eventSourceRef.current = null;
 
@@ -271,7 +272,7 @@ export default function InlineTextParserEditor({
                 onParseComplete(data.blocks || [], data.paper);
               }
 
-              // 关闭编辑器
+              // 关闭编辑器（不调用onCancel，避免重复关闭）
               onCancel();
             }
             else if (data.type === 'error') {
@@ -280,6 +281,7 @@ export default function InlineTextParserEditor({
               setStreamProgress(null);
               setHasActiveSession(false);
               setActiveSessionId(null);
+              // 关闭EventSource并清除引用
               eventSource.close();
               eventSourceRef.current = null;
             } else if (data.type === 'status_update' && data.data && data.data.status === 'failed') {
@@ -288,6 +290,7 @@ export default function InlineTextParserEditor({
               setStreamProgress(null);
               setHasActiveSession(false);
               setActiveSessionId(null);
+              // 关闭EventSource并清除引用
               eventSource.close();
               eventSourceRef.current = null;
             }
@@ -302,6 +305,7 @@ export default function InlineTextParserEditor({
               setStreamProgress(null);
               setHasActiveSession(false);
               setActiveSessionId(null);
+              // 关闭EventSource并清除引用
               eventSource.close();
               eventSourceRef.current = null;
 
@@ -310,13 +314,14 @@ export default function InlineTextParserEditor({
                 onParseComplete([], null);
               }
 
-              // 关闭编辑器
+              // 关闭编辑器（不调用onCancel，避免重复关闭）
               onCancel();
             } else {
               setError('解析响应失败');
               setStreamProgress(null);
               setHasActiveSession(false);
               setActiveSessionId(null);
+              // 关闭EventSource并清除引用
               eventSource.close();
               eventSourceRef.current = null;
             }
@@ -325,7 +330,23 @@ export default function InlineTextParserEditor({
 
         eventSource.onerror = (err) => {
           console.error('EventSource错误:', err);
-          setError('流式连接失败');
+          console.error('EventSource readyState:', eventSource.readyState);
+          console.error('EventSource URL:', eventSource.url);
+          
+          // 检查是否是正常的连接结束
+          if (eventSource.readyState === EventSource.CLOSED) {
+            console.log('EventSource连接正常结束');
+            return;
+          }
+          
+          // 检查是否是连接中状态，这可能是正常的连接过程
+          if (eventSource.readyState === EventSource.CONNECTING) {
+            console.log('EventSource正在连接中...');
+            return;
+          }
+          
+          // 增强错误处理
+          setError('流式连接失败，请检查网络连接或重试');
           setIsLoading(false);
           setStreamProgress(null);
           setHasActiveSession(false);
@@ -347,7 +368,7 @@ export default function InlineTextParserEditor({
             eventSourceRef.current.close();
             eventSourceRef.current = null;
           }
-        }, 300000); // 5分钟超时
+        }, 600000); // 5分钟超时
 
 
       } else {
@@ -371,9 +392,13 @@ export default function InlineTextParserEditor({
   };
 
   const handleCancel = () => {
-    // 关闭EventSource
+    // 关闭EventSource（如果还未关闭）
     if (eventSourceRef.current) {
-      eventSourceRef.current.close();
+      try {
+        eventSourceRef.current.close();
+      } catch (error) {
+        console.log('EventSource already closed or error during close:', error);
+      }
       eventSourceRef.current = null;
     }
 
@@ -399,6 +424,29 @@ export default function InlineTextParserEditor({
       setHasUnsavedChanges(false);
       onCancel();
     }
+  };
+
+  // 内部函数，用于关闭但不调用回调
+  const closeWithoutCallback = () => {
+    // 关闭EventSource（如果还未关闭）
+    if (eventSourceRef.current) {
+      try {
+        eventSourceRef.current.close();
+      } catch (error) {
+        console.log('EventSource already closed or error during close:', error);
+      }
+      eventSourceRef.current = null;
+    }
+
+    // 清除状态
+    setText('');
+    setError(null);
+    setHasUnsavedChanges(false);
+    setStreamProgress(null);
+    setHasActiveSession(false);
+    setActiveSessionId(null);
+    setIsLoading(false);
+    setInsertedProgressBlock(false);
   };
 
 
@@ -509,6 +557,7 @@ export default function InlineTextParserEditor({
             setHasActiveSession(false);
             setActiveSessionId(null);
             setIsResumedSession(false);
+            // 关闭EventSource并清除引用
             eventSource.close();
             eventSourceRef.current = null;
 
@@ -517,7 +566,7 @@ export default function InlineTextParserEditor({
               onParseComplete(data.blocks || [], data.paper);
             }
 
-            // 关闭编辑器
+            // 关闭编辑器（不调用onCancel，避免重复关闭）
             onCancel();
           } else if (data.type === 'error') {
             // 解析错误
@@ -526,6 +575,7 @@ export default function InlineTextParserEditor({
             setHasActiveSession(false);
             setActiveSessionId(null);
             setIsResumedSession(false);
+            // 关闭EventSource并清除引用
             eventSource.close();
             eventSourceRef.current = null;
           } else if (data.type === 'status_update' && data.data && data.data.status === 'failed') {
@@ -535,6 +585,7 @@ export default function InlineTextParserEditor({
             setHasActiveSession(false);
             setActiveSessionId(null);
             setIsResumedSession(false);
+            // 关闭EventSource并清除引用
             eventSource.close();
             eventSourceRef.current = null;
           }
@@ -550,6 +601,7 @@ export default function InlineTextParserEditor({
             setHasActiveSession(false);
             setActiveSessionId(null);
             setIsResumedSession(false);
+            // 关闭EventSource并清除引用
             eventSource.close();
             eventSourceRef.current = null;
 
@@ -558,7 +610,7 @@ export default function InlineTextParserEditor({
               onParseComplete([], null);
             }
 
-            // 关闭编辑器
+            // 关闭编辑器（不调用onCancel，避免重复关闭）
             onCancel();
           } else {
             setError('解析响应失败');
@@ -566,6 +618,7 @@ export default function InlineTextParserEditor({
             setHasActiveSession(false);
             setActiveSessionId(null);
             setIsResumedSession(false);
+            // 关闭EventSource并清除引用
             eventSource.close();
             eventSourceRef.current = null;
           }
@@ -574,14 +627,35 @@ export default function InlineTextParserEditor({
 
       eventSource.onerror = (err) => {
         console.error('EventSource错误:', err);
-        setError('流式连接失败');
+        console.error('EventSource readyState:', eventSource.readyState);
+        console.error('EventSource URL:', eventSource.url);
+        
+        // 检查是否是正常的连接结束
+        if (eventSource.readyState === EventSource.CLOSED) {
+          console.log('EventSource连接正常结束');
+          return;
+        }
+        
+        // 检查是否是连接中状态，这可能是正常的连接过程
+        if (eventSource.readyState === EventSource.CONNECTING) {
+          console.log('EventSource正在连接中...');
+          return;
+        }
+        
+        // 增强错误处理
+        setError('流式连接失败，请检查网络连接或重试');
         setIsLoading(false);
         setStreamProgress(null);
         setHasActiveSession(false);
         setActiveSessionId(null);
         setIsResumedSession(false);
+        // 关闭EventSource并清除引用
         if (eventSourceRef.current) {
-          eventSourceRef.current.close();
+          try {
+            eventSourceRef.current.close();
+          } catch (error) {
+            console.log('EventSource already closed or error during close:', error);
+          }
           eventSourceRef.current = null;
         }
       };

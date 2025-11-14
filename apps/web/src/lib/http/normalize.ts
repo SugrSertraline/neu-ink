@@ -133,32 +133,62 @@ export async function callAndNormalize<T>(
     const msg = err?.message || String(err);
     
     // 特殊处理400错误 - 使用sonner显示toast而不是让页面卡死
-    if (err && typeof err === 'object' && 'status' in err && err.status === ERROR_CODES.BAD_REQUEST) {
-      let errorMessage: string = ERROR_MESSAGES.BAD_REQUEST;
-      
-      // 尝试从payload中提取业务错误信息
-      if (err.payload && typeof err.payload === 'object') {
-        // 检查是否有业务层的错误代码
-        if (err.payload.data && typeof err.payload.data === 'object' && 'code' in err.payload.data) {
-          errorMessage = getErrorMessage(err.payload.data.code, ERROR_MESSAGES.BAD_REQUEST);
-        } else if (err.payload.message) {
-          errorMessage = err.payload.message;
+    if (err && typeof err === 'object' && 'status' in err) {
+      if (err.status === ERROR_CODES.BAD_REQUEST) {
+        let errorMessage: string = ERROR_MESSAGES.BAD_REQUEST;
+        
+        // 尝试从payload中提取业务错误信息
+        if (err.payload && typeof err.payload === 'object') {
+          // 检查是否有业务层的错误代码
+          if (err.payload.data && typeof err.payload.data === 'object' && 'code' in err.payload.data) {
+            errorMessage = getErrorMessage(err.payload.data.code, ERROR_MESSAGES.BAD_REQUEST);
+          } else if (err.payload.message) {
+            errorMessage = err.payload.message;
+          }
         }
+        
+        // 使用sonner显示错误toast
+        toast.error(errorMessage);
+        
+        // 返回统一的结果对象，避免页面崩溃
+        return {
+          success: false,
+          topCode: err.status,
+          topMessage: errorMessage,
+          bizCode: BusinessCode.INTERNAL_ERROR,
+          bizMessage: errorMessage,
+          data: null as T,
+          raw: err,
+        } as AuthAwareResult<T>;
       }
       
-      // 使用sonner显示错误toast
-      toast.error(errorMessage);
-      
-      // 返回统一的结果对象，避免页面崩溃
-      return {
-        success: false,
-        topCode: err.status,
-        topMessage: errorMessage,
-        bizCode: BusinessCode.INTERNAL_ERROR,
-        bizMessage: errorMessage,
-        data: null as T,
-        raw: err,
-      } as AuthAwareResult<T>;
+      // 处理500错误 - 同样显示错误toast而不是让页面卡死
+      if (err.status >= 500) {
+        let errorMessage: string = `服务器错误 (${err.status})`;
+        
+        // 尝试从payload中提取详细的错误信息
+        if (err.payload && typeof err.payload === 'object') {
+          if (err.payload.message) {
+            errorMessage = err.payload.message;
+          } else if (err.payload.data && typeof err.payload.data === 'object' && 'message' in err.payload.data) {
+            errorMessage = err.payload.data.message;
+          }
+        }
+        
+        // 使用sonner显示错误toast
+        toast.error('操作失败', { description: errorMessage });
+        
+        // 返回统一的结果对象，避免页面崩溃
+        return {
+          success: false,
+          topCode: err.status,
+          topMessage: errorMessage,
+          bizCode: BusinessCode.INTERNAL_ERROR,
+          bizMessage: errorMessage,
+          data: null as T,
+          raw: err,
+        } as AuthAwareResult<T>;
+      }
     }
     
     if (shouldResetAuth(ResponseCode.UNAUTHORIZED, undefined, msg)) {

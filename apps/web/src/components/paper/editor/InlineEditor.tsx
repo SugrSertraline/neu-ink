@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useReducer, useState } from 'react';
+import React, { useEffect, useMemo, useReducer, useState, useRef } from 'react';
 import { useEditor, EditorContent } from '@tiptap/react';
 import type { AnyExtension } from '@tiptap/core';
 import StarterKit from '@tiptap/starter-kit';
@@ -116,7 +116,7 @@ export default function InlineEditor({
   enableReferences = true,
   enableInlineMath = true,
   enableFootnotes = true,
-  minHeight = 180,
+  minHeight = 72, // 约3行的高度 (24px per line)
 }: InlineEditorProps) {
   const [showRefPicker, setShowRefPicker] = useState(false);
   const [refPickerType, setRefPickerType] = useState<ReferenceType>('citation');
@@ -155,6 +155,22 @@ export default function InlineEditor({
     return ext;
   }, [enableInlineMath, enableReferences, enableFootnotes]);
 
+  const editorRef = useRef<HTMLDivElement>(null);
+
+  const updateEditorHeight = () => {
+    if (editorRef.current) {
+      const editorElement = editorRef.current.querySelector('.ProseMirror') as HTMLElement;
+      if (editorElement) {
+        // 重置高度以获取正确的 scrollHeight
+        editorElement.style.height = 'auto';
+        const scrollHeight = editorElement.scrollHeight;
+        // 设置最小高度为 minHeight，最大高度为 500px 防止过高
+        const newHeight = Math.max(minHeight, Math.min(scrollHeight, 500));
+        editorElement.style.height = `${newHeight}px`;
+      }
+    }
+  };
+
   const editor = useEditor({
     immediatelyRender: false,
     extensions,
@@ -162,16 +178,29 @@ export default function InlineEditor({
     onUpdate: ({ editor: ed }) => {
       // 只更新本地状态，不触发保存
       onChange(tiptapToInlineContent(ed.getJSON()));
+      // 内容更新后调整高度
+      setTimeout(updateEditorHeight, 0);
     },
     onSelectionUpdate: () => bumpSelectionTicker(),
+    onCreate: () => {
+      // 编辑器创建后调整高度
+      setTimeout(updateEditorHeight, 100);
+    },
     editorProps: {
       attributes: {
         class: 'prose prose-sm max-w-none focus:outline-none',
-        style: `min-height: ${minHeight}px; padding: 0.75rem;`,
+        style: `min-height: ${minHeight}px; padding: 0.75rem; overflow-y: auto;`,
         placeholder,
       },
     },
   });
+
+  // 当外部值变化时更新高度
+  useEffect(() => {
+    if (editor) {
+      setTimeout(updateEditorHeight, 100);
+    }
+  }, [value, editor]);
 
   useEffect(() => {
     if (!editor || editor.isFocused) return;
@@ -592,7 +621,9 @@ export default function InlineEditor({
       </div>
 
       <div className="border border-gray-300 rounded-b-lg bg-white shadow-sm">
-        <EditorContent editor={editor} />
+        <div ref={editorRef}>
+          <EditorContent editor={editor} />
+        </div>
       </div>
 
       {enableReferences && (

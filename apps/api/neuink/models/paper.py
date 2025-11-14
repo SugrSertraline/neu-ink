@@ -223,8 +223,28 @@ class PaperModel:
         """
         更新论文
         """
-        update_data["updatedAt"] = get_current_time()
-        result = self.collection.update_one({"id": paper_id}, {"$set": update_data})
+        # 检查是否是嵌套字段更新（如 sections.0）
+        has_nested_fields = any('.' in key for key in update_data.keys())
+        
+        if has_nested_fields:
+            # 对于嵌套字段，不添加updatedAt到根级别
+            result = self.collection.update_one({"id": paper_id}, {"$set": update_data})
+        else:
+            # 对于非嵌套字段，添加updatedAt
+            update_data["updatedAt"] = get_current_time()
+            result = self.collection.update_one({"id": paper_id}, {"$set": update_data})
+        
+        return result.modified_count > 0
+
+    def update_direct(self, paper_id: str, update_operation: Dict[str, Any]) -> bool:
+        """
+        直接使用MongoDB更新操作（如$pull, $push等）
+        """
+        # 添加updatedAt到根级别
+        update_operation["$set"] = update_operation.get("$set", {})
+        update_operation["$set"]["updatedAt"] = get_current_time()
+        
+        result = self.collection.update_one({"id": paper_id}, update_operation)
         return result.modified_count > 0
 
     def delete(self, paper_id: str) -> bool:

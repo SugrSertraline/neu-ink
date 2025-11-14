@@ -77,12 +77,16 @@ export default function ParseProgressBlock({
   });
 
   // 新增：状态用于管理GLM流式内容显示
-  const [showGlmStream, setShowGlmStream] = useState(false);
+  const [showGlmStream, setShowGlmStream] = useState(true); // 默认显示
   const [glmContent, setGlmContent] = useState('');
 
   // 用于管理EventSource连接的引用
   const eventSourceRef = useRef<EventSource | null>(null);
   const [isResuming, setIsResuming] = useState(false);
+  
+  // 新增：管理连接超时的引用
+  const timeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const lastDataTimeRef = useRef<number>(Date.now());
 
   // ★ 新增：自动恢复会话连接
   useEffect(() => {
@@ -102,6 +106,10 @@ export default function ParseProgressBlock({
       if (eventSourceRef.current) {
         eventSourceRef.current.close();
         eventSourceRef.current = null;
+      }
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+        timeoutRef.current = null;
       }
     };
   }, [sessionId, progress.status, autoResumeSession, externalProgress]);
@@ -138,8 +146,12 @@ export default function ParseProgressBlock({
           const data = JSON.parse(event.data);
           console.log('📊 ParseProgressBlock: 收到恢复的进度更新', data);
           
+          // 更新最后接收数据时间
+          lastDataTimeRef.current = Date.now();
+          
           // 处理GLM流式数据
           if (data.type === 'glm_stream') {
+            console.log('🔄 ParseProgressBlock: 收到GLM流式数据', data);
             setGlmContent(prev => prev + data.content);
             setProgress(prev => ({
               ...prev,
@@ -150,6 +162,11 @@ export default function ParseProgressBlock({
               },
               accumulatedContent: (prev.accumulatedContent || '') + data.content
             }));
+            // 重置超时计时器，因为正在接收流式数据
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+              resetTimeout();
+            }
             return;
           }
           
@@ -157,8 +174,18 @@ export default function ParseProgressBlock({
           if (data.type === 'status_update' && data.data) {
             const progressData = data.data;
             updateProgressFromStream(progressData);
+            // 重置超时计时器
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+              resetTimeout();
+            }
           } else if (data.type === 'progress') {
             updateProgressFromStream(data);
+            // 重置超时计时器
+            if (timeoutRef.current) {
+              clearTimeout(timeoutRef.current);
+              resetTimeout();
+            }
           } else if (data.type === 'complete') {
             // 解析完成
             setProgress(prev => ({
@@ -223,18 +250,34 @@ export default function ParseProgressBlock({
         }
       };
       
-      // 设置超时
-      setTimeout(() => {
-        if (eventSourceRef.current && eventSourceRef.current.readyState !== EventSource.CLOSED) {
-          console.warn('ParseProgressBlock: 恢复连接超时');
-          setIsResuming(false);
-          
-          if (eventSourceRef.current) {
-            eventSourceRef.current.close();
-            eventSourceRef.current = null;
-          }
+      // 设置动态超时机制
+      const resetTimeout = () => {
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
         }
-      }, 600000); // 10分钟超时
+        
+        timeoutRef.current = setTimeout(() => {
+          if (eventSourceRef.current && eventSourceRef.current.readyState !== EventSource.CLOSED) {
+            const timeSinceLastData = Date.now() - lastDataTimeRef.current;
+            // 只有超过5分钟没有收到数据才认为超时
+            if (timeSinceLastData > 300000) {
+              console.warn('ParseProgressBlock: 连接超时，超过5分钟未收到数据');
+              setIsResuming(false);
+              
+              if (eventSourceRef.current) {
+                eventSourceRef.current.close();
+                eventSourceRef.current = null;
+              }
+            } else {
+              // 如果最近有数据，重置超时
+              resetTimeout();
+            }
+          }
+        }, 300000); // 5分钟超时检查
+      };
+      
+      // 初始设置超时
+      resetTimeout();
       
     } catch (err) {
       console.error('ParseProgressBlock: 恢复会话连接失败:', err);
@@ -461,9 +504,12 @@ export default function ParseProgressBlock({
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
             <div className="flex items-center gap-2">
-              <div className="text-sm font-medium text-gray-700">解析详情</div>
+              <div className="text-sm font-medium text-gray-700">实时解析内容</div>
               {progress.glmStream && (
                 <>
+                  <div className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded animate-pulse">
+                    正在接收数据...
+                  </div>
                   <div className="text-xs text-gray-500 bg-gray-100 px-2 py-1 rounded">
                     模型: {progress.glmStream.model}
                   </div>
@@ -475,12 +521,12 @@ export default function ParseProgressBlock({
                 </>
               )}
             </div>
-            {(progress.glmStream || progress.accumulatedContent) && (
+            {(progress.glmStream || progress.accumulatedContent || glmContent) && (
               <button
                 onClick={() => setShowGlmStream(!showGlmStream)}
-                className="text-xs text-blue-600 hover:text-blue-800"
+                className="text-xs text-blue-600 hover:text-blue-800 bg-blue-50 px-2 py-1 rounded"
               >
-                {showGlmStream ? '隐藏详情' : '显示详情'}
+                {showGlmStream ? '隐藏内容' : '显示内容'}
               </button>
             )}
           </div>
@@ -498,11 +544,16 @@ export default function ParseProgressBlock({
             </div>
           </div>
           
-          {/* 显示GLM流式内容 */}
-          {showGlmStream && (progress.glmStream || progress.accumulatedContent) && (
+          {/* 显示GLM流式内容 - 默认展开 */}
+          {(showGlmStream && (progress.glmStream || progress.accumulatedContent || glmContent)) && (
             <div className="p-3 bg-gray-50 border border-gray-200 rounded-lg max-h-60 overflow-y-auto">
-              <div className="text-sm text-gray-700 whitespace-pre-wrap font-mono">
+              <div className="text-xs text-gray-500 mb-2 font-mono">
+                实时解析内容 ({(glmContent || progress.accumulatedContent || '').length} 字符):
+              </div>
+              <div className="text-sm text-gray-700 whitespace-pre-wrap font-mono bg-white p-2 rounded border">
                 {glmContent || progress.accumulatedContent || ''}
+                {/* 添加闪烁光标效果表示正在输入 */}
+                <span className="animate-pulse text-blue-500">|</span>
               </div>
             </div>
           )}
@@ -613,9 +664,21 @@ export default function ParseProgressBlock({
         <div className="flex items-center gap-2">
           <div
             className={`w-1.5 h-1.5 rounded-full ${
-              progress.progress >= 100
+              progress.progress >= 95
                 ? 'bg-green-500'
                 : progress.progress >= 85
+                ? 'bg-blue-500'
+                : 'bg-gray-300'
+            }`}
+          />
+          <span>格式验证</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <div
+            className={`w-1.5 h-1.5 rounded-full ${
+              progress.progress >= 100
+                ? 'bg-green-500'
+                : progress.progress >= 95
                 ? 'bg-blue-500'
                 : 'bg-gray-300'
             }`}

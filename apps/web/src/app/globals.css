@@ -221,9 +221,13 @@
 }
 
 .toaster.group [data-sonner-toast][data-type="success"] {
-  background: hsl(142 76% 36%);
-  border-color: hsl(142 76% 36%);
-  color: white;
+  background: var(--background);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+.toaster.group [data-sonner-toast][data-type="success"] [data-icon] {
+  color: hsl(142 76% 36%);
 }
 
 .toaster.group [data-sonner-toast][data-type="warning"] {

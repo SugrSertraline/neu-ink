@@ -3,6 +3,7 @@
 负责用户收藏公共论文、上传私有论文、管理个人笔记等功能
 """
 import json
+import logging
 from datetime import datetime
 from flask import Blueprint, request, g
 
@@ -18,6 +19,8 @@ from ..utils.common import (
 )
 from ..config.constants import BusinessCode, ResponseCode
 
+# 初始化logger
+logger = logging.getLogger(__name__)
 
 def _serialize_datetime_in_dict(data):
     """
@@ -808,6 +811,11 @@ def update_section_in_user_paper(entry_id, section_id):
         # 使用paperContentService更新section
         paper_model = PaperModel()
         content_service = PaperContentService(paper_model)
+        
+        # 添加调试日志
+        logger.info(f"用户论文章节更新请求 - entry_id: {entry_id}, section_id: {section_id}, paper_id: {paper_id}")
+        logger.info(f"更新数据: {data}")
+        
         result = content_service.update_section(
             paper_id=paper_id,
             section_id=section_id,
@@ -815,6 +823,8 @@ def update_section_in_user_paper(entry_id, section_id):
             user_id=g.current_user["user_id"],
             is_admin=False
         )
+        
+        logger.info(f"章节更新结果: {result}")
         
         if result["code"] == BusinessCode.SUCCESS:
             # 如果成功，需要更新用户论文库中的paperData
@@ -1239,11 +1249,14 @@ def get_test_prompts():
 - 如果无法翻译，复制原文到目标语言数组
 - 严格遵循JSON格式，不能有注释或额外文字"""
 
+        # 获取API配置信息
+        api_config = llm_utils.get_api_config()
         return success_response({
             "parser_system_prompt": PARSER_SYSTEM_PROMPT,
             "text_length_limit": 40000,
-            "api_endpoint": llm_utils.glm_base_url,
-            "api_key_status": "已配置" if llm_utils.glm_api_key and llm_utils.glm_api_key != 'your_glm_api_key_here' else "未配置或为占位符",
+            "api_endpoint": api_config["api_endpoint"],
+            "api_key_status": api_config["api_key_status"],
+            "model": api_config["model"],
             "max_tokens": 100000,
             "temperature": 0.2
         }, "成功获取提示词信息")
@@ -1459,73 +1472,36 @@ def parse_references_for_user_paper(entry_id):
         return internal_error_response(f"服务器错误: {exc}")
 
 
-@bp.route("/<entry_id>/sections/<section_id>/add-block-from-text-stream", methods=["GET"])
+@bp.route("/<entry_id>/sections/<section_id>/add-block-from-text-stream", methods=["GET", "POST"])
 @login_required
 def add_block_from_text_to_user_paper_section_stream(entry_id, section_id):
     """
     用户向个人论文库中指定论文的指定section中流式添加block（使用大模型解析文本）
     
-    请求参数示例:
+    GET 请求参数示例:
     ?text=这是需要解析并添加到section中的文本内容...&afterBlockId=block_123&sessionId=session_123
+    
+    POST 请求体示例:
+    {
+        "text": "这是需要解析并添加到section中的文本内容...",
+        "afterBlockId": "block_123",
+        "sessionId": "session_123"
+    }
     """
     try:
-        text = request.args.get("text")
-        after_block_id = request.args.get("afterBlockId")  # 获取插入位置
-        session_id = request.args.get("sessionId")  # 获取会话ID，用于恢复连接
+        # 根据请求方法获取参数
+        if request.method == "POST":
+            data = request.get_json() or {}
+            text = data.get("text")
+            after_block_id = data.get("afterBlockId")  # 获取插入位置
+            session_id = data.get("sessionId")  # 获取会话ID，用于恢复连接
+        else:  # GET
+            text = request.args.get("text")
+            after_block_id = request.args.get("afterBlockId")  # 获取插入位置
+            session_id = request.args.get("sessionId")  # 获取会话ID，用于恢复连接
         
         if not text and not session_id:
             return bad_request_response("文本内容或会话ID不能为空")
-        
-        # 添加调试日志
-        print(f"DEBUG: 收到用户流式请求 - sessionId: {session_id}, entry_id: {entry_id}, section_id: {section_id}")
-        print(f"DEBUG: 请求头信息: {dict(request.headers)}")
-        print(f"DEBUG: 请求参数: {dict(request.args)}")
-        
-        # 导入会话模型和后台任务管理器
-        from ..models.parsingSession import get_parsing_session_model
-        from ..utils.common import generate_id
-        from ..utils.background_tasks import get_task_manager
-        
-        session_model = get_parsing_session_model()
-        task_manager = get_task_manager()
-        existing_session = None
-        progress_block_id = None
-        insert_index = None
-        
-        # 检查是否为恢复会话
-        if session_id:
-            existing_session = session_model.get_session(session_id)
-            if not existing_session:
-                return bad_request_response("会话不存在或已过期")
-            
-            # 验证会话权限
-            if existing_session["userId"] != g.current_user["user_id"]:
-                return bad_request_response("无权限访问此会话")
-            
-            if existing_session["userPaperId"] != entry_id or existing_session["sectionId"] != section_id:
-                return bad_request_response("会话参数不匹配")
-            
-                        # 如果会话已完成或失败，直接返回结果
-            if existing_session["status"] == "completed":
-                return success_response({
-                    "type": "complete",
-                    "blocks": existing_session.get("completedBlocks", []),
-                    "paper": existing_session.get("paperData"),
-                    "message": "会话已完成"
-                }, "会话已完成")
-            elif existing_session["status"] == "failed":
-                return bad_request_response(existing_session.get("error", "解析失败"))
-            
-            # 检查是否有后台任务正在运行
-            task = task_manager.get_task(session_id)
-            if task and task.status.value in ["pending", "running"]:
-                # 任务正在运行，直接进入SSE流式响应，不返回JSON
-                pass
-            
-            # 获取已保存的进度块ID
-            progress_block_id = existing_session.get("progressBlockId")
-            text = existing_session["text"]
-            after_block_id = existing_session.get("afterBlockId")
         
         # 首先获取用户论文详情，确保用户有权限
         service = get_user_paper_service()
@@ -1559,327 +1535,47 @@ def add_block_from_text_to_user_paper_section_stream(entry_id, section_id):
         if not paper_id:
             return bad_request_response("无效的论文ID")
         
-        # 验证section存在
-        sections = paper_data.get("sections", [])
-        target_section = None
-        for section in sections:
-            if section.get("id") == section_id:
-                target_section = section
-                break
+        # 使用paperService的通用流式传输方法
+        from ..services.paperService import get_paper_service
+        paper_service = get_paper_service()
         
-        if not target_section:
-            return bad_request_response("章节不存在")
+        # 检查文本中的特殊符号
+        if text:
+            import re
+            special_chars_pattern = re.compile(r'[&?=%+]')
+            if special_chars_pattern.search(text):
+                logger.warning(f"检测到特殊符号在用户论文文本中: {text[:100]}...")
+                special_positions = [i for i, char in enumerate(text) if special_chars_pattern.search(char)]
+                logger.warning(f"特殊符号位置: {special_positions}")
         
-        # 如果是新会话，创建会话和进度块
-        if not existing_session:
-            # 生成会话ID
-            session_id = generate_id()
-            
-            # 创建会话
-            session_model.create_session(
-                session_id=session_id,
-                user_id=g.current_user["user_id"],
+        # 生成流式响应
+        from flask import Response
+        response = Response(
+            paper_service.add_block_from_text_stream(
                 paper_id=paper_id,
                 section_id=section_id,
                 text=text,
-                after_block_id=after_block_id,
-                is_admin=False,
-                user_paper_id=entry_id
-            )
-            
-            # 创建进度块ID
-            progress_block_id = generate_id()
-            
-            # 确保section有content字段
-            if "content" not in target_section:
-                target_section["content"] = []
-            
-            # 确定插入位置
-            insert_index = len(target_section["content"])  # 默认在末尾
-            if after_block_id:
-                for i, block in enumerate(target_section["content"]):
-                    if block.get("id") == after_block_id:
-                        insert_index = i + 1  # 插入到指定block后面
-                        break
-            
-            # 创建progress block
-            progress_block = {
-                "id": progress_block_id,
-                "type": "loading",
-                "status": "pending",
-                "message": "准备解析文本...",
-                "progress": 0,
-                "originalText": text,
-                "sessionId": session_id,  # 添加会话ID到进度块
-                "createdAt": service.get_current_time() if hasattr(service, 'get_current_time') else ""
-            }
-            
-            # 插入progress block
-            target_section["content"].insert(insert_index, progress_block)
-            
-            # 更新用户论文库中的paperData
-            update_result = service.update_user_paper(
-                entry_id=entry_id,
                 user_id=g.current_user["user_id"],
-                update_data={"paperData": paper_data}
-            )
-            
-            if update_result["code"] != BusinessCode.SUCCESS:
-                return bad_request_response("添加进度块失败")
-            
-            # 更新会话状态，记录进度块ID
-            session_model.update_progress(
+                is_admin=False,
+                after_block_id=after_block_id,
                 session_id=session_id,
-                status="processing",
-                progress=0,
-                message="准备解析文本...",
-                progress_block_id=progress_block_id
-            )
-        
-        # 定义后台解析任务
-        def background_parsing_task():
-            """后台解析任务"""
-            try:
-                from ..utils.llm_utils import get_llm_utils
-                llm_utils = get_llm_utils()
-                
-                # 获取section上下文
-                section_title = target_section.get("title", "") or target_section.get("titleZh", "")
-                section_context = f"章节: {section_title}"
-                
-                # 获取任务对象以便更新进度
-                task = task_manager.get_task(session_id)
-                
-                # 流式解析文本
-                for chunk in llm_utils.parse_text_to_blocks_stream(text, section_context):
-                    if chunk.get("type") == "error":
-                        # 更新会话状态为错误
-                        session_model.fail_session(session_id, chunk.get("message", "解析失败"))
-                        
-                        # 更新progress block为错误状态
-                        progress_block = {
-                            "id": progress_block_id,
-                            "type": "loading",
-                            "status": "failed",
-                            "message": chunk.get("message", "解析失败"),
-                            "progress": 0,
-                            "sessionId": session_id  # 保留sessionId
-                        }
-                        
-                        # 更新用户论文库中的progress block
-                        paper_model = PaperModel()
-                        content_service = PaperContentService(paper_model)
-                        _update_progress_block(content_service, entry_id, section_id, progress_block_id, progress_block)
-                        break
-                    
-                    elif chunk.get("type") == "glm_stream":
-                        # 直接传递GLM的流式数据到前端，不更新progress block
-                        # 这种类型的chunk会被SSE流直接传递到前端
-                        continue  # 不处理，让SSE流直接传递
-                    
-                    elif chunk.get("type") == "progress":
-                        # 更新会话进度
-                        session_model.update_progress(
-                            session_id=session_id,
-                            status="processing",
-                            progress=chunk.get("progress", 0),
-                            message=chunk.get("message", "处理中...")
-                        )
-                        
-                        # 更新任务进度
-                        if task:
-                            task.update_progress(chunk.get("progress", 0), chunk.get("message", "处理中..."))
-                        
-                        # 更新progress block
-                        progress_block = {
-                            "id": progress_block_id,
-                            "type": "loading",
-                            "status": chunk.get("stage", "processing"),
-                            "message": chunk.get("message", "处理中..."),
-                            "progress": chunk.get("progress", 0),
-                            "sessionId": session_id  # 保留sessionId
-                        }
-                        
-                        # 更新用户论文库中的progress block
-                        paper_model = PaperModel()
-                        content_service = PaperContentService(paper_model)
-                        _update_progress_block(content_service, entry_id, section_id, progress_block_id, progress_block)
-                    
-                    elif chunk.get("type") == "complete":
-                        # 解析完成，移除progress block并添加解析后的blocks
-                        parsed_blocks = chunk.get("blocks", [])
-                        
-                        # 更新section：移除progress block，添加解析后的blocks
-                        _complete_parsing(
-                            service, entry_id, section_id, progress_block_id,
-                            insert_index, parsed_blocks, session_model, session_id
-                        )
-                        break
-            
-            except Exception as e:
-                # 更新会话状态为错误
-                session_model.fail_session(session_id, f"流式解析失败: {str(e)}")
-                
-                # 更新progress block为错误状态
-                progress_block = {
-                    "id": progress_block_id,
-                    "type": "loading",
-                    "status": "failed",
-                    "message": f"流式解析失败: {str(e)}",
-                    "progress": 0,
-                    "sessionId": session_id  # 保留sessionId
-                }
-                
-                # 更新用户论文库中的progress block
-                try:
-                    paper_model = PaperModel()
-                    content_service = PaperContentService(paper_model)
-                    _update_progress_block(content_service, entry_id, section_id, progress_block_id, progress_block)
-                except:
-                    pass  # 如果更新失败，忽略错误
-        
-        # 提交后台任务
-        task_manager.submit_task(
-            task_id=session_id,
-            func=background_parsing_task,
-            callback=lambda task_id, result: None  # 不需要额外的回调
+                user_paper_id=entry_id
+            ),
+            mimetype="text/event-stream"
         )
         
-        # 使用Server-Sent Events (SSE)进行流式响应
-        def generate():
-            try:
-                # 获取任务对象
-                task = task_manager.get_task(session_id)
-                if not task:
-                    yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': '任务不存在', 'error': '任务不存在', 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
-                    return
-                
-                # 创建一个新的LLM实例来获取实时流式数据
-                from ..utils.llm_utils import get_llm_utils
-                llm_utils = get_llm_utils()
-                
-                # 获取section上下文
-                user_paper = service.get_user_paper_detail(
-                    user_paper_id=entry_id,
-                    user_id=g.current_user["user_id"]
-                )["data"]
-                
-                paper_data = user_paper.get("paperData", {})
-                sections = paper_data.get("sections", [])
-                target_section = None
-                for section in sections:
-                    if section.get("id") == section_id:
-                        target_section = section
-                        break
-                
-                section_title = target_section.get("title", "") or target_section.get("titleZh", "")
-                section_context = f"章节: {section_title}"
-                
-                # 直接从LLM获取流式数据，同时传递到前端
-                for chunk in llm_utils.parse_text_to_blocks_stream(text, section_context):
-                    if chunk.get("type") == "glm_stream":
-                        # 直接传递GLM的流式数据到前端
-                        yield f"data: {json.dumps(chunk, ensure_ascii=False)}\n\n"
-                    elif chunk.get("type") == "progress":
-                        # 同时也发送进度更新
-                        yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'processing', 'progress': chunk.get('progress', 0), 'message': chunk.get('message', '处理中...'), 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
-                    elif chunk.get("type") == "complete":
-                        # 解析完成
-                        completed_blocks = chunk.get("blocks", [])
-                        yield f"data: {json.dumps({'type': 'complete', 'blocks': completed_blocks, 'message': '解析完成', 'sessionId': session_id}, ensure_ascii=False)}\n\n"
-                        break
-                    elif chunk.get("type") == "error":
-                        # 错误处理
-                        yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': chunk.get('message', '解析失败'), 'error': chunk.get('message', '解析失败'), 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
-                        break
-                
-                # 如果上面的循环已经完成，就不需要再检查任务状态了
-                return
-            
-            except Exception as e:
-                yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': f'流式响应失败: {str(e)}', 'error': f'流式响应失败: {str(e)}', 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
+        # 设置正确的 SSE 头部
+        response.headers['Cache-Control'] = 'no-cache'
+        response.headers['Connection'] = 'keep-alive'
+        response.headers['Access-Control-Allow-Origin'] = '*'
+        response.headers['Access-Control-Allow-Headers'] = 'Cache-Control'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
         
-        from flask import Response
-        return Response(generate(), mimetype="text/event-stream")
+        return response
     
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
 
-def _update_progress_block(content_service, entry_id, section_id, progress_block_id, progress_block):
-    """更新进度块的辅助函数"""
-    from flask import g
-    
-    user_paper_service = get_user_paper_service()
-    user_paper = user_paper_service.get_user_paper_detail(
-        user_paper_id=entry_id,
-        user_id=g.current_user["user_id"]
-    )["data"]
-    
-    paper_data = user_paper.get("paperData", {})
-    sections = paper_data.get("sections", [])
-    
-    for section in sections:
-        if section.get("id") == section_id:
-            for i, block in enumerate(section.get("content", [])):
-                if block.get("id") == progress_block_id:
-                    section["content"][i] = progress_block
-                    break
-            break
-    
-    user_paper_service.update_user_paper(
-        entry_id=entry_id,
-        user_id=g.current_user["user_id"],
-        update_data={"paperData": paper_data}
-    )
-
-def _complete_parsing(content_service, entry_id, section_id, progress_block_id, insert_index, parsed_blocks, session_model, session_id):
-    """完成解析的辅助函数"""
-    from flask import g
-    
-    # 更新section：移除progress block，添加解析后的blocks
-    user_paper_service = get_user_paper_service()
-    user_paper = user_paper_service.get_user_paper_detail(
-        user_paper_id=entry_id,
-        user_id=g.current_user["user_id"]
-    )["data"]
-    
-    paper_data = user_paper.get("paperData", {})
-    sections = paper_data.get("sections", [])
-    
-    for section in sections:
-        if section.get("id") == section_id:
-            content = section.get("content", [])
-            # 移除progress block
-            content = [block for block in content if block.get("id") != progress_block_id]
-            # 添加解析后的blocks - 使用切片赋值而不是解包插入
-            content[insert_index:insert_index] = parsed_blocks
-            section["content"] = content
-            break
-    
-    # 更新用户论文库
-    update_result = user_paper_service.update_user_paper(
-        entry_id=entry_id,
-        user_id=g.current_user["user_id"],
-        update_data={"paperData": paper_data}
-    )
-    
-    # 验证更新是否成功
-    if update_result["code"] == BusinessCode.SUCCESS:
-        # 确认更新成功，获取最新的论文数据
-        verify_result = user_paper_service.get_user_paper_detail(
-            user_paper_id=entry_id,
-            user_id=g.current_user["user_id"]
-        )
-        
-        if verify_result["code"] == BusinessCode.SUCCESS:
-            # 使用验证后的最新数据完成会话
-            session_model.complete_session(session_id, parsed_blocks, verify_result["data"]["paperData"])
-        else:
-            # 获取最新数据失败，但仍使用当前数据完成会话
-            session_model.complete_session(session_id, parsed_blocks, paper_data)
-    else:
-        # 更新失败，标记会话失败
-        session_model.fail_session(session_id, "更新论文数据失败")
 
 
 @bp.route("/<entry_id>/sections/<section_id>/parsing-sessions", methods=["GET"])

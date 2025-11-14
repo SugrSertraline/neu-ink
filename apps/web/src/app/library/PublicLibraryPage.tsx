@@ -251,11 +251,11 @@ export default function PublicLibraryPage() {
           {!loading && !error && papers.length > 0 && (
             <>
               {viewMode === 'card' && (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+                <div className="flex flex-wrap gap-4">
                   {papers.map(paper => (
                     <div
                       key={paper.id}
-                      className="rounded-2xl border border-white/70 bg-white/78 p-4 shadow backdrop-blur-2xl transition-transform duration-300 hover:-translate-y-1.5 hover:shadow-[0_24px_54px_rgba(28,45,96,0.2)]"
+                      className="w-[320px] flex-shrink-0 rounded-2xl border border-white/70 bg-white/78 p-4 shadow backdrop-blur-2xl transition-transform duration-300 hover:-translate-y-1.5 hover:shadow-[0_24px_54px_rgba(28,45,96,0.2)]"
                     >
                       <PaperCard
                         paper={paper}

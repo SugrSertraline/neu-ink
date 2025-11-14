@@ -9,6 +9,8 @@ import {
   InlineContent,
   Reference,
   Section,
+  TableCell,
+  TableRow,
 } from '@/types/paper';
 import InlineRenderer from './InlineRenderer';
 import TextSelectionToolbar from './TextSelectionToolbar';
@@ -82,15 +84,15 @@ const hasLocalizedContent = (value: unknown): value is LocalizedInlineValue => {
 
 const COMPONENT_LABEL_MAP: Record<
   BlockContent['type'] |
-    'tableHeader' |
-    'tableCell' |
-    'figureCaption' |
-    'figureDesc' |
-    'tableCaption' |
-    'tableDesc' |
-    'codeCaption' |
-    'listItem' |
-    'loading',
+  'tableHeader' |
+  'tableCell' |
+  'figureCaption' |
+  'figureDesc' |
+  'tableCaption' |
+  'tableDesc' |
+  'codeCaption' |
+  'listItem' |
+  'loading',
   string
 > = {
   heading: '标题',
@@ -344,9 +346,8 @@ export default function BlockRenderer({
     references,
   };
 
-  const baseClass = `transition-all duration-200 rounded-lg ${
-    isActive ? 'bg-blue-50 ring-2 ring-blue-200 shadow-sm' : ''
-  }`;
+  const baseClass = `transition-all duration-200 rounded-lg ${isActive ? 'bg-blue-50 ring-2 ring-blue-200 shadow-sm' : ''
+    }`;
 
   const enterEditMode = useCallback(() => {
     if (!inlineEditingEnabled || isEditing) return;
@@ -946,6 +947,38 @@ export default function BlockRenderer({
           }
         };
 
+        // 处理表格跨行跨列的渲染函数
+        const renderTableRows = (
+          rows: TableRow[],
+          isHeader: boolean,
+          cellRenderer: (value: any) => ReactNode,
+          align?: ('left' | 'center' | 'right')[]
+        ) => {
+          const Tag = isHeader ? 'th' : 'td';
+
+          return rows.map((row, rowIndex) => (
+            <tr
+              key={rowIndex}
+              className={isHeader ? '' : 'transition-colors hover:bg-gray-50'}
+            >
+              {row.cells.map((cell, colIndex) => (
+                <Tag
+                  key={colIndex}
+                  className={`border border-gray-300 px-3 py-2 text-sm ${isHeader ? 'font-semibold text-gray-900' : 'text-gray-700'
+                    }`}
+                  style={{
+                    textAlign: cell.align || align?.[colIndex] || 'left',
+                  }}
+                  colSpan={cell.colspan || 1}
+                  rowSpan={cell.rowspan || 1}
+                >
+                  {cellRenderer(cell.content)}
+                </Tag>
+              ))}
+            </tr>
+          ));
+        };
+
         const renderCellValue = (value: any) => {
           if (lang === 'both') {
             if (hasLocalizedContent(value)) {
@@ -1019,35 +1052,50 @@ export default function BlockRenderer({
             )}
 
             <table className="mx-auto min-w-full border-collapse border border-gray-300 shadow-sm">
+              {/* 渲染表头 - 支持新旧格式 */}
               {block.headers && (
                 <thead className="bg-gray-100">
-                  <tr>
-                    {block.headers.map((header, i) => (
-                      <th
-                        key={i}
-                        className="border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-900"
-                        style={{ textAlign: block.align?.[i] || 'left' }}
-                      >
-                        {renderCellValue(header)}
-                      </th>
-                    ))}
-                  </tr>
+                  {/* 检查是否为新格式（有cells属性） */}
+                  {Array.isArray(block.headers) && block.headers.length > 0 && typeof block.headers[0] === 'object' && 'cells' in block.headers[0] ? (
+                    // 新格式：多行表头
+                    renderTableRows(block.headers as unknown as TableRow[], true, renderCellValue, block.align)
+                  ) : (
+                    // 旧格式：简单表头
+                    <tr>
+                      {(block.headers as unknown as string[]).map((header, i) => (
+                        <th
+                          key={i}
+                          className="border border-gray-300 px-3 py-2 text-sm font-semibold text-gray-900"
+                          style={{ textAlign: block.align?.[i] || 'left' }}
+                        >
+                          {renderCellValue(header)}
+                        </th>
+                      ))}
+                    </tr>
+                  )}
                 </thead>
               )}
               <tbody>
-                {block.rows.map((row, r) => (
-                  <tr key={r} className="transition-colors hover:bg-gray-50">
-                    {row.map((cell, c) => (
-                      <td
-                        key={c}
-                        className="border border-gray-300 px-3 py-2 text-sm text-gray-700"
-                        style={{ textAlign: block.align?.[c] || 'left' }}
-                      >
-                        {renderCellValue(cell)}
-                      </td>
-                    ))}
-                  </tr>
-                ))}
+                {/* 检查是否为新格式（有cells属性） */}
+                {Array.isArray(block.rows) && block.rows.length > 0 && typeof block.rows[0] === 'object' && 'cells' in block.rows[0] ? (
+                  // 新格式：复杂表格行
+                  renderTableRows(block.rows as unknown as TableRow[], false, renderCellValue, block.align)
+                ) : (
+                  // 旧格式：简单表格行
+                  (block.rows as unknown as any[][]).map((row, r) => (
+                    <tr key={r} className="transition-colors hover:bg-gray-50">
+                      {row.map((cell, c) => (
+                        <td
+                          key={c}
+                          className="border border-gray-300 px-3 py-2 text-sm text-gray-700"
+                          style={{ textAlign: block.align?.[c] || 'left' }}
+                        >
+                          {renderCellValue(cell)}
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
 
@@ -1288,89 +1336,89 @@ export default function BlockRenderer({
 
 
       case 'loading': {
-  const progressBlock = block as any;
-  console.log('BlockRenderer progress block:', progressBlock);
+        const progressBlock = block as any;
+        console.log('BlockRenderer progress block:', progressBlock);
 
-  const handleParseComplete = (result: any) => {
-    console.log('BlockRenderer parse complete:', result);
-    onParseComplete?.(result);
-  };
+        const handleParseComplete = (result: any) => {
+          console.log('BlockRenderer parse complete:', result);
+          onParseComplete?.(result);
+        };
 
-  // 从 streamProgressData 中获取进度数据
-  const targetSectionId = sectionId || progressBlock.sectionId || '';
-  const sectionProgressData = streamProgressData?.[targetSectionId];
+        // 从 streamProgressData 中获取进度数据
+        const targetSectionId = sectionId || progressBlock.sectionId || '';
+        const sectionProgressData = streamProgressData?.[targetSectionId];
 
-  // 优先使用 streamProgressData 中的 sessionId，其次使用 block 中的 sessionId
-  const sessionId = sectionProgressData?.sessionId || progressBlock.sessionId;
+        // 优先使用 streamProgressData 中的 sessionId，其次使用 block 中的 sessionId
+        const sessionId = sectionProgressData?.sessionId || progressBlock.sessionId;
 
-  // ⭐ 关键：从 block 自身恢复初始进度（支持刷新后恢复）
-  const normalizedStatus: 'pending' | 'processing' | 'completed' | 'failed' =
-    progressBlock.status === 'parsing' || progressBlock.status === 'processing'
-      ? 'processing'
-      : progressBlock.status === 'completed'
-      ? 'completed'
-      : progressBlock.status === 'failed'
-      ? 'failed'
-      : 'pending';
+        // ⭐ 关键：从 block 自身恢复初始进度（支持刷新后恢复）
+        const normalizedStatus: 'pending' | 'processing' | 'completed' | 'failed' =
+          progressBlock.status === 'parsing' || progressBlock.status === 'processing'
+            ? 'processing'
+            : progressBlock.status === 'completed'
+              ? 'completed'
+              : progressBlock.status === 'failed'
+                ? 'failed'
+                : 'pending';
 
-  const initialProgress = {
-    status: normalizedStatus,
-    progress: typeof progressBlock.progress === 'number' ? progressBlock.progress : 0,
-    message: progressBlock.message || '正在解析...',
-    sessionId,
-    paper: progressBlock.paper,
-    blocks: progressBlock.blocks,
-  };
+        const initialProgress = {
+          status: normalizedStatus,
+          progress: typeof progressBlock.progress === 'number' ? progressBlock.progress : 0,
+          message: progressBlock.message || '正在解析...',
+          sessionId,
+          paper: progressBlock.paper,
+          blocks: progressBlock.blocks,
+        };
 
-  // 仍然保留 streamProgressData 作为“实时覆盖”
-  const externalProgress = sectionProgressData
-    ? {
-        status:
-          sectionProgressData.progress >= 100
-            ? ('completed' as const)
-            : ('processing' as const),
-        progress: sectionProgressData.progress,
-        message: sectionProgressData.message,
-        sessionId,
-      }
-    : undefined;
+        // 仍然保留 streamProgressData 作为“实时覆盖”
+        const externalProgress = sectionProgressData
+          ? {
+            status:
+              sectionProgressData.progress >= 100
+                ? ('completed' as const)
+                : ('processing' as const),
+            progress: sectionProgressData.progress,
+            message: sectionProgressData.message,
+            sessionId,
+          }
+          : undefined;
 
-  console.log('BlockRenderer loading block:', {
-    targetSectionId,
-    sessionId,
-    progressBlock,
-    sectionProgressData,
-    initialProgress,
-    externalProgress,
-  });
-
-  return (
-    <ParseProgressBlock
-      paperId={paperId || ''}
-      sectionId={targetSectionId}
-      blockId={progressBlock.id}
-      sessionId={sessionId || ''}
-      onCompleted={handleParseComplete}
-      isPersonalOwner={isPersonalOwner}
-      userPaperId={userPaperId}
-      // ⭐ 新增：用 block 中的数据初始化进度（刷新后也能看到 20%、message 等）
-      initialProgress={initialProgress}
-      // ⭐ 仍然允许上层用 streamProgressData 实时覆盖
-      externalProgress={externalProgress}
-      // ⭐ 新增：启用自动恢复会话连接
-      autoResumeSession={true}
-      onRestart={() => {
-        // 重新开始解析：删除当前的 loading block
-        console.log('重新开始解析，删除 loading block');
-        onParseComplete?.({
-          status: 'restart',
-          blockId: progressBlock.id,
-          sectionId: targetSectionId,
+        console.log('BlockRenderer loading block:', {
+          targetSectionId,
+          sessionId,
+          progressBlock,
+          sectionProgressData,
+          initialProgress,
+          externalProgress,
         });
-      }}
-    />
-  );
-}
+
+        return (
+          <ParseProgressBlock
+            paperId={paperId || ''}
+            sectionId={targetSectionId}
+            blockId={progressBlock.id}
+            sessionId={sessionId || ''}
+            onCompleted={handleParseComplete}
+            isPersonalOwner={isPersonalOwner}
+            userPaperId={userPaperId}
+            // ⭐ 新增：用 block 中的数据初始化进度（刷新后也能看到 20%、message 等）
+            initialProgress={initialProgress}
+            // ⭐ 仍然允许上层用 streamProgressData 实时覆盖
+            externalProgress={externalProgress}
+            // ⭐ 新增：启用自动恢复会话连接
+            autoResumeSession={true}
+            onRestart={() => {
+              // 重新开始解析：删除当前的 loading block
+              console.log('重新开始解析，删除 loading block');
+              onParseComplete?.({
+                status: 'restart',
+                blockId: progressBlock.id,
+                sectionId: targetSectionId,
+              });
+            }}
+          />
+        );
+      }
 
 
       default:
@@ -1396,9 +1444,8 @@ export default function BlockRenderer({
       <div
         ref={blockRef}
         data-block-id={block.id}
-        className={`${baseClass} group relative mb-3 p-2 ${
-          isEditing ? 'border-2 border-blue-300 bg-white shadow-lg ring-2 ring-blue-200' : ''
-        }`}
+        className={`${baseClass} group relative mb-3 p-2 ${isEditing ? 'border-2 border-blue-300 bg-white shadow-lg ring-2 ring-blue-200' : ''
+          }`}
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         onClick={handleWrapperClick}

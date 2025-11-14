@@ -300,8 +300,9 @@ class LLMUtils:
 ## Markdown识别规则
 
 ### 标题 (heading)
-- # 开头的是标题 #可能有多个
-- 1.为一级标题 1.1为二级标题 1.1.1为三级标题
+- 以#开头的行视为Markdown标题
+- 1.为一级标题 1.1为二级标题 1.1.1为三级标题，需要设置level属性，例如1.1.1设置level为3，最多支持到六级
+**level判定优先级**：如果一行标题存在数字结构前缀，必须优先根据数字结构决定 level，而不是根据 # 的数量
 - 以此类推至六级标题
 - 输出格式示例：
 {
@@ -326,7 +327,8 @@ class LLMUtils:
 ### 行间公式 (math)
 - 独立成行的 $$...$$ 或 \\[...\\] 格式
 - **重要**：去除\\tag{...}等编号，只保留公式本体
-- 输出格式示例：
+- 空格规范化（必须执行）
+- 输出格式示例：在写入 latex 字段之前，对公式字符串进行空格清理，移出不必要的空格,让显示效果更好
 {
 "type": "math",
 "latex": "E = mc^2"
@@ -335,6 +337,7 @@ class LLMUtils:
 ### 行内公式 (inline-math)
 - 文本中的 $...$ 或 \\(...\\) 格式
 - **必须使用latex字段，不能使用content字段**
+- 输出格式示例：在写入 latex 字段之前，对公式字符串进行空格清理,移出不必要的空格,让显示效果更好
 - 输出格式示例：
 {"type": "inline-math", "latex": "x^2 + y^2 = z^2"}
 
@@ -364,17 +367,99 @@ class LLMUtils:
 }
 
 ### 表格 (table)
-- Markdown表格格式：|列1|列2| 
+- Markdown表格格式：|列1|列2|
 - HTML表格格式：<table>...</table>
+- **重要：支持复杂表格结构，包括colspan（跨列）和rowspan（跨行）**
+- 除此之外，表格还包含caption，caption有en和zh两个属性，在解析表格时，需要自动识别与该表格关联的标题行（caption），并填入 caption 字段。典型形式包括：
+Table 1: Comparison of methods
+Table 2. Performance on test set
+Tab. 3: Results of ablation study
 - 输出格式示例：
+
+#### 简单表格：
 {
 "type": "table",
-"headers": ["Column 1", "Column 2"],
+ "caption": {
+    "en": [
+      { "type": "text", "content": "Comparison of methods" }
+    ],
+    "zh": [
+      { "type": "text", "content": "不同方法的对比" }
+    ],
+"headers": [
+    {
+        "cells": [
+            {"content": "Column 1", "isHeader": true},
+            {"content": "Column 2", "isHeader": true}
+        ]
+    }
+],
 "rows": [
-    ["Cell 1", "Cell 2"],
-    ["Cell 3", "Cell 4"]
+    {
+        "cells": [
+            {"content": "Cell 1"},
+            {"content": "Cell 2"}
+        ]
+    },
+    {
+        "cells": [
+            {"content": "Cell 3"},
+            {"content": "Cell 4"}
+        ]
+    }
 ]
 }
+
+#### 复杂表格（支持colspan和rowspan）：
+{
+"type": "table",
+"caption": {
+    "en": [
+      { "type": "text", "content": "Comparison of methods" }
+    ],
+    "zh": [
+      { "type": "text", "content": "不同方法的对比" }
+    ]
+"headers": [
+    {
+        "cells": [
+            {"content": "Header 1", "colspan": 2, "rowspan": 1, "isHeader": true},
+            {"content": "Header 2", "colspan": 1, "rowspan": 2, "isHeader": true}
+        ]
+    },
+    {
+        "cells": [
+            {"content": "Sub-header 1", "isHeader": true}
+        ]
+    }
+],
+"rows": [
+    {
+        "cells": [
+            {"content": "Cell 1"},
+            {"content": "Cell 2"}
+        ]
+    }
+]
+}
+
+#### 表格单元格属性说明：
+- content: 单元格内容，可以是字符串或多语言对象
+- colspan: 跨列数（可选，默认为1）
+- rowspan: 跨行数（可选，默认为1）
+- isHeader: 是否为表头单元格（表头中为true，数据行中为false）
+- align: 对齐方式（可选，值为'left'/'center'/'right'）
+
+#### HTML表格解析规则：
+- 解析<table>、<tr>、<td>、<th>标签
+- 识别colspan和rowspan属性
+- <th>标签自动设置isHeader: true
+- 如果没有<th>，请你自行判断第一行是否为表头，如果不是请你给我补充完整表头
+- 支持多行表头结构
+
+#### Markdown表格解析规则：
+- 标准Markdown表格转换为简单结构
+- 如果检测到复杂合并单元格，尝试转换为HTML格式再解析
 
 ### 引用 (quote)
 - 以 > 开头的行
@@ -468,12 +553,29 @@ Key advantages include:
     ]
 },
 {
-    "type": "table",
-    "headers": ["Method", "Accuracy"],
-    "rows": [
-    ["SVM", "95%"],
-    ["CNN", "98%"]
-    ]
+"type": "table",
+"headers": [
+    {
+        "cells": [
+            {"content": "Method", "isHeader": true},
+            {"content": "Accuracy", "isHeader": true}
+        ]
+    }
+],
+"rows": [
+    {
+        "cells": [
+            {"content": "SVM"},
+            {"content": "95%"}
+        ]
+    },
+    {
+        "cells": [
+            {"content": "CNN"},
+            {"content": "98%"}
+        ]
+    }
+]
 }
 ]
 
@@ -520,17 +622,28 @@ Key advantages include:
             if stream:
                 # 流式处理
                 full_content = ""
+                last_progress_update = 0
                 for chunk in self.call_llm_stream(messages, temperature=0.1, max_tokens=50000):
                     if chunk.get("type") == "stream":
                         full_content += chunk["content"]
+                        
+                        current_length = len(full_content)
+                        if current_length - last_progress_update >= 350:
+                            yield {
+                                "type": "progress",
+                                "stage": "parsing",
+                                "message": f"正在解析...({current_length} 字符)",
+                                "progress": min(20 + int(current_length / 100), 85)
+                            }
+                            last_progress_update = current_length
+                        
+                        # 传递原始流式数据，标记为glm_stream类型
                         yield {
-                            "type": "progress", 
-                            "stage": "parsing", 
-                            "message": f"正在解析...({len(full_content)} 字符)", 
-                            "progress": min(20 + int(len(full_content) / 50), 90)
+                            "type": "glm_stream",
+                            "content": chunk["content"],
+                            "model": chunk.get("model", self.current_model.value),
+                            "usage": chunk.get("usage", {})
                         }
-                        # 传递原始流式数据
-                        yield chunk
                     elif "error" in chunk:
                         yield chunk
                         return
@@ -540,7 +653,7 @@ Key advantages include:
                 try:
                     blocks = json.loads(content)
                     logger.info(f"解析完成，得到 {len(blocks)} 个blocks")
-                    yield {"type": "progress", "stage": "parsing", "message": f"解析完成，得到 {len(blocks)} 个内容块", "progress": 90}
+                    yield {"type": "progress", "stage": "parsing", "message": f"解析完成，得到 {len(blocks)} 个内容块", "progress": 95}
                     return blocks
                 except json.JSONDecodeError as e:
                     logger.error(f"JSON解析失败: {e}")
@@ -560,23 +673,12 @@ Key advantages include:
                     return json.loads(content)
                 except json.JSONDecodeError as e:
                     logger.error(f"JSON解析失败: {e}")
-                    self._save_error_log(content, e)
-                    raise
-
-        def _clean_json_response(content: str) -> str:
-            """清理LLM响应，提取JSON内容"""
-            content = content.strip()
-            if "```json" in content:
-                start = content.find("```json") + 7
-                end = content.find("```", start)
-                if end != -1:
-                    content = content[start:end].strip()
-            elif "```" in content:
-                start = content.find("```") + 3
-                end = content.find("```", start)
-                if end != -1:
-                    content = content[start:end].strip()
-            return content
+                    try:
+                        self._save_error_log(full_content, e)
+                    except Exception as log_e:
+                        logger.error(f"保存流式JSON错误日志失败: {log_e}")
+                    yield {"type": "error", "message": f"解析失败，JSON格式错误: {e}"}
+                    return None
 
         def _fix_and_validate(blocks):
             """修复和验证blocks"""
@@ -643,6 +745,74 @@ Key advantages include:
                             latex = re.sub(r'\s+', ' ', latex).strip()
                             block["latex"] = latex
                     
+                    # 处理表格块 - 支持新的表格结构
+                    if block["type"] == "table":
+                        # 向后兼容：如果使用旧格式，转换为新格式
+                        if "headers" in block and isinstance(block["headers"], list):
+                            # 检查是否为旧格式（字符串数组）
+                            if len(block["headers"]) > 0 and isinstance(block["headers"][0], str):
+                                # 转换旧格式为新格式
+                                old_headers = block["headers"]
+                                block["headers"] = [
+                                    {
+                                        "cells": [
+                                            {
+                                                "content": header,
+                                                "isHeader": True,
+                                                "colspan": 1,
+                                                "rowspan": 1
+                                            } for header in old_headers
+                                        ]
+                                    }
+                                ]
+                        
+                        # 处理表格行
+                        if "rows" in block and isinstance(block["rows"], list):
+                            # 检查是否为旧格式（二维数组）
+                            if len(block["rows"]) > 0 and isinstance(block["rows"][0], list):
+                                # 转换旧格式为新格式
+                                old_rows = block["rows"]
+                                new_rows = []
+                                for row in old_rows:
+                                    new_row = {
+                                        "cells": []
+                                    }
+                                    for cell in row:
+                                        if isinstance(cell, str):
+                                            new_row["cells"].append({
+                                                "content": cell,
+                                                "colspan": 1,
+                                                "rowspan": 1
+                                            })
+                                        elif isinstance(cell, dict):
+                                            new_row["cells"].append({
+                                                "content": cell,
+                                                "colspan": 1,
+                                                "rowspan": 1
+                                            })
+                                    new_rows.append(new_row)
+                                block["rows"] = new_rows
+                            
+                            # 验证和修复新格式的表格行
+                            for row in block["rows"]:
+                                if "cells" in row and isinstance(row["cells"], list):
+                                    for cell in row["cells"]:
+                                        # 确保必要属性存在
+                                        if "colspan" not in cell:
+                                            cell["colspan"] = 1
+                                        if "rowspan" not in cell:
+                                            cell["rowspan"] = 1
+                                        if "isHeader" not in cell:
+                                            cell["isHeader"] = False
+                                        
+                                        # 处理单元格内容的多语言支持
+                                        if isinstance(cell["content"], str):
+                                            # 如果是字符串，转换为多语言格式
+                                            cell["content"] = {
+                                                "en": [{"type": "text", "content": cell["content"]}],
+                                                "zh": [{"type": "text", "content": cell["content"]}]
+                                            }
+                    
                     validated_blocks.append(block)
                     logger.info(f"验证block {idx}: type={block['type']}")
                     
@@ -660,7 +830,14 @@ Key advantages include:
                 if blocks is None:
                     return
                 
+                # 添加验证进度
+                yield {"type": "progress", "stage": "validating", "message": "正在验证和修复内容块格式...", "progress": 97}
+                
                 validated_blocks = _fix_and_validate(blocks)
+                
+                # 添加最终完成进度
+                yield {"type": "progress", "stage": "finalizing", "message": f"验证完成，共生成 {len(validated_blocks)} 个内容块", "progress": 99}
+                
                 yield {"type": "complete", "message": f"解析完成，共生成 {len(validated_blocks)} 个内容块", "blocks": validated_blocks, "progress": 100}
             else:
                 # 非流式处理
@@ -678,6 +855,81 @@ Key advantages include:
                 yield {"type": "error", "message": f"解析失败: {e}"}
             else:
                 raise Exception(f"LLM解析失败: {e}")
+
+    def _clean_json_response(self, content: str) -> str:
+        """清理LLM响应，尽可能提取出纯净的JSON内容"""
+        import re
+
+        if not content:
+            return ""
+
+        content = content.strip()
+
+        # 1. 先处理 ```json 或 ``` 包裹的情况
+        if "```json" in content:
+            start = content.find("```json") + len("```json")
+            end = content.find("```", start)
+            if end != -1:
+                content = content[start:end].strip()
+        elif "```" in content:
+            start = content.find("```") + len("```")
+            end = content.find("```", start)
+            if end != -1:
+                content = content[start:end].strip()
+
+        # 到这里，content 可能还是 "说明文字 + JSON + 说明文字"
+
+        # 2. 去掉前后多余的说明文字：
+        #    - 找第一个 '[' 或 '{'
+        #    - 找最后一个 ']' 或 '}'
+        first_bracket = len(content)
+        first_idx_list = []
+        for ch in ["[", "{"]:
+            idx = content.find(ch)
+            if idx != -1:
+                first_idx_list.append(idx)
+        if first_idx_list:
+            first_bracket = min(first_idx_list)
+        else:
+            # 根本没找到起始括号，直接返回原始（让上层报错）
+            return content
+
+        last_bracket = -1
+        last_idx_list = []
+        for ch in ["]", "}"]:
+            idx = content.rfind(ch)
+            if idx != -1:
+                last_idx_list.append(idx)
+        if last_idx_list:
+            last_bracket = max(last_idx_list)
+        else:
+            return content
+
+        content = content[first_bracket:last_bracket + 1].strip()
+
+        # 3. 简单清理：去掉可能出现的 BOM 或奇怪的前缀
+        #    有时模型会输出 'json\n[ ... ]' 之类
+        if content.startswith("json"):
+            content = content[4:].lstrip()
+
+        return content
+
+    def get_api_config(self) -> Dict[str, Any]:
+        """获取API配置信息"""
+        try:
+            provider = self._get_provider()
+            return {
+                "api_endpoint": provider.base_url,
+                "api_key_status": "已配置" if provider.api_key and provider.api_key != 'your_glm_api_key_here' else "未配置或为占位符",
+                "model": self.current_model.value
+            }
+        except Exception as e:
+            return {
+                "api_endpoint": "获取失败",
+                "api_key_status": "获取失败",
+                "model": self.current_model.value,
+                "error": str(e)
+            }
 
     def _save_error_log(self, content: str, error: Exception):
         """保存错误日志"""

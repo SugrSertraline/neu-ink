@@ -540,6 +540,7 @@ interface BlockContextMenuProps {
   onDelete?: MenuAction;
   onAddComponentAfter?: (type: BlockContent['type']) => void;
   onStartTextParse?: MenuAction;
+  onAddSectionBelow?: MenuAction;
 }
 
 export function BlockContextMenu({
@@ -555,6 +556,7 @@ export function BlockContextMenu({
   onDelete,
   onAddComponentAfter,
   onStartTextParse,
+  onAddSectionBelow,
 }: BlockContextMenuProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
 
@@ -589,6 +591,11 @@ export function BlockContextMenu({
       entries.push({ kind: 'item', label: '在上方插入段落', onSelect: onInsertAbove });
     if (onInsertBelow)
       entries.push({ kind: 'item', label: '在下方插入段落', onSelect: onInsertBelow });
+  }
+
+  if (onAddSectionBelow) {
+    if (entries.length) entries.push({ kind: 'separator' });
+    entries.push({ kind: 'item', label: '在下方插入章节', onSelect: onAddSectionBelow });
   }
 
   if (onAddComponentAfter || onStartTextParse) {
