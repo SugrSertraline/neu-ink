@@ -138,7 +138,14 @@ export class ApiClient {
           message,
           payload: data
         });
-        throw new ApiError(message, { status: res.status, url, payload: data });
+        
+        // 对于401错误，添加特殊标记以便后续处理
+        const errorOptions = { status: res.status, url, payload: data };
+        if (res.status === 401) {
+          (errorOptions as any).isAuthError = true;
+        }
+        
+        throw new ApiError(message, errorOptions);
       }
 
       console.log('[DEBUG] API响应数据:', {

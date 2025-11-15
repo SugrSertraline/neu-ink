@@ -7,6 +7,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from ..services.db import get_db
 from ..utils.common import generate_id, get_current_time
 from ..config.constants import Collections
+from .section import get_section_model
 
 
 class PaperModel:
@@ -29,8 +30,7 @@ class PaperModel:
         self.collection.create_index("metadata.tags")
         self.collection.create_index("metadata.authors.name")
         self.collection.create_index("parseStatus.status")
-        self.collection.create_index("sections.content.type")
-        self.collection.create_index("sections.content.id")
+        self.collection.create_index("sectionIds")
 
     def create(self, paper_data: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -46,7 +46,7 @@ class PaperModel:
             "metadata": paper_data.get("metadata", {}),
             "abstract": paper_data.get("abstract"),
             "keywords": paper_data.get("keywords", []),
-            "sections": paper_data.get("sections", []),
+            "sectionIds": paper_data.get("sectionIds", []),
             "references": paper_data.get("references", []),
             "attachments": paper_data.get("attachments", {}),
             "parseStatus": paper_data.get(
@@ -374,7 +374,7 @@ class PaperModel:
             "metadata": 1,
             "abstract": 1,
             "keywords": 1,
-            "sections": 1,
+            "sectionIds": 1,
             "references": 1,
             "attachments": 1,
             "parseStatus": 1,
@@ -389,3 +389,61 @@ class PaperModel:
     def find_admin_paper_by_id(self, paper_id: str) -> Optional[Dict[str, Any]]:
         """管理员获取论文详情；不限制公开状态"""
         return self.collection.find_one({"id": paper_id}, self._full_document_projection())
+
+    def find_paper_with_sections(self, paper_id: str) -> Optional[Dict[str, Any]]:
+        """
+        查找论文并包含完整的sections数据
+        这个方法用于向后兼容，确保上层接口不需要改变
+        """
+        paper = self.find_by_id(paper_id)
+        if not paper:
+            return None
+        
+        # 获取sections数据
+        section_model = get_section_model()
+        sections = section_model.find_by_paper_id(paper_id)
+        
+        # 将sections数据添加到paper中
+        paper["sections"] = sections
+        return paper
+
+    def add_section_id(self, paper_id: str, section_id: str) -> bool:
+        """
+        向论文添加section ID引用
+        """
+        result = self.collection.update_one(
+            {"id": paper_id},
+            {
+                "$push": {"sectionIds": section_id},
+                "$set": {"updatedAt": get_current_time()}
+            }
+        )
+        return result.modified_count > 0
+
+    def remove_section_id(self, paper_id: str, section_id: str) -> bool:
+        """
+        从论文中移除section ID引用
+        """
+        result = self.collection.update_one(
+            {"id": paper_id},
+            {
+                "$pull": {"sectionIds": section_id},
+                "$set": {"updatedAt": get_current_time()}
+            }
+        )
+        return result.modified_count > 0
+
+    def update_section_ids(self, paper_id: str, section_ids: List[str]) -> bool:
+        """
+        更新论文的section ID列表
+        """
+        result = self.collection.update_one(
+            {"id": paper_id},
+            {
+                "$set": {
+                    "sectionIds": section_ids,
+                    "updatedAt": get_current_time()
+                }
+            }
+        )
+        return result.modified_count > 0

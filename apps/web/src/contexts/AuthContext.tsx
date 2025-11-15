@@ -158,16 +158,19 @@ function AuthProviderContent({ children }: { children: React.ReactNode }) {
         redirectToLogin();
       }
     } catch (error) {
-      const err = error as { authReset?: boolean; message?: string };
+      const err = error as { authReset?: boolean; message?: string; status?: number };
       console.error('Refresh user error:', err);
       
-      // 只有明确的认证错误才清除token和用户状态
-      if (err?.authReset) {
+      // 处理401错误或明确的认证错误
+      if (err?.authReset || err?.status === 401) {
         authService.clearToken();
         setUser(null);
-      }
-
-      if (!isPublicPath(pathname) && (err?.authReset || needsRedirect(undefined, err?.message))) {
+        
+        // 如果不是公共路径，则重定向到登录页
+        if (!isPublicPath(pathname)) {
+          redirectToLogin();
+        }
+      } else if (!isPublicPath(pathname) && needsRedirect(undefined, err?.message)) {
         redirectToLogin();
       } else if (!isPublicPath(pathname)) {
         // 静默失败，不打断用户体验

@@ -96,6 +96,7 @@ class Collections:
     PAPER = "Paper"
     USER_PAPER = "UserPaper"
     NOTE = "Note"
+    SECTION = "Section"
 
 
 # 论文状态

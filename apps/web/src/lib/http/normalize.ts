@@ -132,6 +132,30 @@ export async function callAndNormalize<T>(
   } catch (err: any) {
     const msg = err?.message || String(err);
     
+    // 特殊处理401错误 - 认证失败
+    if (err && typeof err === 'object' && 'status' in err && err.status === ResponseCode.UNAUTHORIZED) {
+      // 显示登录过期的提示
+      toast.error('登录已过期', {
+        description: '您的登录状态已失效，请重新登录',
+        duration: 5000
+      });
+      
+      // 标记需要重置认证状态
+      markAuthReset(err);
+      
+      // 返回统一的结果对象，避免页面崩溃
+      return {
+        success: false,
+        topCode: err.status,
+        topMessage: '登录已过期',
+        bizCode: BusinessCode.TOKEN_EXPIRED,
+        bizMessage: '您的登录状态已失效，请重新登录',
+        data: null as T,
+        raw: err,
+        authReset: true,
+      } as AuthAwareResult<T>;
+    }
+    
     // 特殊处理400错误 - 使用sonner显示toast而不是让页面卡死
     if (err && typeof err === 'object' && 'status' in err) {
       if (err.status === ERROR_CODES.BAD_REQUEST) {

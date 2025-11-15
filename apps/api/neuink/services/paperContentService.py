@@ -8,6 +8,7 @@ import re
 import logging
 from typing import Dict, Any, Optional, List, Tuple
 from ..models.paper import PaperModel
+from ..models.section import get_section_model
 from ..config.constants import BusinessCode
 from ..utils.llm_utils import get_llm_utils
 from ..utils.common import get_current_time
@@ -21,6 +22,7 @@ class PaperContentService:
 
     def __init__(self, paper_model: PaperModel) -> None:
         self.paper_model = paper_model
+        self.section_model = get_section_model()
 
     # ------------------------------------------------------------------
     # Section 操作
@@ -47,7 +49,7 @@ class PaperContentService:
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
             # 获取当前sections
-            sections = paper.get("sections", [])
+            sections = self.section_model.find_by_paper_id(paper_id)
             
             # 确保新章节有必要的字段
             title_data = section_data.get("title", {})
@@ -84,20 +86,33 @@ class PaperContentService:
             else:
                 sections.append(new_section)
             
-            # 更新论文
-            update_data = {"sections": sections}
-            if self.paper_model.update(paper_id, update_data):
-                return self._wrap_success(
-                    "成功添加章节",
-                    {
-                        "addedSection": new_section,
-                        "addedSectionId": new_section["id"],
-                        "parentSectionId": parent_section_id,
-                        "position": position
-                    }
-                )
+            # 创建新section
+            created_section = self.section_model.create({
+                "id": new_section["id"],
+                "paperId": paper_id,
+                "title": new_section["title"],
+                "titleZh": new_section["titleZh"],
+                "content": new_section["content"]
+            })
+            
+            if created_section:
+                # 更新论文的sectionIds
+                if self.paper_model.add_section_id(paper_id, new_section["id"]):
+                    return self._wrap_success(
+                        "成功添加章节",
+                        {
+                            "addedSection": created_section,
+                            "addedSectionId": created_section["id"],
+                            "parentSectionId": parent_section_id,
+                            "position": position
+                        }
+                    )
+                else:
+                    # 如果添加sectionId失败，删除已创建的section
+                    self.section_model.delete(created_section["id"])
+                    return self._wrap_error("更新论文失败")
             else:
-                return self._wrap_error("更新论文失败")
+                return self._wrap_error("创建章节失败")
 
         except Exception as exc:
             return self._wrap_error(f"添加章节失败: {exc}")
@@ -122,63 +137,46 @@ class PaperContentService:
             if not is_admin and paper["createdBy"] != user_id:
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
-            # 查找并更新section
-            sections = paper.get("sections", [])
-            target_section = None
-            section_index = -1
-            
-            # 添加调试日志
-            logger.info(f"尝试更新章节 - 请求的section_id: {section_id}")
-            logger.info(f"论文中的所有section IDs: {[s.get('id') for s in sections]}")
-            
-            for i, section in enumerate(sections):
-                if section.get("id") == section_id:
-                    target_section = section
-                    section_index = i
-                    break
+            # 查找section
+            target_section = self.section_model.find_by_id(section_id)
             
             if target_section is None:
                 logger.error(f"未找到匹配的section - 请求的section_id: {section_id}")
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
+            
+            # 验证section属于该论文
+            if target_section.get("paperId") != paper_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此章节")
 
             # 更新section数据
+            section_update_data = {}
             for key, value in update_data.items():
                 if key == "title":
                     if isinstance(value, dict) and "en" in value:
-                        target_section["title"] = value.get("en", "")
+                        section_update_data["title"] = value.get("en", "")
                         zh_value = value.get("zh", "")
                         # 修复：只要zh_value不为空就设置，不要排除特定值
                         if zh_value and zh_value.strip():
-                            target_section["titleZh"] = zh_value
+                            section_update_data["titleZh"] = zh_value
                     else:
-                        target_section["title"] = value
+                        section_update_data["title"] = value
                 elif key == "titleZh":
-                    target_section["titleZh"] = value
+                    section_update_data["titleZh"] = value
                 elif key == "content":
-                    target_section[key] = value
+                    section_update_data[key] = value
 
-            sections[section_index] = target_section
-
-            # 更新论文 - 使用MongoDB的数组索引更新特定section
-            # 使用正确的MongoDB更新语法
-            update_operation = {
-                "$set": {
-                    f"sections.{section_index}": target_section,
-                    "updatedAt": get_current_time()  # 添加更新时间
-                }
-            }
-            
-            # 使用update_direct方法执行MongoDB操作
-            if self.paper_model.update_direct(paper_id, update_operation):
+            # 更新section
+            if self.section_model.update(section_id, section_update_data):
+                updated_section = self.section_model.find_by_id(section_id)
                 return self._wrap_success(
                     "章节更新成功",
                     {
-                        "updatedSection": target_section,
+                        "updatedSection": updated_section,
                         "sectionId": section_id
                     }
                 )
             else:
-                return self._wrap_error("更新论文失败")
+                return self._wrap_error("更新章节失败")
 
         except Exception as exc:
             return self._wrap_error(f"更新章节失败: {exc}")
@@ -202,31 +200,27 @@ class PaperContentService:
             if not is_admin and paper["createdBy"] != user_id:
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
-            # 查找并删除section
-            sections = paper.get("sections", [])
-            target_section = None
-            section_index = -1
-            
-            for i, section in enumerate(sections):
-                if section.get("id") == section_id:
-                    target_section = section
-                    section_index = i
-                    break
+            # 查找section
+            target_section = self.section_model.find_by_id(section_id)
             
             if target_section is None:
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
+            
+            # 验证section属于该论文
+            if target_section.get("paperId") != paper_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此章节")
 
             # 删除section
-            sections.pop(section_index)
-
-            # 更新论文 - 使用MongoDB的$pull操作删除特定section
-            update_paper_data = {"$pull": {"sections": {"id": section_id}}}
-            if self.paper_model.update_direct(paper_id, update_paper_data):
-                return self._wrap_success("章节删除成功", {
-                    "deletedSectionId": section_id
-                })
+            if self.section_model.delete(section_id):
+                # 从论文中移除sectionId引用
+                if self.paper_model.remove_section_id(paper_id, section_id):
+                    return self._wrap_success("章节删除成功", {
+                        "deletedSectionId": section_id
+                    })
+                else:
+                    return self._wrap_error("更新论文失败")
             else:
-                return self._wrap_error("更新论文失败")
+                return self._wrap_error("删除章节失败")
 
         except Exception as exc:
             return self._wrap_error(f"删除章节失败: {exc}")
@@ -260,18 +254,14 @@ class PaperContentService:
                 return self._wrap_error("文本内容不能为空")
 
             # 查找目标section
-            sections = paper.get("sections", [])
-            target_section = None
-            section_index = -1
-            
-            for i, section in enumerate(sections):
-                if section.get("id") == section_id:
-                    target_section = section
-                    section_index = i
-                    break
+            target_section = self.section_model.find_by_id(section_id)
             
             if target_section is None:
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
+            
+            # 验证section属于该论文
+            if target_section.get("paperId") != paper_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此章节")
 
             # 获取section上下文信息
             section_context = f"Section标题: {target_section.get('title', '未知')}"
@@ -307,7 +297,7 @@ class PaperContentService:
                 # 在末尾添加，使用$push
                 update_operation = {
                     "$push": {
-                        f"sections.{section_index}.content": {
+                        "content": {
                             "$each": new_blocks
                         }
                     }
@@ -316,7 +306,7 @@ class PaperContentService:
                 # 在中间插入，使用$push配合$position，避免替换整个数组
                 update_operation = {
                     "$push": {
-                        f"sections.{section_index}.content": {
+                        "content": {
                             "$each": new_blocks,
                             "$position": insert_index
                         }
@@ -324,7 +314,7 @@ class PaperContentService:
                 }
             
             # 执行原子更新 - 使用update_direct处理MongoDB操作符
-            if self.paper_model.update_direct(paper_id, update_operation):
+            if self.section_model.update_direct(section_id, update_operation):
                 return self._wrap_success(
                     f"成功向section添加了{len(new_blocks)}个blocks",
                     {
@@ -333,7 +323,7 @@ class PaperContentService:
                     }
                 )
             else:
-                return self._wrap_error("更新论文失败")
+                return self._wrap_error("更新章节失败")
 
         except Exception as exc:
             return self._wrap_error(f"添加blocks到section失败: {exc}")
@@ -360,18 +350,14 @@ class PaperContentService:
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
             # 查找目标section
-            sections = paper.get("sections", [])
-            target_section = None
-            section_index = -1
-            
-            for i, section in enumerate(sections):
-                if section.get("id") == section_id:
-                    target_section = section
-                    section_index = i
-                    break
+            target_section = self.section_model.find_by_id(section_id)
             
             if target_section is None:
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
+            
+            # 验证section属于该论文
+            if target_section.get("paperId") != paper_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此章节")
 
             # 查找并更新block
             blocks = target_section.get("content", [])
@@ -395,9 +381,9 @@ class PaperContentService:
             target_section["content"] = blocks
             sections[section_index] = target_section
 
-            # 更新论文 - 使用MongoDB的数组索引更新特定section
-            update_paper_data = {f"sections.{section_index}": target_section}
-            if self.paper_model.update(paper_id, update_paper_data):
+            # 更新section
+            target_section["content"] = blocks
+            if self.section_model.update(section_id, {"content": blocks}):
                 return self._wrap_success(
                     "block更新成功",
                     {
@@ -407,7 +393,7 @@ class PaperContentService:
                     }
                 )
             else:
-                return self._wrap_error("更新论文失败")
+                return self._wrap_error("更新章节失败")
 
         except Exception as exc:
             return self._wrap_error(f"更新block失败: {exc}")
@@ -433,18 +419,14 @@ class PaperContentService:
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
             # 查找目标section
-            sections = paper.get("sections", [])
-            target_section = None
-            section_index = -1
-            
-            for i, section in enumerate(sections):
-                if section.get("id") == section_id:
-                    target_section = section
-                    section_index = i
-                    break
+            target_section = self.section_model.find_by_id(section_id)
             
             if target_section is None:
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
+            
+            # 验证section属于该论文
+            if target_section.get("paperId") != paper_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此章节")
 
             # 查找并删除block
             blocks = target_section.get("content", [])
@@ -463,15 +445,15 @@ class PaperContentService:
             target_section["content"] = blocks
             sections[section_index] = target_section
 
-            # 更新论文 - 使用MongoDB的数组索引更新特定section
-            update_paper_data = {f"sections.{section_index}": target_section}
-            if self.paper_model.update(paper_id, update_paper_data):
+            # 更新section
+            target_section["content"] = blocks
+            if self.section_model.update(section_id, {"content": blocks}):
                 return self._wrap_success("block删除成功", {
                     "deletedBlockId": block_id,
                     "sectionId": section_id
                 })
             else:
-                return self._wrap_error("更新论文失败")
+                return self._wrap_error("更新章节失败")
 
         except Exception as exc:
             return self._wrap_error(f"删除block失败: {exc}")
@@ -502,18 +484,14 @@ class PaperContentService:
                 return self._wrap_error("block数据不完整，缺少type字段")
 
             # 查找目标section
-            sections = paper.get("sections", [])
-            target_section = None
-            section_index = -1
-            
-            for i, section in enumerate(sections):
-                if section.get("id") == section_id:
-                    target_section = section
-                    section_index = i
-                    break
+            target_section = self.section_model.find_by_id(section_id)
             
             if target_section is None:
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
+            
+            # 验证section属于该论文
+            if target_section.get("paperId") != paper_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此章节")
 
             # 确保section有content字段
             if "content" not in target_section:
@@ -595,14 +573,14 @@ class PaperContentService:
                 # 在末尾添加，使用$push
                 update_operation = {
                     "$push": {
-                        f"sections.{section_index}.content": new_block
+                        "content": new_block
                     }
                 }
             else:
                 # 在中间插入，使用$push配合$position，避免替换整个数组
                 update_operation = {
                     "$push": {
-                        f"sections.{section_index}.content": {
+                        "content": {
                             "$each": [new_block],
                             "$position": insert_index
                         }
@@ -610,7 +588,7 @@ class PaperContentService:
                 }
             
             # 执行原子更新 - 使用update_direct处理MongoDB操作符
-            if self.paper_model.update_direct(paper_id, update_operation):
+            if self.section_model.update_direct(section_id, update_operation):
                 return self._wrap_success(
                     "成功添加block",
                     {
@@ -620,7 +598,7 @@ class PaperContentService:
                     }
                 )
             else:
-                return self._wrap_error("更新论文失败")
+                return self._wrap_error("更新章节失败")
 
         except Exception as exc:
             return self._wrap_error(f"添加block失败: {exc}")
@@ -651,18 +629,14 @@ class PaperContentService:
                 return self._wrap_error("文本内容不能为空")
 
             # 查找目标section
-            sections = paper.get("sections", [])
-            target_section = None
-            section_index = -1
-            
-            for i, section in enumerate(sections):
-                if section.get("id") == section_id:
-                    target_section = section
-                    section_index = i
-                    break
+            target_section = self.section_model.find_by_id(section_id)
             
             if target_section is None:
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
+            
+            # 验证section属于该论文
+            if target_section.get("paperId") != paper_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此章节")
 
             # 获取section上下文信息
             section_context = f"Section标题: {target_section.get('title', '未知')}"
@@ -698,7 +672,7 @@ class PaperContentService:
                 # 在末尾添加，使用$push
                 update_operation = {
                     "$push": {
-                        f"sections.{section_index}.content": {
+                        "content": {
                             "$each": new_blocks
                         }
                     }
@@ -707,7 +681,7 @@ class PaperContentService:
                 # 在中间插入，使用$push配合$position，避免替换整个数组
                 update_operation = {
                     "$push": {
-                        f"sections.{section_index}.content": {
+                        "content": {
                             "$each": new_blocks,
                             "$position": insert_index
                         }
@@ -715,7 +689,7 @@ class PaperContentService:
                 }
             
             # 执行原子更新 - 使用update_direct处理MongoDB操作符
-            if self.paper_model.update_direct(paper_id, update_operation):
+            if self.section_model.update_direct(section_id, update_operation):
                 return self._wrap_success(
                     f"成功向section添加了{len(new_blocks)}个blocks",
                     {
@@ -724,7 +698,7 @@ class PaperContentService:
                     }
                 )
             else:
-                return self._wrap_error("更新论文失败")
+                return self._wrap_error("更新章节失败")
 
         except Exception as exc:
             import traceback

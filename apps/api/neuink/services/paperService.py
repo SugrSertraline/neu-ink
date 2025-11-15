@@ -72,6 +72,9 @@ class PaperService:
                     BusinessCode.PAPER_NOT_FOUND, "论文不存在或不可访问"
                 )
             
+            # 获取sections数据
+            paper = self._load_sections_for_paper(paper)
+            
             # 自动检查并补全翻译
             paper = self._auto_check_and_complete_translation(paper)
             
@@ -137,6 +140,9 @@ class PaperService:
         if not paper:
             return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
         
+        # 获取sections数据
+        paper = self._load_sections_for_paper(paper)
+        
         # 自动检查并补全翻译
         paper = self._auto_check_and_complete_translation(paper)
         
@@ -145,7 +151,32 @@ class PaperService:
     def create_paper(self, paper_data: Dict[str, Any], creator_id: str) -> Dict[str, Any]:
         try:
             paper_data["createdBy"] = creator_id
+            
+            # 如果paper_data中包含sections，需要先创建sections并更新paper
+            sections_data = paper_data.pop("sections", [])
+            
+            # 创建论文
             paper = self.paper_model.create(paper_data)
+            
+            # 如果有sections数据，创建sections并更新paper
+            if sections_data:
+                from ..models.section import get_section_model
+                section_model = get_section_model()
+                
+                section_ids = []
+                for section_data in sections_data:
+                    section_data["paperId"] = paper["id"]
+                    created_section = section_model.create(section_data)
+                    if created_section:
+                        section_ids.append(created_section["id"])
+                
+                # 更新论文的sectionIds
+                if section_ids:
+                    self.paper_model.update_section_ids(paper["id"], section_ids)
+                
+                # 重新获取论文数据，包含sections
+                paper = self._load_sections_for_paper(paper)
+            
             return self._wrap_success("论文创建成功", paper)
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"创建论文失败: {exc}")
@@ -299,6 +330,9 @@ class PaperService:
         if not paper["isPublic"] and not is_admin and user_id and paper["createdBy"] != user_id:
             return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权访问此论文")
 
+        # 获取sections数据
+        paper = self._load_sections_for_paper(paper)
+
         # 自动检查并补全翻译
         paper = self._auto_check_and_complete_translation(paper)
 
@@ -340,6 +374,12 @@ class PaperService:
         if not is_admin and paper["createdBy"] != user_id:
             return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权删除此论文")
 
+        # 删除所有相关的sections
+        from ..models.section import get_section_model
+        section_model = get_section_model()
+        section_model.delete_by_paper_id(paper_id)
+
+        # 删除论文
         if self.paper_model.delete(paper_id):
             return self._wrap_success("论文删除成功", None)
 
@@ -512,15 +552,17 @@ class PaperService:
                 return
             
             # 验证section存在
-            sections = paper.get("sections", [])
-            target_section = None
-            for section in sections:
-                if section.get("id") == section_id:
-                    target_section = section
-                    break
+            from ..models.section import get_section_model
+            section_model = get_section_model()
+            target_section = section_model.find_by_id(section_id)
             
             if not target_section:
                 yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': '章节不存在', 'error': '章节不存在', 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
+                return
+            
+            # 验证section属于该论文
+            if target_section.get("paperId") != paper_id:
+                yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': '章节不属于该论文', 'error': '章节不属于该论文', 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
                 return
             
             # 如果是新会话，创建会话和进度块
@@ -570,8 +612,8 @@ class PaperService:
                 # 插入progress block
                 target_section["content"].insert(insert_index, progress_block)
                 
-                # 更新论文
-                if not self.paper_model.update_direct(paper_id, {"$set": {"sections": sections}}):
+                # 更新section
+                if not section_model.update_direct(section_id, {"$set": {"content": target_section["content"]}}):
                     yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': '添加进度块失败', 'error': '添加进度块失败', 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
                     return
                 
@@ -794,56 +836,62 @@ class PaperService:
 
     def _update_progress_block_in_paper(self, paper_id: str, section_id: str, progress_block_id: str, progress_block: Dict[str, Any]):
         """更新论文中进度块的辅助函数"""
-        paper = self.paper_model.find_by_id(paper_id)
-        if not paper:
+        from ..models.section import get_section_model
+        section_model = get_section_model()
+        
+        section = section_model.find_by_id(section_id)
+        if not section:
             return
         
-        sections = paper.get("sections", [])
-        for section in sections:
-            if section.get("id") == section_id:
-                for i, block in enumerate(section.get("content", [])):
-                    if block.get("id") == progress_block_id:
-                        section["content"][i] = progress_block
-                        break
+        # 验证section属于该论文
+        if section.get("paperId") != paper_id:
+            return
+        
+        content = section.get("content", [])
+        for i, block in enumerate(content):
+            if block.get("id") == progress_block_id:
+                content[i] = progress_block
                 break
         
-        self.paper_model.update_direct(paper_id, {"$set": {"sections": sections}})
+        section_model.update_direct(section_id, {"$set": {"content": content}})
 
     def _complete_parsing_in_paper(self, paper_id: str, section_id: str, progress_block_id: str, insert_index: int, parsed_blocks: List[Dict[str, Any]], session_model, session_id: str):
         """完成论文解析的辅助函数"""
+        from ..models.section import get_section_model
+        section_model = get_section_model()
+        
         # 更新section：移除progress block，添加解析后的blocks
-        paper = self.paper_model.find_by_id(paper_id)
-        if not paper:
+        section = section_model.find_by_id(section_id)
+        if not section:
             return
         
-        sections = paper.get("sections", [])
-        for section in sections:
-            if section.get("id") == section_id:
-                content = section.get("content", [])
-                # 移除progress block
-                content = [block for block in content if block.get("id") != progress_block_id]
-                # 添加解析后的blocks
-                content[insert_index:insert_index] = parsed_blocks
-                section["content"] = content
-                break
+        # 验证section属于该论文
+        if section.get("paperId") != paper_id:
+            return
         
-        # 更新论文
-        updated_paper = self.paper_model.update_direct(paper_id, {"$set": {"sections": sections}})
+        content = section.get("content", [])
+        # 移除progress block
+        content = [block for block in content if block.get("id") != progress_block_id]
+        # 添加解析后的blocks
+        content[insert_index:insert_index] = parsed_blocks
+        
+        # 更新section
+        updated_section = section_model.update_direct(section_id, {"$set": {"content": content}})
         
         # 验证更新是否成功
-        if updated_paper:
+        if updated_section:
             # 确认更新成功，获取最新的论文数据
-            verify_paper = self.paper_model.find_by_id(paper_id)
+            verify_paper = self.paper_model.find_paper_with_sections(paper_id)
             
             if verify_paper:
                 # 使用验证后的最新数据完成会话
                 session_model.complete_session(session_id, parsed_blocks, verify_paper)
             else:
                 # 获取最新数据失败，但仍使用当前数据完成会话
-                session_model.complete_session(session_id, parsed_blocks, updated_paper)
+                session_model.complete_session(session_id, parsed_blocks, verify_paper)
         else:
             # 更新失败，标记会话失败
-            session_model.fail_session(session_id, "更新论文数据失败")
+            session_model.fail_session(session_id, "更新章节数据失败")
 
     # ------------------------------------------------------------------
     # 翻译操作代理方法
@@ -996,6 +1044,25 @@ class PaperService:
             "message": message,
             "data": None,
         }
+
+
+    def _load_sections_for_paper(self, paper: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        为论文加载sections数据
+        这个方法确保向后兼容，使上层接口不需要改变
+        """
+        if "sections" in paper:
+            # 如果已经有sections数据，直接返回
+            return paper
+            
+        # 从Section集合获取数据
+        from ..models.section import get_section_model
+        section_model = get_section_model()
+        sections = section_model.find_by_paper_id(paper["id"])
+        
+        # 将sections数据添加到paper中
+        paper["sections"] = sections
+        return paper
 
 
 _paper_service: Optional[PaperService] = None
