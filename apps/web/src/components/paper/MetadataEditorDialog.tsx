@@ -318,7 +318,9 @@ export default function MetadataEditorDialog({
     try {
       const { metadata: m, abstract: ab, keywords: kw } = verdict.result;
       await userPaperService.updateUserPaper(userPaperId, {
-        paperData: { metadata: m, abstract: ab, keywords: kw },
+        metadata: m,
+        abstract: ab,
+        keywords: kw,
       });
       setLastAutoSaveTime(new Date());
     } catch (err) {

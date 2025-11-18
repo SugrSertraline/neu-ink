@@ -178,14 +178,9 @@ export function usePaperBlocks(
         });
         
         if (result.bizCode === 0) {
-          // 添加调试日志
-          console.log('添加block API响应:', result);
-          console.log('响应数据:', result.data);
-          
           // 返回后端创建的真实block ID
           // 根据normalize.ts的处理，result.data应该是内层的data对象
           const blockId = result.data?.blockId || result.data?.addedBlock?.id;
-          console.log('提取的blockId:', blockId);
           
           return {
             success: true,
@@ -206,14 +201,9 @@ export function usePaperBlocks(
         });
         
         if (result.bizCode === 0) {
-          // 添加调试日志
-          console.log('添加block API响应(管理员):', result);
-          console.log('响应数据(管理员):', result.data);
-          
           // 返回后端创建的真实block ID
           // 根据normalize.ts的处理，result.data应该是内层的data对象
           const blockId = result.data?.blockId || result.data?.addedBlock?.id;
-          console.log('提取的blockId(管理员):', blockId);
           
           return {
             success: true,
@@ -295,7 +285,6 @@ export function usePaperBlocks(
         const { userPaperService } = await import('@/lib/services/paper');
         const result = await userPaperService.deleteBlock(userPaperId, sectionId, blockId);
         
-        console.log('删除block API响应(个人):', result);
         
         if (result.bizCode === 0) {
           // 不再在这里更新UI，因为乐观更新已经在 handleBlockDelete 中处理
@@ -307,7 +296,6 @@ export function usePaperBlocks(
         const { adminPaperService } = await import('@/lib/services/paper');
         const result = await adminPaperService.deleteBlock(paperId, sectionId, blockId);
         
-        console.log('删除block API响应(管理员):', result);
         
         if (result.bizCode === 0) {
           // 不再在这里更新UI，因为乐观更新已经在 handleBlockDelete 中处理
@@ -317,7 +305,6 @@ export function usePaperBlocks(
         }
       }
     } catch (error) {
-      console.error('删除block API调用出错:', error);
       const message = error instanceof Error ? error.message : '删除内容块时发生未知错误';
       return { success: false, error: message };
     }
@@ -369,7 +356,7 @@ export function usePaperBlocks(
         
         // 保存整个草稿到服务器
         const result = isPersonalOwner
-          ? await userPaperService.updateUserPaper(id, { paperData: currentDraft })
+          ? await userPaperService.updateUserPaper(id, currentDraft)
           : await adminPaperService.updatePaper(id, currentDraft);
         
         if (result.bizCode === 0) {
@@ -423,12 +410,11 @@ export function usePaperBlocks(
       let deletedBlockInfo: { block: BlockContent; sectionId: string; originalIndex?: number } | null = null;
       
       // 检查是否是临时ID（前端生成的ID格式）
-      // 前端生成的ID格式：type_timestamp_random（如 paragraph_mhvuvhkp_92a7）
-      // 后端生成的ID格式：block_timestamp_hash（如 block_1234567890_abcdef）
-      const isTempId = blockId.match(/^[a-z-]+_[a-z0-9]+_[a-z0-9]+$/) &&
-                       !blockId.startsWith('block_');
+      // 前端生成的ID格式：UUID（如 5b75c04c-3b64-42dd-b0bb-c8b90ba9b77c）
+      // 后端生成的ID格式：UUID（如 5b75c04c-3b64-42dd-b0bb-c8b90ba9b77c）
+      // 现在两者都是UUID格式，我们无法通过格式区分，需要通过其他方式判断
+      const isTempId = blockId.includes('-') && blockId.length === 36; // UUID格式
       
-      console.log('删除block:', blockId, '是否为临时ID:', isTempId);
       
       let actualBlockId = blockId; // 用于API调用的实际ID
       
@@ -444,14 +430,16 @@ export function usePaperBlocks(
               found = true;
               const blockToDelete = section.content[blockIndex];
               
-              if (isTempId) {
+              // 仅对普通内容块的临时ID做特殊处理；
+              // 解析进度块（parsing/loading）使用后端真实ID，不能按临时ID跳过API
+              if (isTempId && blockToDelete.type !== 'parsing' && blockToDelete.type !== 'loading') {
                 // 如果是临时ID，说明这个block可能还没有正确同步到后端
                 // 或者前端没有正确更新ID
-                console.warn('尝试删除使用临时ID的block:', blockId);
                 
                 // 尝试在section中查找相同类型和内容的block，获取其真实ID
+                // 由于现在前后端都使用UUID格式，我们无法通过前缀区分，需要通过其他方式
                 const sameTypeBlocks = section.content.filter(b =>
-                  b.type === blockToDelete.type && b.id !== blockId && b.id.startsWith('block_')
+                  b.type === blockToDelete.type && b.id !== blockId
                 );
                 
                 // 如果找到相同类型的block，尝试找到最相似的block
@@ -509,20 +497,16 @@ export function usePaperBlocks(
                    
                   // 如果找到相似度高的block，使用其ID进行删除
                   if (mostSimilarBlock && maxSimilarity > 0.5) {
-                    console.warn('找到相似的block，使用其ID进行删除:', mostSimilarBlock.id);
                     actualBlockId = mostSimilarBlock.id;
                   } else {
-                    console.warn('未找到相似的block，尝试使用临时ID删除');
                     // 对于临时ID，我们可以直接跳过API调用，只进行本地删除
                     // 因为这个block可能还没有同步到后端
-                    console.warn('跳过API调用，只进行本地删除');
                     
                     // 标记为跳过API调用
                     actualBlockId = '';
                   }
                 } else {
                   // 没有找到相同类型的后端ID，可能是刚创建的block
-                  console.warn('没有找到相同类型的block，可能是刚创建的block，跳过API调用');
                   
                   // 标记为跳过API调用
                   actualBlockId = '';
@@ -555,7 +539,6 @@ export function usePaperBlocks(
       
       // 如果actualBlockId为空，说明是临时ID且不需要调用API
       if (!actualBlockId) {
-        console.log('跳过API调用，只进行本地删除，blockId:', blockId);
         
         // 显示加载状态
         toast.loading('正在删除内容块...', { id: 'delete-block' });
@@ -573,14 +556,6 @@ export function usePaperBlocks(
       // 显示加载状态
       toast.loading('正在删除内容块...', { id: 'delete-block' });
       
-      console.log('调用API删除block:', {
-        sectionId,
-        actualBlockId,
-        originalBlockId: blockId,
-        paperId,
-        userPaperId,
-        isPersonalOwner
-      });
       
       try {
         const result = await handleBlockDeleteWithAPI(
@@ -591,7 +566,6 @@ export function usePaperBlocks(
           isPersonalOwner
         );
         
-        console.log('删除block API响应:', result);
 
         if (!result.success) {
           // 删除失败，恢复被删除的块
@@ -643,7 +617,6 @@ export function usePaperBlocks(
           
           // 如果是400错误（block不存在），触发页面刷新以重新同步状态
           if (errorMsg.includes('不存在') || errorMsg.includes('400')) {
-            console.warn('检测到block不存在的错误，将在2秒后刷新页面以重新同步状态');
             setTimeout(() => {
               window.location.reload();
             }, 2000);
@@ -758,7 +731,6 @@ export function usePaperBlocks(
         );
         
         if (result.success && result.blockId) {
-          console.log('更新本地block ID:', tempBlockId, '->', result.blockId);
           
           // 更新本地状态中的临时ID为后端返回的真实ID
           updateSections(sections => {
@@ -898,7 +870,6 @@ export function usePaperBlocks(
         );
         
         if (result.success && result.blockId) {
-          console.log('更新本地block ID(组件):', tempBlockId, '->', result.blockId);
           
           // 更新本地状态中的临时ID为后端返回的真实ID
           updateSections(sections => {

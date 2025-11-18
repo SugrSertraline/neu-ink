@@ -6,6 +6,8 @@ from typing import Dict, Any, Optional, List
 
 from bson import ObjectId
 
+from ..utils.common import generate_id
+
 from ..models.note import NoteModel
 from ..models.userPaper import UserPaperModel
 from ..config.constants import BusinessCode
@@ -28,6 +30,7 @@ class NoteService:
         block_id: str,
         content: List[Dict[str, Any]],
         plain_text: Optional[str] = None,
+        note_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         创建笔记
@@ -49,7 +52,7 @@ class NoteService:
                 )
 
             # 2. 验证 block 是否存在（可选，增强健壮性）
-            if not self._block_exists_in_paper(user_paper["paperData"], block_id):
+            if not self._block_exists_in_paper(user_paper, block_id):
                 return self._wrap_failure(
                     BusinessCode.INVALID_PARAMS,
                     f"论文中不存在 blockId: {block_id}"
@@ -57,6 +60,7 @@ class NoteService:
 
             # 3. 创建笔记
             note_data = {
+                "id": note_id or generate_id(),  # 优先使用前端提供的ID
                 "userId": user_id,
                 "userPaperId": user_paper_id,
                 "blockId": block_id,
@@ -66,7 +70,9 @@ class NoteService:
                 note_data["plainText"] = plain_text
 
             note = self.note_model.create(note_data)
-            return self._wrap_success("笔记创建成功", self._serialize_note(note))
+            # 确保返回的笔记数据使用前端传入的 ID
+            serialized_note = self._serialize_note(note)
+            return self._wrap_success("笔记创建成功", serialized_note)
 
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"创建笔记失败: {exc}")
@@ -262,14 +268,19 @@ class NoteService:
                 )
 
             # 更新
-            if self.note_model.update(note_id, filtered_data):
-                updated = self.note_model.find_by_id(note_id)
+            updated = self.note_model.update(note_id, filtered_data)
+            # 确保返回的笔记数据不为空
+            if updated:
                 return self._wrap_success(
                     "笔记更新成功",
                     self._serialize_note(updated),
                 )
-
-            return self._wrap_error("笔记更新失败")
+            else:
+                # 如果查询不到更新后的笔记，返回基本成功信息
+                return self._wrap_success(
+                    "笔记更新成功",
+                    {"id": note_id, "message": "笔记已更新但无法获取详细信息"}
+                )
 
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"更新笔记失败: {exc}")
@@ -286,12 +297,13 @@ class NoteService:
         删除笔记
         """
         try:
+            # 使用前端传入的note_id（UUID格式）查找笔记
             note = self.note_model.find_by_id(note_id)
 
             if not note:
                 return self._wrap_failure(
                     BusinessCode.NOTE_NOT_FOUND,
-                    "笔记不存在"
+                    f"笔记不存在，ID: {note_id}"
                 )
 
             # 权限检查
@@ -350,10 +362,10 @@ class NoteService:
     # 辅助方法
     # ------------------------------------------------------------------
     @staticmethod
-    def _block_exists_in_paper(paper_data: Dict[str, Any], block_id: str) -> bool:
+    def _block_exists_in_paper(user_paper: Dict[str, Any], block_id: str) -> bool:
         """
         检查 block 是否存在于论文中（已移除subsection支持）
-        仅检查所有 sections
+        优先检查 sections 数组，回退到 paperData.sections
         """
 
         def check_section(section: Dict[str, Any]) -> bool:
@@ -364,8 +376,15 @@ class NoteService:
 
             return False
 
-        # 检查所有顶级 sections
-        for section in paper_data.get("sections", []):
+        # 优先检查直接加载的 sections 数组
+        sections = user_paper.get("sections", [])
+        if not sections:
+            # 回退到 paperData.sections
+            paper_data = user_paper.get("paperData", {})
+            sections = paper_data.get("sections", [])
+        
+        # 检查所有 sections
+        for section in sections:
             if check_section(section):
                 return True
 
@@ -400,9 +419,15 @@ class NoteService:
                 for key, val in value.items()
             }
 
+        # 处理 datetime 对象，确保返回 UTC 时间的 ISO 格式
         if hasattr(value, "isoformat"):
             try:
-                return value.isoformat()
+                # 确保时间是 UTC 格式
+                iso_str = value.isoformat()
+                # 如果没有时区信息，添加 Z 后缀表示 UTC
+                if not iso_str.endswith('Z') and '+' not in iso_str[-6:]:
+                    return iso_str + 'Z'
+                return iso_str
             except TypeError:
                 pass
 
@@ -412,18 +437,23 @@ class NoteService:
         if not note:
             return None
 
-        serialized = {
-            key: self._normalize_value(val)
-            for key, val in note.items()
-            if key != "_id"
-        }
-
-        if "_id" in note:
+        # 优先保留前端传入的 id 字段，确保不被 MongoDB 的 _id 覆盖
+        serialized = {}
+        
+        # 首先处理 id 字段，确保使用前端传入的 UUID
+        if "id" in note:
+            serialized["id"] = str(note["id"])
+        elif "_id" in note:
+            # 只有在没有前端 id 时才使用 MongoDB 的 _id
             serialized["id"] = self._normalize_value(note["_id"])
-
-        # 兜底：如果原始文档已有 id 字段，也确保是字符串
-        if "id" in serialized:
-            serialized["id"] = str(serialized["id"])
+        
+        # 处理其他字段，排除 _id
+        for key, val in note.items():
+            if key == "_id":
+                continue  # 跳过 MongoDB 的 _id 字段
+            if key == "id" and key in serialized:
+                continue  # 已经处理过 id 字段
+            serialized[key] = self._normalize_value(val)
 
         return serialized
 

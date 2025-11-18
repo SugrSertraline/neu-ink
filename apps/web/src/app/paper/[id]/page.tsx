@@ -439,7 +439,7 @@ function PaperPageContent() {
     if (paper) {
       setIsPublicVisible(paper.isPublic);
     }
-  }, [paper?.isPublic]);
+  }, [paper]);
 
   const { setHasUnsavedChanges, switchToEdit, clearEditing, currentEditingId } = useEditingState();
 
@@ -677,6 +677,13 @@ function PaperPageContent() {
       return;
     }
 
+    // 缓存上次计算的值,避免不必要的状态更新
+    let lastStyle: { top: number; left: number; width: number; height: number } | null = null;
+    
+    // 节流计时器引用
+    let throttleTimer: NodeJS.Timeout | null = null;
+    let rafId: number | null = null;
+
     const compute = () => {
       const wrapper = wrapperRef.current;
       if (!wrapper) return;
@@ -687,40 +694,90 @@ function PaperPageContent() {
       const gap = NOTES_PANEL_GAP;
 
       const top = headerH + gap;
-      const left = rect.right - NOTES_PANEL_WIDTH; // 紧贴 wrapper 右侧
+      const left = rect.right - NOTES_PANEL_WIDTH;
       const height = Math.max(200, window.innerHeight - top - gap);
 
-      setNotesFixedStyle({
-        top,
-        left,
-        width: NOTES_PANEL_WIDTH,
-        height,
+      // 只有当值真正改变时才更新状态(使用较小的阈值避免微小抖动)
+      const hasChanged = !lastStyle ||
+        Math.abs(lastStyle.top - top) > 1 ||
+        Math.abs(lastStyle.left - left) > 1 ||
+        Math.abs(lastStyle.height - height) > 5;
+
+      if (hasChanged) {
+        const newStyle = {
+          top,
+          left,
+          width: NOTES_PANEL_WIDTH,
+          height,
+        };
+        lastStyle = newStyle;
+        setNotesFixedStyle(newStyle);
+      }
+    };
+
+    // 使用 requestAnimationFrame 优化计算时机
+    const scheduleCompute = () => {
+      if (rafId) {
+        cancelAnimationFrame(rafId);
+      }
+      rafId = requestAnimationFrame(() => {
+        compute();
+        rafId = null;
       });
     };
 
-    compute();
+    // 节流版本的 compute - 用于高频事件(滚动)
+    const throttledCompute = () => {
+      if (throttleTimer) return;
+      
+      throttleTimer = setTimeout(() => {
+        scheduleCompute();
+        throttleTimer = null;
+      }, 100); // 100ms 节流间隔
+    };
 
-    const roWrapper = new ResizeObserver(() => compute());
-    const roHeader = new ResizeObserver(() => compute());
+    // 防抖版本的 compute - 用于 resize 事件
+    let debounceTimer: NodeJS.Timeout | null = null;
+    const debouncedCompute = () => {
+      if (debounceTimer) {
+        clearTimeout(debounceTimer);
+      }
+      debounceTimer = setTimeout(() => {
+        scheduleCompute();
+        debounceTimer = null;
+      }, 150); // 150ms 防抖延迟
+    };
+
+    // 初始计算
+    scheduleCompute();
+
+    // ResizeObserver 使用节流
+    const roWrapper = new ResizeObserver(() => throttledCompute());
+    const roHeader = new ResizeObserver(() => throttledCompute());
+    
     if (wrapperRef.current) roWrapper.observe(wrapperRef.current);
     // @ts-ignore
     if (headerRef?.current) roHeader.observe(headerRef.current as Element);
 
-    const onResize = () => compute();
-    const onScroll = () => compute();
-
-    window.addEventListener('resize', onResize, { passive: true });
-    window.addEventListener('scroll', onScroll, { passive: true });
+    // 窗口 resize 使用防抖
+    window.addEventListener('resize', debouncedCompute, { passive: true });
+    // 滚动使用节流
+    window.addEventListener('scroll', throttledCompute, { passive: true });
 
     // 打开标志（动画由 framer 执行）
-    const raf = requestAnimationFrame(() => setNotesOpen(true));
+    const openRaf = requestAnimationFrame(() => setNotesOpen(true));
 
     return () => {
+      // 清理所有计时器和监听器
       roWrapper.disconnect();
       roHeader.disconnect();
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('scroll', onScroll);
-      cancelAnimationFrame(raf);
+      window.removeEventListener('resize', debouncedCompute);
+      window.removeEventListener('scroll', throttledCompute);
+      
+      if (throttleTimer) clearTimeout(throttleTimer);
+      if (debounceTimer) clearTimeout(debounceTimer);
+      if (rafId) cancelAnimationFrame(rafId);
+      cancelAnimationFrame(openRaf);
     };
   }, [showNotesPanel, headerRef]);
 
@@ -829,7 +886,7 @@ function PaperPageContent() {
         }
 
         const result = isPersonalOwner
-          ? await userPaperService.updateUserPaper(id, { paperData: payload })
+          ? await userPaperService.updateUserPaper(id, payload)
           : await adminPaperService.updatePaper(id, payload);
 
         if (result.bizCode === 0) {
@@ -985,8 +1042,8 @@ function PaperPageContent() {
         const result = await handleAddBlocksFromText(sectionId, text, paperId, resolvedUserPaperId, isPersonalOwner, afterBlockId);
 
         if (result.success) {
-          // 现在返回的是 loadingBlockId，而不是 addedBlocks
-          return { success: true, loadingBlockId: result.loadingBlockId };
+          // 现在返回的是 tempBlockId，而不是 addedBlocks
+          return { success: true, tempBlockId: result.tempBlockId };
         } else {
           return { success: false, error: result.error };
         }
@@ -1240,10 +1297,22 @@ function PaperPageContent() {
                     onBlockMove={handleBlockMove}
                     onBlockAddComponent={handleBlockAddComponent}
                     onParseTextAdd={canEditContent ? handleParseTextAdd : undefined}
-                    onParseTextComplete={canEditContent ? (sectionId, blocks, afterBlockId) => {
+                    onParseTextComplete={canEditContent ? (sectionId, blocks, afterBlockId, paperData) => {
                        const isTempProgressBlock =
-                        blocks?.length === 1 && (blocks[0] as any).type === 'loading';
-                      // 处理流式解析完成后的blocks
+                        blocks?.length === 1 && (blocks[0] as any).type === 'parsing';
+                      
+                      // ★ 关键修复：优先使用完整的 paperData
+                      if (paperData && paperData.sections) {
+                        // 更新整个论文数据
+                        setEditableDraft(paperData);
+                        setHasUnsavedChanges(false);
+                        
+                        // 显示成功消息
+                        toast.success('解析完成，论文内容已更新');
+                        return;
+                      }
+                      
+                      // 如果没有完整的paperData，则回退到只处理blocks（兼容旧逻辑）
                       updateSections(sections => {
                         let touched = false;
                         
@@ -1252,9 +1321,9 @@ function PaperPageContent() {
                             touched = true;
                             let currentBlocks = section.content || [];
                             
-                            // ★ 关键修复：先删除所有临时进度块(type='loading')
+                            // 先删除所有临时进度块(type='parsing')
                             currentBlocks = currentBlocks.filter(block =>
-                              (block as any).type !== 'loading'
+                              (block as any).type !== 'parsing'
                             );
                             
                             let insertIndex = currentBlocks.length; // 默认在末尾
@@ -1301,7 +1370,6 @@ function PaperPageContent() {
                     }}
                     onParseComplete={(result) => {
                       // 处理解析完成的结果，可以更新 UI 或状态
-                      console.log('Parse completed:', result);
                       // 这里可以添加额外的处理逻辑，比如更新状态或显示通知
                     }}
                     notesByBlock={notesByBlock}

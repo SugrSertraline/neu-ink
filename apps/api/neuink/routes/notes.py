@@ -69,12 +69,16 @@ def create_note():
             user_paper_id=data["userPaperId"],
             block_id=data["blockId"],
             content=data["content"],
+            plain_text=data.get("plainText"),
+            note_id=data.get("id"),  # 获取前端提供的ID
         )
 
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         
-        return bad_request_response(result["message"])
+        # 确保错误信息被正确传递，使用200状态码但在响应体中包含业务错误码
+        error_message = result.get("message", "创建笔记失败")
+        return success_response(result["data"], error_message, result["code"])
     
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -100,7 +104,9 @@ def get_notes_by_paper(user_paper_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         
-        return bad_request_response(result["message"])
+        # 确保错误信息被正确传递，使用200状态码但在响应体中包含业务错误码
+        error_message = result.get("message", "获取笔记列表失败")
+        return success_response(result["data"], error_message, result["code"])
     
     except ValueError:
         return bad_request_response("无效的参数格式")
@@ -125,7 +131,9 @@ def get_notes_by_block(user_paper_id, block_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         
-        return bad_request_response(result["message"])
+        # 确保错误信息被正确传递，使用200状态码但在响应体中包含业务错误码
+        error_message = result.get("message", "获取笔记失败")
+        return success_response(result["data"], error_message, result["code"])
     
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -150,7 +158,9 @@ def get_user_notes():
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         
-        return bad_request_response(result["message"])
+        # 确保错误信息被正确传递，使用200状态码但在响应体中包含业务错误码
+        error_message = result.get("message", "获取用户笔记失败")
+        return success_response(result["data"], error_message, result["code"])
     
     except ValueError:
         return bad_request_response("无效的参数格式")
@@ -187,7 +197,9 @@ def search_notes():
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         
-        return bad_request_response(result["message"])
+        # 确保错误信息被正确传递，使用200状态码但在响应体中包含业务错误码
+        error_message = result.get("message", "搜索笔记失败")
+        return success_response(result["data"], error_message, result["code"])
     
     except ValueError:
         return bad_request_response("无效的参数格式")
@@ -223,22 +235,29 @@ def update_note(note_id):
             return bad_request_response("content 必须是数组")
 
         service = get_note_service()
+        # 确保包含 plainText 字段
+        update_data = data.copy()
+        if "plainText" in data:
+            update_data["plainText"] = data["plainText"]
+            
         result = service.update_note(
             note_id=note_id,
             user_id=g.current_user["user_id"],
-            update_data=data,
+            update_data=update_data,
         )
 
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         
         if result["code"] == BusinessCode.NOTE_NOT_FOUND:
-            return bad_request_response(result["message"])
+            return success_response(result["data"], result["message"], result["code"])
         
         if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
+            return success_response(result["data"], result["message"], result["code"])
         
-        return internal_error_response(result["message"])
+        # 确保错误信息被正确传递
+        error_message = result.get("message", "更新笔记失败")
+        return internal_error_response(error_message)
     
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -261,12 +280,16 @@ def delete_note(note_id):
             return success_response(result["data"], result["message"])
         
         if result["code"] == BusinessCode.NOTE_NOT_FOUND:
-            return bad_request_response(result["message"])
+            return success_response(result["data"], result["message"], result["code"])
         
         if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
+            # 确保错误信息被正确传递，使用200状态码但在响应体中包含业务错误码
+            error_message = result.get("message", "批量删除笔记失败")
+            return success_response(result["data"], error_message, result["code"])
         
-        return internal_error_response(result["message"])
+        # 确保错误信息被正确传递
+        error_message = result.get("message", "删除笔记失败")
+        return internal_error_response(error_message)
     
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -288,7 +311,8 @@ def delete_notes_by_paper(user_paper_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         
-        return bad_request_response(result["message"])
+        # 使用200状态码但在响应体中包含业务错误码
+        return success_response(result["data"], result["message"], result["code"])
     
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")

@@ -84,6 +84,7 @@ celerybeat-schedule
 .env.local
 .env.production
 .env.development
+.env.example
 .venv
 env/
 venv/
@@ -157,3 +158,6 @@ yarn-error.log*
 
 # Qiniu SDK cache files (contains sensitive keys)
 *.qiniu_pythonsdk_hostscache.json
+
+# KiloCode configuration directory
+.kilocode/

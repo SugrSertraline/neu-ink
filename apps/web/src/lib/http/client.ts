@@ -103,7 +103,7 @@ export class ApiClient {
     return headers;
   }
 
-  private async doFetch(url: string, init: RequestInit & { timeout?: number } = {}) {
+  private async doFetch(url: string, init: RequestInit & { timeout?: number } = {}, isRetry: boolean = false): Promise<ApiResponse<any>> {
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), init.timeout ?? this.defaultTimeoutMs);
 
@@ -130,47 +130,71 @@ export class ApiClient {
         throw new ApiError('Invalid JSON response', { status: res.status, url, payload: text as any });
       }
 
+      // 处理401错误，尝试刷新token（如果不是重试请求）
+      if (!res.ok && res.status === 401 && !isRetry) {
+        // 检查是否是登录接口的请求
+        const isLoginRequest = url.includes('/users/login');
+        
+        // 如果是登录接口的401错误，不尝试刷新token，直接返回错误
+        if (isLoginRequest) {
+          // 登录接口返回401错误，不尝试刷新token
+        } else {
+          const token = this.resolveToken();
+          if (token) {
+            try {
+              // 尝试刷新token
+              const { authService } = await import('../services/auth');
+              const refreshResult = await authService.refreshToken();
+              
+              // 如果刷新成功，使用新token重试原请求
+              if (refreshResult.data?.token) {
+                clearTimeout(timeoutId);
+                
+                // 更新请求头中的token
+                const newHeaders = this.getHeaders(init.headers);
+                return this.doFetch(url, {
+                  ...init,
+                  headers: newHeaders,
+                }, true); // 标记为重试请求
+              }
+            } catch (refreshError) {
+              console.error('[DEBUG] Token刷新失败:', refreshError);
+            }
+          }
+        }
+      }
+
       if (!res.ok) {
-        const message = data?.message || `HTTP ${res.status}`;
-        console.error('[DEBUG] API请求失败:', {
-          status: res.status,
-          url,
-          message,
-          payload: data
-        });
+        // 尝试从多个可能的字段获取错误信息
+        let message = data?.message || data?.bizMessage || `HTTP ${res.status}`;
+        
+        // 如果是双重嵌套的响应格式，尝试从内层获取错误信息
+        if (data?.data?.message) {
+          message = data.data.message;
+        } else if (data?.data?.bizMessage) {
+          message = data.data.bizMessage;
+        }
+        
+        // API请求失败调试信息已移除
         
         // 对于401错误，添加特殊标记以便后续处理
         const errorOptions = { status: res.status, url, payload: data };
         if (res.status === 401) {
           (errorOptions as any).isAuthError = true;
+          (errorOptions as any).authReset = true;
         }
         
         throw new ApiError(message, errorOptions);
       }
 
-      console.log('[DEBUG] API响应数据:', {
-        status: res.status,
-        url,
-        data
-      });
+      // API响应数据调试信息已移除
 
-      // 检查数据结构，如果已经是业务响应格式（{code: 0, message: "...", data: {...}}）
-      // 则包装成标准的 ApiResponse 格式
-      if (data && typeof data === 'object' && 'code' in data && 'message' in data && 'data' in data) {
-        // 这是业务响应格式，需要包装成 ApiResponse 格式
-        return {
-          code: res.status as any,
-          message: data.message || 'Success',
-          data: data.data  // 只提取业务响应的 data 字段
-        } as ApiResponse<any>;
-      } else {
-        // 如果不是业务响应格式，直接包装成 ApiResponse 格式
-        return {
-          code: res.status as any,
-          message: 'Success',
-          data: data
-        } as ApiResponse<any>;
-      }
+      // 直接返回原始数据，让 normalize.ts 处理业务响应格式
+      return {
+        code: res.status as any,
+        message: data.message || 'Success',
+        data: data
+      } as ApiResponse<any>;
     } catch (err: any) {
       if (err?.name === 'AbortError') {
         throw new ApiError('Request timeout', { status: 0, url });
@@ -228,8 +252,183 @@ export class ApiClient {
       mode: 'cors',
     });
 
-    console.log('[DEBUG] 上传响应数据:', data);
     return data as ApiResponse<T>;
+  }
+
+  // ===== Server-Sent Events =====
+  /**
+   * 创建带有认证的EventSource（GET方法）
+   */
+  createAuthenticatedEventSource(url: string, params?: URLSearchParams): EventSource {
+    const fullUrl = this.getFullURL(url);
+    const token = this.resolveToken();
+    
+    // 添加认证token到URL参数
+    if (token) {
+      if (!params) {
+        params = new URLSearchParams();
+      }
+      params.set('token', token);
+    }
+    
+    const finalUrl = params ? `${fullUrl}?${params.toString()}` : fullUrl;
+    const eventSource = new EventSource(finalUrl);
+    
+    // 添加连接超时检查
+    const connectionTimeout = setTimeout(() => {
+      if (eventSource.readyState === EventSource.CONNECTING) {
+        // EventSource 连接超时调试信息已移除
+        // 不直接关闭，让组件自己处理超时逻辑
+      }
+    }, 15000); // 15秒连接超时
+    
+    // 当连接成功建立时清除超时
+    eventSource.onopen = () => {
+      // EventSource 连接已建立
+      clearTimeout(connectionTimeout);
+    };
+    
+    // 当连接关闭时清除超时
+    eventSource.onerror = () => {
+      clearTimeout(connectionTimeout);
+    };
+    
+    return eventSource;
+  }
+
+  /**
+   * 创建带有认证的EventSource（POST方法）
+   * 由于EventSource只支持GET请求，这里使用fetch实现类似的功能
+   */
+  createAuthenticatedEventSourceWithPost(
+    url: string,
+    data: any,
+    onMessage: (event: MessageEvent) => void,
+    onError?: (event: Event) => void,
+    onClose?: () => void
+  ): { close: () => void } {
+    const fullUrl = this.getFullURL(url);
+    const token = this.resolveToken();
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json',
+    };
+    
+    if (token) {
+      headers['Authorization'] = `Bearer ${token}`;
+    }
+
+    let aborted = false;
+    const controller = new AbortController();
+    let connectionEstablished = false;
+
+
+    // 添加连接超时检查
+    const connectionTimeout = setTimeout(() => {
+      if (!connectionEstablished && !aborted) {
+        // EventSource-POST 连接超时调试信息已移除
+        if (onError) {
+          const event = new Event('error');
+          onError(event);
+        }
+      }
+    }, 15000); // 15秒连接超时
+
+    // 使用fetch发送POST请求，处理Server-Sent Events
+    fetch(fullUrl, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(data),
+      signal: controller.signal,
+      credentials: 'include',
+    })
+    .then(response => {
+      if (aborted) return;
+      
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      connectionEstablished = true;
+      clearTimeout(connectionTimeout);
+      // EventSource-POST 连接已建立
+      
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error('Response body is not readable');
+      }
+
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      function processText(text: string) {
+        buffer += text;
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // 保留最后一行（可能不完整）
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const data = line.slice(6);
+            if (data === '[DONE]') {
+              if (onClose) onClose();
+              return;
+            }
+            try {
+              const parsedData = JSON.parse(data);
+              const event = new MessageEvent('message', { data: parsedData });
+              onMessage(event);
+            } catch (e) {
+              console.error('Error parsing SSE data:', e);
+            }
+          } else if (line.startsWith('event: end')) {
+            // 处理后端发送的结束事件
+            if (onClose) onClose();
+            return;
+          }
+        }
+      }
+
+      function read() {
+        if (!reader || aborted) return;
+        
+        reader.read().then(({ done, value }) => {
+          if (aborted || done) {
+            if (onClose) onClose();
+            return;
+          }
+          
+          const text = decoder.decode(value, { stream: true });
+          processText(text);
+          read();
+        }).catch(error => {
+          if (!aborted && onError) {
+            // EventSource-POST 读取错误调试信息已移除
+            const event = new Event('error');
+            onError(event);
+          }
+        });
+      }
+
+      read();
+    })
+    .catch(error => {
+      if (!aborted) {
+        clearTimeout(connectionTimeout);
+        // EventSource-POST 连接错误调试信息已移除
+        if (onError) {
+          const event = new Event('error');
+          onError(event);
+        }
+      }
+    });
+
+    return {
+      close: () => {
+        aborted = true;
+        connectionEstablished = false;
+        clearTimeout(connectionTimeout);
+        controller.abort();
+      }
+    };
   }
 }
 

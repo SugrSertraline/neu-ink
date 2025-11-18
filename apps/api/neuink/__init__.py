@@ -51,29 +51,52 @@ def create_app():
                 line_buffering=True
             )
 
-    CORS(app, resources={
-        r"/*": {
-            "origins": [
-                "http://localhost:3000",
-                "http://127.0.0.1:3000",
-                "http://localhost:3001",
-                "http://localhost:3002",
-                "http://127.0.0.1:3002",
-                "http://localhost:8000",
-                "http://127.0.0.1:8000",
-            ],
-            "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-            "allow_headers": "*",
-            "expose_headers": [
-                "Content-Type",
-                "Authorization",
-                "X-Total-Count",
-                "Cache-Control",
-                "Connection"
-            ],
-            "supports_credentials": True
-        }
-    })
+    # 检查是否为开发环境
+    is_development = os.getenv("FLASK_ENV", "development") == "development" or os.getenv("DEBUG", "0") == "1"
+    
+    if is_development:
+        # 开发环境：允许所有来源，方便局域网访问
+        print("[CONFIG] Development mode detected: allowing all CORS origins")
+        CORS(app, resources={
+            r"/*": {
+                "origins": "*",
+                "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+                "allow_headers": "*",
+                "expose_headers": [
+                    "Content-Type",
+                    "Authorization",
+                    "X-Total-Count",
+                    "Cache-Control",
+                    "Connection"
+                ],
+                "supports_credentials": True
+            }
+        })
+    else:
+        # 生产环境：从环境变量读取CORS配置
+        cors_origins = os.getenv("CORS_ORIGINS",
+            "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3002,http://localhost:8000,http://127.0.0.1:8000")
+        
+        # 将逗号分隔的字符串转换为列表
+        origins_list = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
+        
+        print(f"[CONFIG] Production mode: CORS origins: {origins_list}")
+        
+        CORS(app, resources={
+            r"/*": {
+                "origins": origins_list,
+                "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
+                "allow_headers": "*",
+                "expose_headers": [
+                    "Content-Type",
+                    "Authorization",
+                    "X-Total-Count",
+                    "Cache-Control",
+                    "Connection"
+                ],
+                "supports_credentials": True
+            }
+        })
 
     prefix = app.config["API_PREFIX"]
 

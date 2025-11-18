@@ -3,6 +3,7 @@
 import {
   AddBlockFromTextToSectionRequest,
   AddBlockFromTextToSectionResult,
+  CheckBlockParsingStatusResult,
   AddBlockToSectionRequest,
   AddBlockToSectionResult,
   AddToLibraryRequest,
@@ -39,285 +40,6 @@ import {
 } from '@/types/paper/index';
 import { apiClient, callAndNormalize } from '../http';
 import type { UnifiedResult } from '@/types/api';
-
-// —— 流式传输工具函数 —— //
-function createAuthenticatedEventSource(url: string, params: URLSearchParams): EventSource {
-  // 获取token并添加到URL参数中
-  const token = apiClient.getToken();
-  if (token) {
-    // 确保token正确编码
-    params.append('token', encodeURIComponent(token));
-  }
-  
-  // 使用apiClient的getFullURL方法构建完整URL
-  const baseUrl = apiClient.getFullURL(url);
-  const paramString = params.toString();
-  
-  // 额外确保参数字符串正确编码
-  const fullUrl = `${baseUrl}?${paramString}`;
-  
-  console.log('createAuthenticatedEventSource URL:', fullUrl);
-  console.log('URL length:', fullUrl.length);
-  
-  // 检查URL长度，如果过长则切换到POST方法
-  if (fullUrl.length > 2048) {
-    console.warn('URL too long for GET request, consider using POST method');
-    throw new Error('URL too long for EventSource GET request, please use POST method instead');
-  }
-  
-  // 创建EventSource连接，并设置withCredentials以支持cookie认证
-  const eventSource = new EventSource(fullUrl, {
-    withCredentials: true // 支持cookie认证
-  });
-  
-  return eventSource;
-}
-
-// —— 改进的流式传输函数，支持POST请求体 —— //
-function createAuthenticatedEventSourceWithPost(url: string, params: Record<string, any>): EventSource {
-  // 获取token
-  const token = apiClient.getToken();
-  
-  // 使用apiClient的getFullURL方法构建完整URL
-  const baseUrl = apiClient.getFullURL(url);
-  
-  // 对于长文本，我们需要使用fetch来模拟EventSource
-  // 因为EventSource只支持GET请求，而GET请求的URL长度有限制
-  const controller = new AbortController();
-  const signal = controller.signal;
-  
-  // 构建请求体
-  const requestBody = {
-    ...params,
-    token // 将token放在请求体中而不是URL中
-  };
-  
-  console.log('createAuthenticatedEventSourceWithPost URL:', baseUrl);
-  console.log('Request body length:', JSON.stringify(requestBody).length);
-  if (params.text) {
-    console.log('Text preview for POST request (first 100 chars):', params.text.substring(0, 100));
-    console.log('Text contains special characters:', /[&?=%+]/.test(params.text));
-  }
-  
-  // 创建一个自定义的EventSource-like对象
-  // 使用一个空对象作为基础，然后添加EventSource的属性和方法
-  const customEventSource = {
-    // EventSource的状态常量
-    CONNECTING: 0,
-    OPEN: 1,
-    CLOSED: 2,
-    
-    // 初始状态为连接中
-    readyState: 0,
-    
-    // URL属性
-    url: baseUrl,
-    
-    // 事件处理器
-    onopen: null,
-    onmessage: null,
-    onerror: null,
-    
-    // 添加标志位防止重复关闭
-    isClosed: false,
-    
-    // 关闭方法
-    close: () => {
-      // 防止重复关闭
-      if (customEventSource.isClosed) {
-        return;
-      }
-      customEventSource.isClosed = true;
-      customEventSource.readyState = 2; // 设置为CLOSED状态
-      
-      // 只有在流还在进行时才需要中止
-      try {
-        controller.abort();
-      } catch (error: any) {
-        // 忽略中止错误，因为流可能已经自然结束
-        console.log('Stream already ended or aborted:', error?.message || 'Unknown error');
-      }
-    },
-    
-    // 添加事件监听器的方法
-    addEventListener: (type: string, listener: EventListener) => {
-      // 简化实现，实际应用中可能需要更完整的事件系统
-    },
-    
-    // 移除事件监听器的方法
-    removeEventListener: (type: string, listener: EventListener) => {
-      // 简化实现
-    },
-    
-    // 触发事件的方法
-    dispatchEvent: (event: Event) => {
-      // 简化实现
-    }
-  } as any;
-  
-  // 使用fetch进行流式请求
-  fetch(baseUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Accept': 'text/event-stream',
-      'Cache-Control': 'no-cache',
-      'Authorization': token ? `Bearer ${token}` : ''
-    },
-    body: JSON.stringify(requestBody),
-    signal: signal
-  })
-  .then(response => {
-    console.log('POST response status:', response.status);
-    console.log('POST response headers:', Object.fromEntries(response.headers.entries()));
-    
-    // 更新状态为已连接
-    customEventSource.readyState = 1;
-    
-    // 触发open事件
-    if (customEventSource.onopen) {
-      customEventSource.onopen(new Event('open'));
-    }
-    
-    if (!response.ok) {
-      // 尝试读取错误信息
-      response.text().then(errorText => {
-        console.error('POST error response body:', errorText);
-      }).catch(err => {
-        console.error('Failed to read error response:', err);
-      });
-      
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    
-    const reader = response.body?.getReader();
-    if (!reader) {
-      throw new Error('Response body is not readable');
-    }
-    
-    const decoder = new TextDecoder();
-    let buffer = '';
-    
-    function readStream(): Promise<void> {
-      return reader!.read().then(({ done, value }) => {
-        if (done) {
-          // 处理缓冲区中剩余的数据
-          if (buffer.trim()) {
-            processSSEData(buffer);
-          }
-          // 流结束，关闭连接
-          customEventSource.readyState = 2;
-          return;
-        }
-        
-        buffer += decoder.decode(value, { stream: true });
-        
-        // 处理完整的SSE消息
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || ''; // 保留最后一行（可能不完整）
-        
-        let eventData = '';
-        let eventType = '';
-        
-        for (const line of lines) {
-          if (line.startsWith('event:')) {
-            eventType = line.substring(6).trim();
-          } else if (line.startsWith('data:')) {
-            eventData += line.substring(6).trim() + '\n';
-          } else if (line === '') {
-            // 空行表示消息结束
-            if (eventData) {
-              processSSEMessage(eventType, eventData.trim());
-              eventData = '';
-              eventType = '';
-            }
-          }
-        }
-        
-        return readStream();
-      });
-    }
-    
-    function processSSEMessage(eventType: string, data: string) {
-      try {
-        const messageEvent = new MessageEvent('message', {
-          data: data,
-          origin: baseUrl,
-          lastEventId: ''
-        });
-        
-        // 触发相应的事件处理器
-        if (eventType && customEventSource[`on${eventType}`]) {
-          customEventSource[`on${eventType}`](messageEvent);
-        } else if (customEventSource.onmessage) {
-          customEventSource.onmessage(messageEvent);
-        }
-        
-        // 也触发事件监听器
-        if (customEventSource.dispatchEvent) {
-          customEventSource.dispatchEvent(messageEvent);
-        }
-      } catch (error) {
-        console.error('Error processing SSE message:', error);
-      }
-    }
-    
-    function processSSEData(data: string) {
-      // 简单的SSE数据处理
-      const lines = data.split('\n');
-      for (const line of lines) {
-        if (line.startsWith('data:')) {
-          const eventData = line.substring(6);
-          if (eventData.trim()) {
-            try {
-              const messageEvent = new MessageEvent('message', {
-                data: eventData,
-                origin: baseUrl,
-                lastEventId: ''
-              });
-              
-              if (customEventSource.onmessage) {
-                customEventSource.onmessage(messageEvent);
-              }
-              
-              if (customEventSource.dispatchEvent) {
-                customEventSource.dispatchEvent(messageEvent);
-              }
-            } catch (error) {
-              console.error('Error processing SSE data:', error);
-            }
-          }
-        }
-      }
-    }
-    
-    return readStream();
-  })
-  .catch(error => {
-    // 如果是已关闭的流，不触发错误事件
-    if (customEventSource.isClosed) {
-      console.log('Stream was closed, ignoring error:', error?.message || 'Stream closed');
-      return;
-    }
-    
-    console.error('EventSource connection error:', error);
-    
-    // 更新状态为已关闭
-    customEventSource.readyState = 2;
-    customEventSource.isClosed = true;
-    
-    // 触发错误事件
-    const errorEvent = new Event('error');
-    if (customEventSource.onerror) {
-      customEventSource.onerror(errorEvent);
-    }
-    if (customEventSource.dispatchEvent) {
-      customEventSource.dispatchEvent(errorEvent);
-    }
-  });
-  
-  return customEventSource;
-}
 
 
 // —— 参数拼接工具 —— //
@@ -486,45 +208,12 @@ export const userPaperService = {
   },
 
   /**
-   * 向个人论文的指定section从文本解析添加block（流式传输）
-   */
-  addBlockFromTextToSectionStream(
-    userPaperId: string,
-    sectionId: string,
-    request: AddBlockFromTextToSectionRequest
-  ): EventSource {
-    const url = `/user/papers/${userPaperId}/sections/${sectionId}/add-block-from-text-stream`;
-    
-    // 对于长文本，使用POST方法
-    if (request.text && request.text.length > 1000) {
-      console.log('userPaperService.addBlockFromTextToSectionStream using POST method (long text)');
-      return createAuthenticatedEventSourceWithPost(url, request);
-    } else {
-      // 对于短文本，仍然使用GET方法
-      const params = new URLSearchParams();
-      if (request.text) {
-        // 确保文本正确编码，特别是特殊符号
-        const encodedText = encodeURIComponent(request.text);
-        params.append('text', encodedText);
-        console.log('Text length for GET request:', request.text.length);
-        console.log('Text preview (first 100 chars):', request.text.substring(0, 100));
-        console.log('Encoded text preview (first 100 chars):', encodedText.substring(0, 100));
-      }
-      if (request.afterBlockId) params.append('afterBlockId', request.afterBlockId);
-      if (request.sessionId) params.append('sessionId', request.sessionId);
-      
-      console.log('userPaperService.addBlockFromTextToSectionStream using GET method (short text)');
-      console.log('Final URL params:', params.toString());
-      return createAuthenticatedEventSource(url, params);
-    }
-  },
-
-  /**
    * 向个人论文添加新章节（已移除subsection支持）
    */
   addSection(
     userPaperId: string,
     sectionData: {
+      id?: string; // 添加可选的ID字段，用于前端生成的临时ID
       title: { en: string; zh: string };
       content?: any[];
     },
@@ -611,97 +300,20 @@ export const userPaperService = {
     userPaperId: string,
     sectionId: string,
     blockId: string
-  ): Promise<UnifiedResult<{
-    status: 'pending' | 'processing' | 'completed' | 'failed';
-    progress: number;
-    message: string;
-    paper?: Paper;
-    error?: string;
-    addedBlocks?: import('@/types/paper/content').BlockContent[];
-  }>> {
-    return callAndNormalize<{
-      status: 'pending' | 'processing' | 'completed' | 'failed';
-      progress: number;
-      message: string;
-      paper?: Paper;
-      error?: string;
-      addedBlocks?: import('@/types/paper/content').BlockContent[];
-    }>(
+  ): Promise<UnifiedResult<CheckBlockParsingStatusResult>> {
+    return callAndNormalize<CheckBlockParsingStatusResult>(
       apiClient.get(`/user/papers/${userPaperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
     );
   },
 
   /**
-   * 获取指定section的所有解析会话
+   * 检查论文是否已在个人论文库中
    */
-  getParsingSessions(
-    userPaperId: string,
-    sectionId: string
-  ): Promise<UnifiedResult<{
-    sessions: Array<{
-      sessionId: string;
-      status: 'pending' | 'processing' | 'completed' | 'failed';
-      progress: number;
-      message: string;
-      createdAt: string;
-      updatedAt: string;
-    }>;
-  }>> {
-    return callAndNormalize<{
-      sessions: Array<{
-        sessionId: string;
-        status: 'pending' | 'processing' | 'completed' | 'failed';
-        progress: number;
-        message: string;
-        createdAt: string;
-        updatedAt: string;
-      }>;
-    }>(
-      apiClient.get(`/user/papers/${userPaperId}/sections/${sectionId}/parsing-sessions`)
-    );
-  },
-
-  /**
-   * 获取指定的解析会话详情
-   */
-  getParsingSession(
-    userPaperId: string,
-    sectionId: string,
-    sessionId: string
-  ): Promise<UnifiedResult<{
-    sessionId: string;
-    status: 'pending' | 'processing' | 'completed' | 'failed';
-    progress: number;
-    message: string;
-    createdAt: string;
-    updatedAt: string;
-    completedBlocks?: any[];
-    paperData?: any;
-  }>> {
-    return callAndNormalize<{
-      sessionId: string;
-      status: 'pending' | 'processing' | 'completed' | 'failed';
-      progress: number;
-      message: string;
-      createdAt: string;
-      updatedAt: string;
-      completedBlocks?: any[];
-      paperData?: any;
-    }>(
-      apiClient.get(`/user/papers/${userPaperId}/sections/${sectionId}/parsing-sessions/${sessionId}`)
-    );
-  },
-
-  /**
-   * 删除指定的解析会话
-   */
-  deleteParsingSession(
-    userPaperId: string,
-    sectionId: string,
-    sessionId: string
-  ): Promise<UnifiedResult<null>> {
-    return callAndNormalize<null>(
-      apiClient.delete(`/user/papers/${userPaperId}/sections/${sectionId}/parsing-sessions/${sessionId}`)
+  checkPaperInLibrary(
+    paperId: string
+  ): Promise<UnifiedResult<{ inLibrary: boolean; userPaperId: string | null }>> {
+    return callAndNormalize<{ inLibrary: boolean; userPaperId: string | null }>(
+      apiClient.get(`/user/papers/check-in-library?paperId=${paperId}`)
     );
   },
 
@@ -899,45 +511,12 @@ export const adminPaperService = {
   },
 
   /**
-   * 向管理员论文的指定section从文本解析添加block（流式传输）
-   */
-  addBlockFromTextToSectionStream(
-    paperId: string,
-    sectionId: string,
-    request: AddBlockFromTextToSectionRequest
-  ): EventSource {
-    const url = `/admin/papers/${paperId}/sections/${sectionId}/add-block-from-text-stream`;
-    
-    // 对于长文本，使用POST方法
-    if (request.text && request.text.length > 1000) {
-      console.log('adminPaperService.addBlockFromTextToSectionStream using POST method (long text)');
-      return createAuthenticatedEventSourceWithPost(url, request);
-    } else {
-      // 对于短文本，仍然使用GET方法
-      const params = new URLSearchParams();
-      if (request.text) {
-        // 确保文本正确编码，特别是特殊符号
-        const encodedText = encodeURIComponent(request.text);
-        params.append('text', encodedText);
-        console.log('Text length for GET request:', request.text.length);
-        console.log('Text preview (first 100 chars):', request.text.substring(0, 100));
-        console.log('Encoded text preview (first 100 chars):', encodedText.substring(0, 100));
-      }
-      if (request.afterBlockId) params.append('afterBlockId', request.afterBlockId);
-      if (request.sessionId) params.append('sessionId', request.sessionId);
-      
-      console.log('adminPaperService.addBlockFromTextToSectionStream using GET method (short text)');
-      console.log('Final URL params:', params.toString());
-      return createAuthenticatedEventSource(url, params);
-    }
-  },
-
-  /**
    * 向管理员论文添加新章节（已移除subsection支持）
    */
   addSection(
     paperId: string,
     sectionData: {
+      id?: string; // 添加可选的ID字段，用于前端生成的临时ID
       title: { en: string; zh: string };
       content?: any[];
     },
@@ -1059,97 +638,9 @@ export const adminPaperService = {
     paperId: string,
     sectionId: string,
     blockId: string
-  ): Promise<UnifiedResult<{
-    status: 'pending' | 'processing' | 'completed' | 'failed';
-    progress: number;
-    message: string;
-    paper?: Paper;
-    error?: string;
-    addedBlocks?: import('@/types/paper/content').BlockContent[];
-  }>> {
-    return callAndNormalize<{
-      status: 'pending' | 'processing' | 'completed' | 'failed';
-      progress: number;
-      message: string;
-      paper?: Paper;
-      error?: string;
-      addedBlocks?: import('@/types/paper/content').BlockContent[];
-    }>(
+  ): Promise<UnifiedResult<CheckBlockParsingStatusResult>> {
+    return callAndNormalize<CheckBlockParsingStatusResult>(
       apiClient.get(`/admin/papers/${paperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
-    );
-  },
-
-  /**
-   * 获取指定section的所有解析会话
-   */
-  getParsingSessions(
-    paperId: string,
-    sectionId: string
-  ): Promise<UnifiedResult<{
-    sessions: Array<{
-      sessionId: string;
-      status: 'pending' | 'processing' | 'completed' | 'failed';
-      progress: number;
-      message: string;
-      createdAt: string;
-      updatedAt: string;
-    }>;
-  }>> {
-    return callAndNormalize<{
-      sessions: Array<{
-        sessionId: string;
-        status: 'pending' | 'processing' | 'completed' | 'failed';
-        progress: number;
-        message: string;
-        createdAt: string;
-        updatedAt: string;
-      }>;
-    }>(
-      apiClient.get(`/admin/papers/${paperId}/sections/${sectionId}/parsing-sessions`)
-    );
-  },
-
-  /**
-   * 获取指定的解析会话详情
-   */
-  getParsingSession(
-    paperId: string,
-    sectionId: string,
-    sessionId: string
-  ): Promise<UnifiedResult<{
-    sessionId: string;
-    status: 'pending' | 'processing' | 'completed' | 'failed';
-    progress: number;
-    message: string;
-    createdAt: string;
-    updatedAt: string;
-    completedBlocks?: any[];
-    paperData?: any;
-  }>> {
-    return callAndNormalize<{
-      sessionId: string;
-      status: 'pending' | 'processing' | 'completed' | 'failed';
-      progress: number;
-      message: string;
-      createdAt: string;
-      updatedAt: string;
-      completedBlocks?: any[];
-      paperData?: any;
-    }>(
-      apiClient.get(`/admin/papers/${paperId}/sections/${sectionId}/parsing-sessions/${sessionId}`)
-    );
-  },
-
-  /**
-   * 删除指定的解析会话
-   */
-  deleteParsingSession(
-    paperId: string,
-    sectionId: string,
-    sessionId: string
-  ): Promise<UnifiedResult<null>> {
-    return callAndNormalize<null>(
-      apiClient.delete(`/admin/papers/${paperId}/sections/${sectionId}/parsing-sessions/${sessionId}`)
     );
   },
 

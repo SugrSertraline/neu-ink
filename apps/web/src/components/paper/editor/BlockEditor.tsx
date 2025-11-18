@@ -479,9 +479,10 @@ function getBlockTypeConfig(type: BlockContent['type']) {
     quote: { icon: Quote, label: '引用', color: 'amber' },
     divider: { icon: Minus, label: '分隔线', color: 'gray' },
     loading: { icon: Loader2, label: '加载中', color: 'blue' },
+    parsing: { icon: Loader2, label: '解析中', color: 'yellow' },
   };
 
-  return blockTypeConfig[type] ?? blockTypeConfig.paragraph;
+  return blockTypeConfig[type] || blockTypeConfig.paragraph;
 }
 
 function HeadingEditor({
@@ -774,7 +775,6 @@ function FigureEditor({
 
       // 2) 后端返回 URL 后，统一写入本地预览 + block
       const finalUrl = res.url;
-      console.log('[DEBUG] 上传成功，最终URL:', finalUrl);
       
       // 先更新本地状态，确保预览立即更新
       setLocalSrc(finalUrl);
@@ -805,7 +805,6 @@ function FigureEditor({
   };
 
   const displaySrc = (localSrc ?? '').trim();
-  console.log('[DEBUG] displaySrc:', displaySrc, 'localSrc:', localSrc, 'block.src:', block.src);
 
   return (
     <div className="space-y-4">
@@ -909,7 +908,6 @@ function FigureEditor({
           value={localSrc || ''}
           onChange={(e) => {
             const v = e.target.value;
-            console.log('[DEBUG] 手动输入图片路径:', v);
             setLocalSrc(v);                 // 本地立刻生效
             onChange({ ...block, src: v }); // 同步给父级
           }}
@@ -1448,7 +1446,7 @@ function OrderedListEditor({
         <button
           type="button"
           onClick={addItem}
-          className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover.border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
+          className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
         >
           <Plus className="w-4 h-4" />
           添加列表项
@@ -1511,7 +1509,7 @@ function UnorderedListEditor({
 
       {(block.items ?? []).map((item, index) => (
         <div key={index} className="border border-gray-300 rounded-lg p-4 bg-gray-50">
-          <div className="flex items.center justify-between mb-3">
+          <div className="flex items-center justify-between mb-3">
             <span className="text-sm font-medium text-gray-600">• 项目 {index + 1}</span>
             <div className="flex gap-1">
               <button
@@ -1573,7 +1571,7 @@ function UnorderedListEditor({
       <button
         type="button"
         onClick={addItem}
-        className="w全 py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify中心 gap-2"
+        className="w-full py-3 border-2 border-dashed border-gray-300 rounded-lg text-gray-500 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors flex items-center justify-center gap-2"
       >
         <Plus className="w-4 h-4" />
         添加列表项

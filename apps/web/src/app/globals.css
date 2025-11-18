@@ -215,9 +215,13 @@
 }
 
 .toaster.group [data-sonner-toast][data-type="error"] {
-  background: var(--destructive);
-  border-color: var(--destructive);
-  color: white;
+  background: var(--background);
+  border-color: var(--border);
+  color: var(--foreground);
+}
+
+.toaster.group [data-sonner-toast][data-type="error"] [data-icon] {
+  color: hsl(0 84% 60%);
 }
 
 .toaster.group [data-sonner-toast][data-type="success"] {
@@ -261,3 +265,15 @@
     opacity: 0;
   }
 }
+/* 让 display 模式公式内部可以自动折行 */
+.katex-display > .katex {
+  display: inline;
+  white-space: normal;
+}
+
+/* 防止特别长的 token 撑爆容器 */
+.katex {
+  white-space: normal;
+  word-break: break-word;
+}
+

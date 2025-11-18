@@ -159,7 +159,7 @@ export default function ParseTextDialog({
           <button
             onClick={handleSubmit}
             disabled={isLoading || !text.trim()}
-            className="rounded-lg px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 min-w-[80px] justify-center"
+            className="rounded-lg px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 min-w-20 justify-center"
           >
             {isLoading ? (
               <>

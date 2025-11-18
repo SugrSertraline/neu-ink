@@ -1,4 +1,4 @@
-// 论文内容类型定义（InlineContent 和 BlockContent）
+// 论文内容类型定义(InlineContent 和 BlockContent)
 
 // —— 内联元素类型 ——
 export interface TextNode {
@@ -133,8 +133,8 @@ export type TableCellContent = string | {
 // 表格单元格定义
 export interface TableCell {
   content: TableCellContent;
-  colspan?: number; // 跨列数，默认为1
-  rowspan?: number; // 跨行数，默认为1
+  colspan?: number; // 跨列数,默认为1
+  rowspan?: number; // 跨行数,默认为1
   isHeader?: boolean; // 是否为表头单元格
   align?: 'left' | 'center' | 'right'; // 单元格对齐方式
 }
@@ -157,11 +157,11 @@ export interface TableBlock {
     zh?: InlineContent[];
   };
   // 使用新的表格结构
-  headers?: TableRow[]; // 表头行数组，支持多行表头
+  headers?: TableRow[]; // 表头行数组,支持多行表头
   rows: TableRow[]; // 数据行数组
   // 保持向后兼容的默认对齐方式
   align?: ('left' | 'center' | 'right')[];
-  // 新增：表格整体样式
+  // 新增:表格整体样式
   style?: {
     borderless?: boolean; // 无边框
     compact?: boolean; // 紧凑模式
@@ -219,17 +219,15 @@ export interface DividerBlock {
   type: 'divider';
 }
 
-export interface LoadingBlock {
+
+export interface ParsingBlock {
   id: string;
-  type: 'loading';
-  status: 'pending' | 'processing' | 'completed' | 'failed';
-  message?: string;
-  progress?: number;
-  originalText?: string;
-  sectionId?: string;
-  afterBlockId?: string;
-  createdAt?: string;
-  completedAt?: string;
+  type: 'parsing';
+  stage: 'structuring' | 'translating' | 'failed' | 'pending_confirmation';
+  message: string;
+  createdAt: string;
+  // 新增:解析完成待确认时的字段
+  parsedBlocks?: BlockContent[];
   sessionId?: string;
 }
 
@@ -244,4 +242,4 @@ export type BlockContent =
   | UnorderedListBlock
   | QuoteBlock
   | DividerBlock
-  | LoadingBlock;
+  | ParsingBlock;

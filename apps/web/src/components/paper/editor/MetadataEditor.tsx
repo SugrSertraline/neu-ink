@@ -331,11 +331,9 @@ export default function MetadataEditor({
         
         // 调用用户论文更新接口
         await userPaperService.updateUserPaper(userPaperId, {
-          paperData: {
-            metadata,
-            abstract,
-            keywords,
-          },
+          metadata,
+          abstract,
+          keywords,
         });
         
         setLastAutoSaveTime(new Date());

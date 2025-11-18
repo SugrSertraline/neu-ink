@@ -9,9 +9,7 @@ import type { LoginRequest, LoginResponse, User } from '@/types/user';
 export const authService = {
   setToken: (token: string) => apiClient.setToken(token),
   clearToken: async () => {
-    // 使用 markAuthReset 来确保 authReset 标记被正确设置
-    const { markAuthReset } = await import('../http/normalize');
-    markAuthReset(null);
+    // 直接清除 token，避免循环依赖
     apiClient.clearToken();
   },
 
@@ -19,6 +17,15 @@ export const authService = {
     const uni = await callAndNormalize<LoginResponse>(apiClient.post('/users/login', payload));
     if (isSuccess(uni) && uni.data?.token) {
       // 只有业务成功才写入 token
+      apiClient.setToken(uni.data.token);
+    }
+    return uni;
+  },
+
+  async refreshToken(): Promise<AuthAwareResult<{ token: string; user: User }>> {
+    const uni = await callAndNormalize<{ token: string; user: User }>(apiClient.post('/users/refresh'));
+    if (isSuccess(uni) && uni.data?.token) {
+      // 刷新成功，更新token
       apiClient.setToken(uni.data.token);
     }
     return uni;
@@ -34,9 +41,7 @@ export const authService = {
       return uni;
     } finally {
       // 无论接口成功与否，清理本地 token
-      // 使用 markAuthReset 来确保 authReset 标记被正确设置
-      const { markAuthReset } = await import('../http/normalize');
-      markAuthReset(null);
+      // 直接清除 token，避免循环依赖
       apiClient.clearToken();
     }
   },

@@ -10,7 +10,7 @@ import {
 } from '../services/paper';
 import { PaperAttachments } from '@/types/paper/models';
 
-type UserPaperMeta = Omit<UserPaper, 'paperData'>;
+type UserPaperMeta = UserPaper;
 
 const DEFAULT_PARSE_STATUS: ParseStatus = {
   status: 'completed',
@@ -26,34 +26,27 @@ function pickSourcePaperId(userPaper: UserPaper): string | null {
   return userPaper.sourcePaperId;
 }
 
-function pickParseStatus(paperData: UserPaper['paperData']): ParseStatus {
-  const rawStatus = (paperData as unknown as Record<string, unknown>).parseStatus;
-  if (
-    rawStatus &&
-    typeof rawStatus === 'object' &&
-    typeof (rawStatus as ParseStatus).status === 'string'
-  ) {
-    return rawStatus as ParseStatus;
-  }
+function pickParseStatus(userPaper: UserPaper): ParseStatus {
+  // 对于个人论文，使用默认解析状态
   return DEFAULT_PARSE_STATUS;
 }
 
 function normalizeUserPaper(userPaper: UserPaper): { paper: Paper; meta: UserPaperMeta } {
-  const { paperData, ...meta } = userPaper;
+  const { sections, ...meta } = userPaper;
   const sourcePaperId = pickSourcePaperId(userPaper);
-  const parseStatus = pickParseStatus(paperData);
+  const parseStatus = pickParseStatus(userPaper);
 
   return {
     paper: {
       id: sourcePaperId ?? meta.id,
       isPublic: Boolean(sourcePaperId),
       createdBy: meta.userId,
-      metadata: paperData.metadata,
-      abstract: paperData.abstract,
-      keywords: paperData.keywords ?? [],
-      sections: paperData.sections,
-      references: paperData.references,
-      attachments: ensureAttachments(paperData.attachments),
+      metadata: userPaper.metadata,
+      abstract: userPaper.abstract,
+      keywords: userPaper.keywords ?? [],
+      sections: sections || [],  // 直接使用根级别的 sections，如果为空则使用空数组
+      references: userPaper.references,
+      attachments: ensureAttachments(userPaper.attachments),
       parseStatus,
       createdAt: meta.addedAt,
       updatedAt: meta.updatedAt,

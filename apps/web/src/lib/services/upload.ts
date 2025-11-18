@@ -25,7 +25,6 @@ export interface UploadConfig {
  * @returns 上传结果
  */
 export async function uploadImage(file: File): Promise<UploadResponse> {
-  console.log('[DEBUG] 开始上传图片:', file.name, file.type, file.size);
   const formData = new FormData();
   formData.append('file', file);
 
@@ -33,12 +32,9 @@ export async function uploadImage(file: File): Promise<UploadResponse> {
     apiClient.upload<UploadResponse>('/upload/image', formData)
   );
   
-  console.log('[DEBUG] 图片上传响应:', response);
-  
   // 处理嵌套的响应结构
   // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
   if (response.data && typeof response.data === 'object' && 'data' in response.data) {
-    console.log('[DEBUG] 解析嵌套响应，提取真实数据:', response.data.data);
     return response.data.data as UploadResponse;
   }
   
@@ -94,7 +90,6 @@ export async function uploadMarkdown(file: File): Promise<UploadResponse> {
  * @returns 上传结果
  */
 export async function uploadPaperImage(file: File, paperId?: string): Promise<UploadResponse> {
-  console.log('[DEBUG] 开始上传论文图片:', file.name, file.type, file.size, 'paperId:', paperId);
   const formData = new FormData();
   formData.append('file', file);
   if (paperId) {
@@ -105,12 +100,9 @@ export async function uploadPaperImage(file: File, paperId?: string): Promise<Up
     apiClient.upload<UploadResponse>('/upload/paper-image', formData)
   );
   
-  console.log('[DEBUG] 论文图片上传响应:', response);
-  
   // 处理嵌套的响应结构
   // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
   if (response.data && typeof response.data === 'object' && 'data' in response.data) {
-    console.log('[DEBUG] 解析嵌套响应，提取真实数据:', response.data.data);
     return response.data.data as UploadResponse;
   }
   

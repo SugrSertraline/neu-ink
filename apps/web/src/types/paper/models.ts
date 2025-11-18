@@ -116,8 +116,16 @@ export interface UserPaper {
   userId: string;                    // 用户ID
   sourcePaperId: string | null;      // 来源公共论文ID（用户上传的为 null）
   
-  // 论文数据副本（完整的论文内容）
-  paperData: PaperData;
+  // 论文内容（扁平化到根级别）
+  metadata: PaperMetadata;
+  abstract?: {
+    en?: string;
+    zh?: string;
+  };
+  keywords?: string[];
+  sections?: Section[];              // 从 Section 集合加载
+  references: Reference[];
+  attachments: PaperAttachments;
   
   // 个人库特有字段
   customTags: string[];              // 自定义标签
@@ -145,6 +153,7 @@ export interface Note {
   userPaperId: string;               // 关联个人论文ID
   blockId: string;                   // 关联的 block ID
   content: InlineContent[];          // 富文本内容
+  plainText?: string;                // 纯文本内容（可选）
   createdAt: string;
   updatedAt: string;
 }

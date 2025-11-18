@@ -24,14 +24,27 @@ export function normalize<T = any>(res: ApiResponse<T | BusinessResponse<T>>): U
   const topCode = (res.code ?? ResponseCode.SUCCESS) as number;
   const topMessage = res.message ?? '';
 
+  // 处理双重嵌套的业务响应格式
+  // 由于 client.ts 已经包装了一层，所以 res.data 可能是 {code: 200, data: {code: 0, data: {...}, message: "..."}}
+  let actualData = res.data;
+  
+  // 检查是否有双重嵌套，如果有则提取内层
+  if (actualData && typeof actualData === 'object' && 'data' in actualData &&
+      actualData.data && typeof actualData.data === 'object' && 'code' in actualData.data && 'data' in actualData.data) {
+    actualData = actualData.data;
+  }
+
   // 检查是否是业务响应格式：{code: 0, message: "...", data: {...}}
-  if (isBusinessEnvelope<T>(res.data)) {
+  if (isBusinessEnvelope<T>(actualData)) {
+    // 确保业务响应的数据被正确提取，特别是ID字段
+    const businessData = actualData.data;
+    
     return {
       topCode,
       topMessage,
-      bizCode: res.data.code,
-      bizMessage: res.data.message,
-      data: res.data.data,
+      bizCode: actualData.code,
+      bizMessage: actualData.message,
+      data: businessData,
       raw: res as ApiResponse<any>,
     };
   }
@@ -41,7 +54,7 @@ export function normalize<T = any>(res: ApiResponse<T | BusinessResponse<T>>): U
     topMessage,
     bizCode: BusinessCode.SUCCESS,
     bizMessage: '操作成功',
-    data: res.data as T,
+    data: actualData as T,
     raw: res as ApiResponse<any>,
   };
 }
@@ -104,11 +117,8 @@ export function shouldResetAuth(topCode: number, bizCode?: number, errMsg?: stri
 
 export function markAuthReset(target: unknown) {
   try {
-    // 使用 authService 而不是直接使用 apiClient
-    // 这里需要动态导入以避免循环依赖
-    import('../services/auth').then(({ authService }) => {
-      authService.clearToken();
-    });
+    // 直接使用 apiClient.clearToken() 避免循环依赖
+    apiClient.clearToken();
   } catch {
     /* noop */
   }
@@ -133,23 +143,51 @@ export async function callAndNormalize<T>(
     const msg = err?.message || String(err);
     
     // 特殊处理401错误 - 认证失败
-    if (err && typeof err === 'object' && 'status' in err && err.status === ResponseCode.UNAUTHORIZED) {
-      // 显示登录过期的提示
-      toast.error('登录已过期', {
-        description: '您的登录状态已失效，请重新登录',
-        duration: 5000
-      });
+    if (err && typeof err === 'object' && (
+      ('status' in err && err.status === ResponseCode.UNAUTHORIZED) ||
+      ('authReset' in err && err.authReset === true)
+    )) {
+      // 检查是否是登录接口的401错误
+      const isLoginError = err.config?.url?.includes('/users/login') ||
+                           (typeof err.config?.url === 'string' && err.config.url.endsWith('/users/login'));
+      
+      // 如果是登录接口的401错误，不显示"登录已过期"的提示
+      // 让登录页面自己处理错误信息
+      if (!isLoginError) {
+        // 显示登录过期的提示
+        toast.error('登录已过期', {
+          description: '您的登录状态已失效，请重新登录',
+          duration: 5000
+        });
+      }
       
       // 标记需要重置认证状态
       markAuthReset(err);
       
+      // 尝试从错误响应中提取业务错误信息
+      let bizCode = BusinessCode.TOKEN_EXPIRED;
+      let bizMessage = isLoginError ? '用户名或密码错误' : '您的登录状态已失效，请重新登录';
+      
+      // 对于登录接口的错误，尝试提取更详细的错误信息
+      if (isLoginError && err.payload) {
+        // 检查是否有业务层的错误信息
+        if (err.payload.data && typeof err.payload.data === 'object') {
+          if ('code' in err.payload.data && typeof err.payload.data.code === 'number') {
+            bizCode = err.payload.data.code;
+          }
+          if ('message' in err.payload.data && typeof err.payload.data.message === 'string') {
+            bizMessage = err.payload.data.message;
+          }
+        }
+      }
+      
       // 返回统一的结果对象，避免页面崩溃
       return {
         success: false,
-        topCode: err.status,
-        topMessage: '登录已过期',
-        bizCode: BusinessCode.TOKEN_EXPIRED,
-        bizMessage: '您的登录状态已失效，请重新登录',
+        topCode: err.status || ResponseCode.UNAUTHORIZED,
+        topMessage: isLoginError ? '登录失败' : '登录已过期',
+        bizCode,
+        bizMessage,
         data: null as T,
         raw: err,
         authReset: true,
@@ -168,6 +206,17 @@ export async function callAndNormalize<T>(
             errorMessage = getErrorMessage(err.payload.data.code, ERROR_MESSAGES.BAD_REQUEST);
           } else if (err.payload.message) {
             errorMessage = err.payload.message;
+          } else if (err.payload.bizMessage) {
+            errorMessage = err.payload.bizMessage;
+          }
+          
+          // 检查双重嵌套结构
+          if (err.payload.data && typeof err.payload.data === 'object') {
+            if (err.payload.data.message) {
+              errorMessage = err.payload.data.message;
+            } else if (err.payload.data.bizMessage) {
+              errorMessage = err.payload.data.bizMessage;
+            }
           }
         }
         
@@ -194,8 +243,14 @@ export async function callAndNormalize<T>(
         if (err.payload && typeof err.payload === 'object') {
           if (err.payload.message) {
             errorMessage = err.payload.message;
-          } else if (err.payload.data && typeof err.payload.data === 'object' && 'message' in err.payload.data) {
-            errorMessage = err.payload.data.message;
+          } else if (err.payload.bizMessage) {
+            errorMessage = err.payload.bizMessage;
+          } else if (err.payload.data && typeof err.payload.data === 'object') {
+            if (err.payload.data.message) {
+              errorMessage = err.payload.data.message;
+            } else if (err.payload.data.bizMessage) {
+              errorMessage = err.payload.data.bizMessage;
+            }
           }
         }
         

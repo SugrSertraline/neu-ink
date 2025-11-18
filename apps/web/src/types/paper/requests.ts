@@ -127,7 +127,24 @@ export interface CreatePaperFromMetadataRequest {
 
 // —— 请求：更新个人论文 ——
 export interface UpdateUserPaperRequest {
-  paperData?: Partial<UserPaper['paperData']>;
+  // 支持扁平化结构，可以直接传递论文内容字段
+  metadata?: Partial<UserPaper['metadata']>;
+  abstract?: Partial<UserPaper['abstract']>;
+  keywords?: Partial<UserPaper['keywords']>;
+  sections?: Partial<UserPaper['sections']>;
+  references?: Partial<UserPaper['references']>;
+  attachments?: Partial<UserPaper['attachments']>;
+  
+  // 兼容旧的 paperData 结构（用于向后兼容）
+  paperData?: {
+    metadata?: any;
+    abstract?: any;
+    keywords?: any;
+    references?: any;
+    attachments?: any;
+  };
+  
+  // 其他 UserPaper 字段
   customTags?: string[];
   readingStatus?: 'unread' | 'reading' | 'finished';
   priority?: 'high' | 'medium' | 'low';
@@ -145,14 +162,17 @@ export interface UpdateReadingProgressRequest {
 
 // —— 请求：创建笔记 ——
 export interface CreateNoteRequest {
+  id: string;  // 前端生成的UUID
   userPaperId: string;
   blockId: string;
   content: Note['content'];
+  plainText?: string;
 }
 
 // —— 请求：更新笔记 ——
 export interface UpdateNoteRequest {
   content: Note['content'];
+  plainText?: string;
 }
 
 // —— 响应：删除结果 ——
@@ -166,12 +186,26 @@ export interface AddBlockFromTextToSectionRequest {
   text?: string;  // 可选：如果是恢复会话，则不需要text
   afterBlockId?: string;  // 可选：指定在哪个block后插入
   sessionId?: string;  // 可选：会话ID，用于恢复会话
+  forcePost?: boolean;  // 可选：强制使用POST方法，用于处理URL过长的情况
 }
 
 // —— 响应：添加block结果（从文本解析）——
 export interface AddBlockFromTextToSectionResult {
-  loadingBlockId: string;
+  tempBlockId?: string;  // 临时进度block的ID
   sectionId: string;
+  message?: string;
+}
+
+// —— 响应：查询loading block解析状态 ——
+export interface CheckBlockParsingStatusResult {
+  status: 'pending' | 'processing' | 'completed' | 'failed';
+  progress: number;
+  message: string;
+  error?: string;
+  addedBlocks?: import('./content').BlockContent[];
+  // 注意：当 addedBlocks 存在时，paper 字段不会返回，避免数据冗余
+  // 只有在解析失败或进行中时才可能返回 paper 字段
+  paper?: Paper;
 }
 
 // —— 请求：直接向section添加block ——

@@ -43,12 +43,15 @@ class UserService:
         # 生成token（请确保 generate_token 会把 role 写入载荷）
         token = generate_token(user)
         
+        # 确保用户数据包含所有必要字段，特别是 role
+        user_data = sanitize_user_data(user)
+        
         return {
             "code": BusinessCode.SUCCESS,
             "message": BusinessMessage.SUCCESS,
             "data": {
                 "token": token,
-                "user": sanitize_user_data(user)  # 需确保不会剔除 role
+                "user": user_data
             }
         }
 
