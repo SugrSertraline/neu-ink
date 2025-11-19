@@ -869,7 +869,57 @@ def get_user_block_parsing_status(entry_id, section_id, block_id):
         if target_block and target_block.get("type") == "parsing":
             stage = target_block.get("stage", "structuring")
             message = target_block.get("message", "正在解析文本...")
+            parse_id = target_block.get("parseId")  # 获取parseId
 
+            # 如果有parseId，尝试从ParseBlocks表获取解析状态
+            if parse_id:
+                from ..models.parseBlocks import get_parse_blocks_model
+                parse_model = get_parse_blocks_model()
+                parse_record = parse_model.find_by_id(parse_id)
+                
+                if parse_record:
+                    parse_status = parse_record.get("status", "pending")
+                    
+                    if parse_status == "processing":
+                        data = {
+                            "status": "processing",
+                            "progress": 50,
+                            "message": "正在解析文本...",
+                            "paper": None,
+                            "error": None,
+                            "addedBlocks": None,
+                            "parseId": parse_id
+                        }
+                        return success_response(data, "解析进行中")
+                    
+                    elif parse_status == "completed":
+                        # 解析完成，从ParseBlocks表获取解析结果
+                        parsed_blocks = parse_record.get("blocks", [])
+                        data = {
+                            "status": "completed",
+                            "progress": 100,
+                            "message": f"解析完成，生成了{len(parsed_blocks)}个段落",
+                            "paper": None,
+                            "error": None,
+                            "addedBlocks": parsed_blocks,
+                            "parseId": parse_id
+                        }
+                        return success_response(data, f"解析完成，生成了{len(parsed_blocks)}个段落")
+                    
+                    elif parse_status == "failed":
+                        error_message = parse_record.get("error", "解析失败")
+                        data = {
+                            "status": "failed",
+                            "progress": 0,
+                            "message": error_message,
+                            "paper": None,
+                            "error": error_message,
+                            "addedBlocks": None,
+                            "parseId": parse_id
+                        }
+                        return success_response(data, "解析失败")
+
+            # 兼容旧逻辑：如果没有parseId或ParseBlocks表中没有记录，使用原来的逻辑
             if stage in ("structuring", "translating"):
                 status = "processing"
                 progress = 50  # 简化为固定进度值

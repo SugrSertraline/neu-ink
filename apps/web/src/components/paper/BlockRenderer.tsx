@@ -17,6 +17,7 @@ import InlineRenderer from './InlineRenderer';
 import TextSelectionToolbar from './TextSelectionToolbar';
 import ParseProgressBlock from './ParseProgressBlock';
 import ParsedBlocksConfirmDialog from './ParsedBlocksConfirmDialog';
+import ParseResultsManager from './ParseResultsManager';
 import {
   toggleBold,
   toggleItalic,
@@ -70,6 +71,7 @@ interface BlockRendererProps {
     blockId: string;
     parsedBlocks?: BlockContent[];
     sessionId?: string;
+    parseId?: string;
   }) => void;
   userPaperId?: string | null;
   streamProgressData?: Record<
@@ -285,6 +287,12 @@ export default function BlockRenderer({
   const [isEditing, setIsEditing] = useState(false);
   const [draftBlock, setDraftBlock] = useState<BlockContent>(() => cloneBlock(block));
   const [isSaving, setIsSaving] = useState(false);
+  const [showParseResultsManager, setShowParseResultsManager] = useState(false);
+  const [parseResultsData, setParseResultsData] = useState<{
+    parseId: string;
+    tempBlockId: string;
+    blockId: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!isEditing) return;
@@ -579,9 +587,8 @@ export default function BlockRenderer({
     const enNodes = headingBlock.content?.en ?? [];
     const zhNodes = headingBlock.content?.zh;
 
-    const numberPart = headingBlock.number ? (
-      <span className="text-blue-600 mr-2">{`${headingBlock.number}.`}</span>
-    ) : null;
+    // 不使用系统自动计算的编号，直接显示原始标题内容（包含原始编号）
+    const numberPart = null;
 
     const renderContent = () => {
       if (lang === 'both') {
@@ -1432,78 +1439,19 @@ export default function BlockRenderer({
       case 'parsing': {
         const parsingBlock = block as ParsingBlock;
         
-        // 如果是待确认状态,显示确认界面
-        if (parsingBlock.stage === 'pending_confirmation') {
-          return (
-            <div className="my-4 rounded-lg border-2 border-green-200 bg-green-50 p-6">
-              <div className="flex items-start gap-4">
-                <div className="shrink-0">
-                  <svg
-                    className="h-6 w-6 text-green-600"
-                    fill="none"
-                    stroke="currentColor"
-                    viewBox="0 0 24 24"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
-                    />
-                  </svg>
-                </div>
-                <div className="flex-1">
-                  <h3 className="text-lg font-semibold text-green-800 mb-2">
-                    {parsingBlock.message || '解析完成,请确认'}
-                  </h3>
-                  <p className="text-sm text-green-700 mb-4">
-                    解析已完成,共得到 {parsingBlock.parsedBlocks?.length || 0} 个段落。
-                    请预览并确认要保留的内容。
-                  </p>
-                  <div className="flex gap-3">
-                    <button
-                      onClick={() => {
-                        if (onParsePreview && parsingBlock.parsedBlocks) {
-                          onParsePreview({
-                            type: 'preview',
-                            blockId: parsingBlock.id,
-                            parsedBlocks: parsingBlock.parsedBlocks,
-                            sessionId: parsingBlock.sessionId,
-                          });
-                        }
-                      }}
-                      className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors font-medium"
-                    >
-                      预览并确认
-                    </button>
-                    <button
-                      onClick={() => {
-                        if (onParsePreview) {
-                          onParsePreview({
-                            type: 'cancel',
-                            blockId: parsingBlock.id,
-                          });
-                        }
-                      }}
-                      className="px-4 py-2 bg-gray-200 text-gray-700 rounded-md hover:bg-gray-300 transition-colors"
-                    >
-                      取消解析
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          );
-        }
-        
-        // 其他状态使用 ParseProgressBlock
+        // 所有状态都使用 ParseProgressBlock 处理，包括完成状态
         const normalizedProgress = {
           status: parsingBlock.stage === 'failed' ? 'failed' as const :
+                  parsingBlock.stage === 'pending_confirmation' ? 'completed' as const :
+                  parsingBlock.stage === 'completed' ? 'completed' as const :
                   parsingBlock.stage === 'structuring' || parsingBlock.stage === 'translating' ? 'processing' as const :
                   'pending' as const,
           progress: 50,
           message: parsingBlock.message,
           sessionId: parsingBlock.id,
+          parseId: parsingBlock.parseId,
+          tempBlockId: parsingBlock.tempBlockId,
+          parsedBlocks: parsingBlock.parsedBlocks,
         };
 
         return (
@@ -1512,15 +1460,49 @@ export default function BlockRenderer({
             sectionId={sectionId || ''}
             blockId={parsingBlock.id}
             sessionId={parsingBlock.id}
+            parseId={parsingBlock.parseId}
             onCompleted={(result) => {
               // 解析完成后的回调,传递给父组件处理
               if (onParseComplete) {
                 onParseComplete(result);
               }
+              
+              // 不再自动打开ParseResultsManager，等待用户点击"管理解析结果"按钮
             }}
             isPersonalOwner={!!userPaperId}
             userPaperId={userPaperId}
             initialProgress={normalizedProgress}
+            onParsePreview={(data) => {
+              console.log('[BlockRenderer] onParsePreview 被调用', {
+                type: data.type,
+                blockId: data.blockId,
+                parseId: data.parseId,
+                parsingBlockId: parsingBlock.id,
+                parsingBlockParseId: parsingBlock.parseId
+              });
+              
+              // 处理ParseProgressBlock中的onParsePreview回调
+              if (data.type === 'preview') {
+                const parseResultsDataToSet = {
+                  parseId: data.parseId || parsingBlock.parseId || '',
+                  tempBlockId: parsingBlock.id,
+                  blockId: data.blockId || parsingBlock.id,
+                };
+                
+                console.log('[BlockRenderer] 设置 parseResultsData', parseResultsDataToSet);
+                console.log('[BlockRenderer] 打开 ParseResultsManager 对话框');
+                
+                // 设置parseResultsData以打开ParseResultsManager对话框
+                setParseResultsData(parseResultsDataToSet);
+                setShowParseResultsManager(true);
+              } else if (data.type === 'cancel') {
+                console.log('[BlockRenderer] 取消解析');
+                // 取消解析，通知父组件
+                if (onParsePreview) {
+                  onParsePreview(data);
+                }
+              }
+            }}
           />
         );
       }
@@ -1647,6 +1629,47 @@ export default function BlockRenderer({
           onClearStyles={() => applyStyle('clear')}
           position={toolbarPos}
           onClose={handleToolbarClose}
+        />
+      )}
+      
+      {/* ParseResultsManager 模态框 */}
+      {showParseResultsManager && parseResultsData && (
+        <ParseResultsManager
+          isOpen={showParseResultsManager}
+          onOpenChange={setShowParseResultsManager}
+          parseId={parseResultsData.parseId}
+          tempBlockId={parseResultsData.tempBlockId}
+          paperId={paperId || ''}
+          userPaperId={userPaperId}
+          sectionId={sectionId || ''}
+          blockId={parseResultsData.blockId}
+          onClose={() => {
+            setShowParseResultsManager(false);
+            setParseResultsData(null);
+          }}
+          onSuccess={() => {
+            // 成功保存后，删除临时解析块
+            if (onParsePreview) {
+              onParsePreview({
+                type: 'cancel',
+                blockId: parseResultsData.blockId,
+              });
+            }
+            setShowParseResultsManager(false);
+            setParseResultsData(null);
+          }}
+          onBlocksAdded={(blocks) => {
+            // 处理新增的blocks，通过onParsePreview通知父组件更新内容
+            if (onParsePreview) {
+              onParsePreview({
+                type: 'preview',
+                blockId: parseResultsData.blockId,
+                parsedBlocks: blocks,
+              });
+            }
+            setShowParseResultsManager(false);
+            setParseResultsData(null);
+          }}
         />
       )}
     </>

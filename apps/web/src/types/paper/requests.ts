@@ -198,14 +198,18 @@ export interface AddBlockFromTextToSectionResult {
 
 // —— 响应：查询loading block解析状态 ——
 export interface CheckBlockParsingStatusResult {
-  status: 'pending' | 'processing' | 'completed' | 'failed';
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'pending_confirmation';
   progress: number;
   message: string;
   error?: string;
   addedBlocks?: import('./content').BlockContent[];
+  parsedBlocks?: import('./content').BlockContent[];
   // 注意：当 addedBlocks 存在时，paper 字段不会返回，避免数据冗余
   // 只有在解析失败或进行中时才可能返回 paper 字段
   paper?: Paper;
+  // 新增:新解析流程的字段
+  parseId?: string;
+  tempBlockId?: string;
 }
 
 // —— 请求：直接向section添加block ——
@@ -325,4 +329,42 @@ export interface AddReferencesToPaperResult {
       message: string;
     }>;
   };
+}
+
+// —— 解析结果相关类型 ——
+export interface ParseResult {
+  parseId: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'consumed';
+  text: string;
+  parsedBlocks: import('./content').BlockContent[];
+  createdAt: string;
+  updatedAt: string;
+  error?: string;
+  tempBlockId?: string;
+}
+
+// —— 请求：确认解析结果 ——
+export interface ConfirmParseResultRequest {
+  selectedBlockIds: string[];
+  removeOthers: boolean;
+}
+
+// —— 响应：确认解析结果 ——
+export interface ConfirmParseResultResult {
+  selectedBlocks: import('./content').BlockContent[];
+  paper: Paper | UserPaper;
+  parseId: string;
+}
+
+// —— 响应：丢弃解析结果 ——
+export interface DiscardParseResultResult {
+  parseId: string;
+  message: string;
+}
+
+// —— 响应：保存所有解析结果 ——
+export interface SaveAllParseResultResult {
+  savedBlocks: import('./content').BlockContent[];
+  paper: Paper | UserPaper;
+  parseId: string;
 }

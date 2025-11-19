@@ -9,7 +9,8 @@ interface ParseTextDialogProps {
   onClose: () => void;
   onConfirm: (text: string) => Promise<{
     success: boolean;
-    addedBlocks?: BlockContent[];
+    parseId?: string;  // 新增：返回parseId
+    tempBlockId?: string;  // 新增：返回临时block ID
     error?: string;
   }>;
   sectionTitle: string;
@@ -63,7 +64,8 @@ export default function ParseTextDialog({
         onClose();
         setText('');
         setError(null);
-        // 成功添加了blocks，无需显示调试信息
+        // 成功启动解析，显示parseId信息
+        console.log('解析已启动，parseId:', result.parseId, 'tempBlockId:', result.tempBlockId);
       } else {
         setError(result.error || '解析失败，请重试');
       }

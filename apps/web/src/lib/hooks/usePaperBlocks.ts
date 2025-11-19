@@ -406,19 +406,10 @@ export function usePaperBlocks(
       isPersonalOwner: boolean,
       onSaveToServer?: () => Promise<void>
     ) => {
-      // 在乐观更新前，先保存被删除的块信息
+      // 在乐观更新前,先保存被删除的块信息
       let deletedBlockInfo: { block: BlockContent; sectionId: string; originalIndex?: number } | null = null;
       
-      // 检查是否是临时ID（前端生成的ID格式）
-      // 前端生成的ID格式：UUID（如 5b75c04c-3b64-42dd-b0bb-c8b90ba9b77c）
-      // 后端生成的ID格式：UUID（如 5b75c04c-3b64-42dd-b0bb-c8b90ba9b77c）
-      // 现在两者都是UUID格式，我们无法通过格式区分，需要通过其他方式判断
-      const isTempId = blockId.includes('-') && blockId.length === 36; // UUID格式
-      
-      
-      let actualBlockId = blockId; // 用于API调用的实际ID
-      
-      // 查找要删除的块信息
+      // 查找要删除的块信息并进行乐观删除
       updateSections(sections => {
         let found = false;
         const walk = (nodes: Section[]): Section[] => {
@@ -430,93 +421,10 @@ export function usePaperBlocks(
               found = true;
               const blockToDelete = section.content[blockIndex];
               
-              // 仅对普通内容块的临时ID做特殊处理；
-              // 解析进度块（parsing/loading）使用后端真实ID，不能按临时ID跳过API
-              if (isTempId && blockToDelete.type !== 'parsing' && blockToDelete.type !== 'loading') {
-                // 如果是临时ID，说明这个block可能还没有正确同步到后端
-                // 或者前端没有正确更新ID
-                
-                // 尝试在section中查找相同类型和内容的block，获取其真实ID
-                // 由于现在前后端都使用UUID格式，我们无法通过前缀区分，需要通过其他方式
-                const sameTypeBlocks = section.content.filter(b =>
-                  b.type === blockToDelete.type && b.id !== blockId
-                );
-                
-                // 如果找到相同类型的block，尝试找到最相似的block
-                if (sameTypeBlocks.length > 0) {
-                  // 简单的内容比较，找到最相似的block
-                  let mostSimilarBlock = null;
-                  let maxSimilarity = 0;
-                   
-                  for (const candidateBlock of sameTypeBlocks) {
-                    // 计算内容相似度（简单实现）
-                    let similarity = 0;
-                    
-                    // 根据block类型比较相应的内容字段
-                    if (blockToDelete.type === 'math' && candidateBlock.type === 'math') {
-                      // MathBlock 比较 latex 字段
-                      if ('latex' in blockToDelete && 'latex' in candidateBlock &&
-                          blockToDelete.latex === candidateBlock.latex) {
-                        similarity += 0.8;
-                      }
-                    } else if (blockToDelete.type === 'figure' && candidateBlock.type === 'figure') {
-                      // FigureBlock 比较 src 字段
-                      if ('src' in blockToDelete && 'src' in candidateBlock &&
-                          blockToDelete.src === candidateBlock.src) {
-                        similarity += 0.8;
-                      }
-                    } else if (blockToDelete.type === 'code' && candidateBlock.type === 'code') {
-                      // CodeBlock 比较 code 字段
-                      if ('code' in blockToDelete && 'code' in candidateBlock &&
-                          blockToDelete.code === candidateBlock.code) {
-                        similarity += 0.8;
-                      }
-                    } else if (blockToDelete.type === 'table' && candidateBlock.type === 'table') {
-                      // TableBlock 比较 rows 字段
-                      if ('rows' in blockToDelete && 'rows' in candidateBlock &&
-                          JSON.stringify(blockToDelete.rows) === JSON.stringify(candidateBlock.rows)) {
-                        similarity += 0.8;
-                      }
-                    } else if ('content' in blockToDelete && 'content' in candidateBlock) {
-                      // 其他有 content 字段的 block
-                      if (JSON.stringify(blockToDelete.content) === JSON.stringify(candidateBlock.content)) {
-                        similarity += 0.8;
-                      }
-                    }
-                    
-                    // 比较类型
-                    if (blockToDelete.type === candidateBlock.type) {
-                      similarity += 0.2;
-                    }
-                    
-                    if (similarity > maxSimilarity) {
-                      maxSimilarity = similarity;
-                      mostSimilarBlock = candidateBlock;
-                    }
-                  }
-                   
-                  // 如果找到相似度高的block，使用其ID进行删除
-                  if (mostSimilarBlock && maxSimilarity > 0.5) {
-                    actualBlockId = mostSimilarBlock.id;
-                  } else {
-                    // 对于临时ID，我们可以直接跳过API调用，只进行本地删除
-                    // 因为这个block可能还没有同步到后端
-                    
-                    // 标记为跳过API调用
-                    actualBlockId = '';
-                  }
-                } else {
-                  // 没有找到相同类型的后端ID，可能是刚创建的block
-                  
-                  // 标记为跳过API调用
-                  actualBlockId = '';
-                }
-              }
-              
               deletedBlockInfo = {
                 block: { ...blockToDelete },
                 sectionId: section.id,
-                originalIndex: blockIndex  // 记录原始位置
+                originalIndex: blockIndex
               };
               
               // 保存到 ref 中以便后续恢复
@@ -528,7 +436,6 @@ export function usePaperBlocks(
                 content: section.content.filter(b => b.id !== blockId)
               };
             }
-           
             
             return section;
           });
@@ -537,45 +444,27 @@ export function usePaperBlocks(
         return { sections: walk(sections), touched: true };
       });
       
-      // 如果actualBlockId为空，说明是临时ID且不需要调用API
-      if (!actualBlockId) {
-        
-        // 显示加载状态
-        toast.loading('正在删除内容块...', { id: 'delete-block' });
-        
-        // 直接返回成功，不调用API
-        setTimeout(() => {
-          toast.success('内容块删除成功', { id: 'delete-block' });
-          // 清除未保存状态
-          window.dispatchEvent(new CustomEvent('blockAddedSuccessfully'));
-        }, 500);
-        
-        return;
-      }
-      
       // 显示加载状态
       toast.loading('正在删除内容块...', { id: 'delete-block' });
       
-      
       try {
+        // 直接使用blockId调用API删除,所有block都使用后端返回的真实ID
         const result = await handleBlockDeleteWithAPI(
           sectionId,
-          actualBlockId,
+          blockId,
           paperId,
           userPaperId,
           isPersonalOwner
         );
-        
 
         if (!result.success) {
-          // 删除失败，恢复被删除的块
+          // 删除失败,恢复被删除的块
           const savedBlockInfo = deletedBlocksRef.current.get(blockId);
           if (savedBlockInfo) {
             updateSections(sections => {
               const walk = (nodes: Section[]): Section[] => {
                 return nodes.map(section => {
                   if (section.id === savedBlockInfo.sectionId) {
-                    // 找到原来的位置并恢复块
                     const updatedContent = [...section.content];
                     
                     // 尝试恢复到原始位置
@@ -584,7 +473,6 @@ export function usePaperBlocks(
                         savedBlockInfo.originalIndex <= updatedContent.length) {
                       updatedContent.splice(savedBlockInfo.originalIndex, 0, savedBlockInfo.block);
                     } else {
-                      // 如果无法恢复到原始位置，添加到末尾
                       updatedContent.push(savedBlockInfo.block);
                     }
                    
@@ -594,7 +482,6 @@ export function usePaperBlocks(
                     } as Section;
                   }
                    
-                   
                   return section as Section;
                 });
               };
@@ -602,51 +489,46 @@ export function usePaperBlocks(
               return { sections: walk(sections), touched: true };
             });
            
-            // 清理保存的块信息
             deletedBlocksRef.current.delete(blockId);
           }
           
-          // 显示更详细的错误信息
           const errorMsg = result.error || '删除内容块失败';
           toast.error('删除失败', {
             id: 'delete-block',
             description: errorMsg.includes('不存在') ?
-              '要删除的内容块不存在，可能已经被删除。请刷新页面后重试。' :
+              '要删除的内容块不存在,可能已经被删除。请刷新页面后重试。' :
               errorMsg
           });
           
-          // 如果是400错误（block不存在），触发页面刷新以重新同步状态
+          // 如果是400错误(block不存在),触发页面刷新以重新同步状态
           if (errorMsg.includes('不存在') || errorMsg.includes('400')) {
             setTimeout(() => {
               window.location.reload();
             }, 2000);
           }
         } else {
-          // 删除成功，清理保存的块信息
+          // 删除成功,清理保存的块信息
           deletedBlocksRef.current.delete(blockId);
           toast.success('内容块删除成功', { id: 'delete-block' });
           
-          // 删除成功后，需要清除未保存状态
+          // 删除成功后,清除未保存状态
           window.dispatchEvent(new CustomEvent('blockAddedSuccessfully'));
         }
       } catch (error) {
-        // 删除失败，恢复被删除的块
+        // 删除失败,恢复被删除的块
         const savedBlockInfo = deletedBlocksRef.current.get(blockId);
         if (savedBlockInfo) {
           updateSections(sections => {
             const walk = (nodes: Section[]): Section[] => {
               return nodes.map(section => {
                 if (section.id === savedBlockInfo.sectionId) {
-                  // 找到原来的位置并恢复块
                   const updatedContent = [...section.content];
                   
-                  // 尝试恢复到原始位置
                   if (savedBlockInfo.originalIndex !== undefined &&
                       savedBlockInfo.originalIndex >= 0 &&
                       savedBlockInfo.originalIndex <= updatedContent.length) {
                     updatedContent.splice(savedBlockInfo.originalIndex, 0, savedBlockInfo.block);
                   } else {
-                    // 如果无法恢复到原始位置，添加到末尾
                     updatedContent.push(savedBlockInfo.block);
                   }
                    
@@ -656,15 +538,13 @@ export function usePaperBlocks(
                   } as Section;
                 }
                   
-                  
-                  return section as Section;
-                });
-              };
+                return section as Section;
+              });
+            };
            
             return { sections: walk(sections), touched: true };
           });
            
-          // 清理保存的块信息
           deletedBlocksRef.current.delete(blockId);
         }
         
@@ -672,7 +552,7 @@ export function usePaperBlocks(
         toast.error('删除失败', {
           id: 'delete-block',
           description: errorMsg.includes('不存在') ?
-            '要删除的内容块不存在，可能已经被删除。请刷新页面后重试。' :
+            '要删除的内容块不存在,可能已经被删除。请刷新页面后重试。' :
             errorMsg
         });
       }
@@ -685,42 +565,28 @@ export function usePaperBlocks(
       blockId: string,
       position: 'above' | 'below'
     ) => {
-      let tempBlockId: string | null = null;
-      let targetSectionId: string | null = null;
-
       // 显示加载状态
       toast.loading('正在插入内容块...', { id: 'insert-block' });
 
-      // 先本地更新UI
+      // 先找到目标section
+      let targetSectionId: string | null = null;
+      
       updateSections(sections => {
-        let touched = false;
-
         const walk = (nodes: Section[]): Section[] =>
           nodes.map(section => {
             const idx = section.content.findIndex(block => block.id === blockId);
-            let nextSection = section;
-
             if (idx !== -1) {
-              const newBlock = createPlaceholderParagraph(lang);
-              tempBlockId = newBlock.id;
               targetSectionId = section.id;
-              const nextContent = [...section.content];
-              const insertIndex = position === 'above' ? idx : idx + 1;
-              nextContent.splice(insertIndex, 0, newBlock);
-              nextSection = { ...section, content: nextContent };
-              touched = true;
             }
-
-
-            return nextSection;
+            return section;
           });
 
-        const nextSections = walk(sections);
-        return { sections: touched ? nextSections : sections, touched };
+        walk(sections);
+        return { sections, touched: false };
       });
 
-      // 然后调用API
-      if (tempBlockId && targetSectionId) {
+      // 如果找到了目标section,先调用API创建block
+      if (targetSectionId) {
         const result = await handleBlockAddWithAPI(
           targetSectionId,
           createPlaceholderParagraph(lang),
@@ -731,16 +597,22 @@ export function usePaperBlocks(
         );
         
         if (result.success && result.blockId) {
-          
-          // 更新本地状态中的临时ID为后端返回的真实ID
+          // API成功后,使用后端返回的真实ID更新UI
           updateSections(sections => {
             const walk = (nodes: Section[]): Section[] =>
               nodes.map(section => {
                 if (section.id === targetSectionId) {
-                  const nextContent = section.content.map(block =>
-                    block.id === tempBlockId ? { ...block, id: result.blockId! } : block
-                  );
-                  return { ...section, content: nextContent };
+                  const idx = section.content.findIndex(block => block.id === blockId);
+                  if (idx !== -1) {
+                    const newBlock = createPlaceholderParagraph(lang);
+                    // 使用后端返回的真实ID
+                    newBlock.id = result.blockId!;
+                    
+                    const nextContent = [...section.content];
+                    const insertIndex = position === 'above' ? idx : idx + 1;
+                    nextContent.splice(insertIndex, 0, newBlock);
+                    return { ...section, content: nextContent };
+                  }
                 }
                 return section;
               });
@@ -752,25 +624,9 @@ export function usePaperBlocks(
           setActiveBlockId(result.blockId);
           toast.success('内容块插入成功', { id: 'insert-block' });
           
-          // 插入成功后，需要清除未保存状态
+          // 插入成功后,清除未保存状态
           window.dispatchEvent(new CustomEvent('blockAddedSuccessfully'));
         } else {
-          // 如果API调用失败，移除本地添加的临时block
-          if (tempBlockId && targetSectionId) {
-            updateSections(sections => {
-              const walk = (nodes: Section[]): Section[] =>
-                nodes.map(section => {
-                  if (section.id === targetSectionId) {
-                    const nextContent = section.content.filter(block => block.id !== tempBlockId);
-                    return { ...section, content: nextContent };
-                  }
-                  return section;
-                });
-
-              return { sections: walk(sections), touched: true };
-            });
-          }
-          
           toast.error('插入内容块失败', {
             id: 'insert-block',
             description: result.error
@@ -825,41 +681,28 @@ export function usePaperBlocks(
 
   const handleBlockAddComponent = useCallback(
     async (blockId: string, type: BlockContent['type']) => {
-      let tempBlockId: string | null = null;
-      let targetSectionId: string | null = null;
-
       // 显示加载状态
       toast.loading('正在添加组件...', { id: 'add-component' });
 
-      // 先本地更新UI
+      // 先找到目标section
+      let targetSectionId: string | null = null;
+      
       updateSections(sections => {
-        let touched = false;
-
         const walk = (nodes: Section[]): Section[] =>
           nodes.map(section => {
             const idx = section.content.findIndex(block => block.id === blockId);
-            let nextSection = section;
-
             if (idx !== -1) {
-              const newBlock = createBlock(type, lang);
-              tempBlockId = newBlock.id;
               targetSectionId = section.id;
-              const nextContent = [...section.content];
-              nextContent.splice(idx + 1, 0, newBlock);
-              nextSection = { ...section, content: nextContent };
-              touched = true;
             }
-
-
-            return nextSection;
+            return section;
           });
 
-        const nextSections = walk(sections);
-        return { sections: touched ? nextSections : sections, touched };
+        walk(sections);
+        return { sections, touched: false };
       });
 
-      // 然后调用API保存
-      if (tempBlockId && targetSectionId) {
+      // 如果找到了目标section,先调用API创建block
+      if (targetSectionId) {
         const result = await handleBlockAddWithAPI(
           targetSectionId,
           createBlock(type, lang),
@@ -870,16 +713,21 @@ export function usePaperBlocks(
         );
         
         if (result.success && result.blockId) {
-          
-          // 更新本地状态中的临时ID为后端返回的真实ID
+          // API成功后,使用后端返回的真实ID更新UI
           updateSections(sections => {
             const walk = (nodes: Section[]): Section[] =>
               nodes.map(section => {
                 if (section.id === targetSectionId) {
-                  const nextContent = section.content.map(block =>
-                    block.id === tempBlockId ? { ...block, id: result.blockId! } : block
-                  );
-                  return { ...section, content: nextContent };
+                  const idx = section.content.findIndex(block => block.id === blockId);
+                  if (idx !== -1) {
+                    const newBlock = createBlock(type, lang);
+                    // 使用后端返回的真实ID
+                    newBlock.id = result.blockId!;
+                    
+                    const nextContent = [...section.content];
+                    nextContent.splice(idx + 1, 0, newBlock);
+                    return { ...section, content: nextContent };
+                  }
                 }
                 return section;
               });
@@ -891,27 +739,9 @@ export function usePaperBlocks(
           setActiveBlockId(result.blockId);
           toast.success('组件添加成功', { id: 'add-component' });
           
-          // 添加成功后，需要清除未保存状态
-          // 由于我们无法直接访问setHasUnsavedChanges，我们需要通过其他方式
-          // 这里我们可以触发一个自定义事件，让页面组件处理
+          // 添加成功后,清除未保存状态
           window.dispatchEvent(new CustomEvent('blockAddedSuccessfully'));
         } else {
-          // 如果API调用失败，回滚本地更新
-          if (targetSectionId && tempBlockId) {
-            updateSections(sections => {
-              const walk = (nodes: Section[]): Section[] =>
-                nodes.map(section => {
-                  if (section.id === targetSectionId) {
-                    const nextContent = section.content.filter(block => block.id !== tempBlockId);
-                    return { ...section, content: nextContent } as Section;
-                  }
-                  return section as Section;
-                });
-
-              const nextSections = walk(sections);
-              return { sections: nextSections, touched: true };
-            });
-          }
           toast.error('添加组件失败', {
             id: 'add-component',
             description: result.error

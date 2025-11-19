@@ -223,12 +223,15 @@ export interface DividerBlock {
 export interface ParsingBlock {
   id: string;
   type: 'parsing';
-  stage: 'structuring' | 'translating' | 'failed' | 'pending_confirmation';
+  stage: 'structuring' | 'translating' | 'failed' | 'pending_confirmation' | 'completed';
   message: string;
   createdAt: string;
   // 新增:解析完成待确认时的字段
   parsedBlocks?: BlockContent[];
   sessionId?: string;
+  // 新增:新解析流程的字段
+  parseId?: string;
+  tempBlockId?: string;
 }
 
 export type BlockContent =

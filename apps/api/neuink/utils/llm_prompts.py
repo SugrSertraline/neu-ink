@@ -42,7 +42,7 @@ TEXT_TO_BLOCKS_SYSTEM_PROMPT = """你是一个学术文本结构化助手，负�
 1. 顶层必须是 JSON 数组（list），不能包含说明文字或其它字段。
 2. 每个 block 至少包含字段：type。
 3. 常见类型示例：
-   - heading：章节标题，使用 level 表示级别（1-6）
+   - heading：章节标题，使用 level 表示级别（2-6）
    - paragraph：普通段落
    - quote：引用
    - math：行间公式，使用 latex 字段
@@ -80,13 +80,15 @@ TEXT_TO_BLOCKS_USER_PROMPT_TEMPLATE = """你是一个专业的学术论文Markdo
 - 以#开头的行视为Markdown标题
 - 1.为一级标题 1.1为二级标题 1.1.1为三级标题，需要设置level属性，例如1.1.1设置level为3，最多支持到六级
 **level判定优先级**：如果一行标题存在数字结构前缀，必须优先根据数字结构决定 level，而不是根据 # 的数量
+**重要**：必须保留原始标题中的数字编号（如1.3.1），将其作为标题内容的一部分，不要删除或替换它！将整个标题文本（包括编号）完整地保存在content中
 - 以此类推至六级标题
 - 输出格式示例：
+假设输入为 # 1.1 Introduction
 {
 "type": "heading",
 "level": 2,
 "content": {
-    "en": [{"type": "text", "content": "Introduction"}]
+    "en": [{"type": "text", "content": "1.1 Introduction"}]
 }
 }
 
@@ -103,7 +105,7 @@ TEXT_TO_BLOCKS_USER_PROMPT_TEMPLATE = """你是一个专业的学术论文Markdo
 
 ### 行间公式 (math)
 - 独立成行的 $$...$$ 或 \\[...\\] 格式
-- **重要**：去除\\tag{...}等编号，只保留公式本体
+- **重要**：去除\\tag{...}等公式的编号，只保留公式本体
 - 空格规范化（必须执行）
 - 输出格式示例：在写入 latex 字段之前，对公式字符串进行空格清理，移出不必要的空格,让显示效果更好
 - 注意：请你自行判断公式是否过长！！如果过长，请你在合适的地方增加换行！！！
@@ -277,7 +279,7 @@ Tab. 3: Results of ablation study
 ## 完整示例
 
 输入Markdown：
-## Introduction
+# 1.1.1 Detail
 
 Machine learning has revolutionized many fields. The basic equation $y = wx + b$ represents a linear model.
 
@@ -298,9 +300,9 @@ Key advantages include:
 [
 {
     "type": "heading",
-    "level": 2,
+    "level": 3,
     "content": {
-    "en": [{"type": "text", "content": "Introduction"}]
+    "en": [{"type": "text", "content": "1.1.1 Detail"}]
     }
 },
 {

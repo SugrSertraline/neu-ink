@@ -36,7 +36,12 @@ import {
   ParseReferencesRequest,
   ParseReferencesResult,
   AddReferencesToPaperRequest,
-  AddReferencesToPaperResult
+  AddReferencesToPaperResult,
+  ParseResult,
+  ConfirmParseResultRequest,
+  ConfirmParseResultResult,
+  DiscardParseResultResult,
+  SaveAllParseResultResult
 } from '@/types/paper/index';
 import { apiClient, callAndNormalize } from '../http';
 import type { UnifiedResult } from '@/types/api';
@@ -314,6 +319,55 @@ export const userPaperService = {
   ): Promise<UnifiedResult<{ inLibrary: boolean; userPaperId: string | null }>> {
     return callAndNormalize<{ inLibrary: boolean; userPaperId: string | null }>(
       apiClient.get(`/user/papers/check-in-library?paperId=${paperId}`)
+    );
+  },
+
+  /**
+   * 获取解析结果
+   */
+  getParseResult(
+    paperId: string,
+    parseId: string
+  ): Promise<UnifiedResult<ParseResult>> {
+    return callAndNormalize<ParseResult>(
+      apiClient.get(`/user/papers/${paperId}/parse-results/${parseId}`)
+    );
+  },
+
+  /**
+   * 确认解析结果
+   */
+  confirmParseResult(
+    paperId: string,
+    parseId: string,
+    request: ConfirmParseResultRequest
+  ): Promise<UnifiedResult<ConfirmParseResultResult>> {
+    return callAndNormalize<ConfirmParseResultResult>(
+      apiClient.post(`/user/papers/${paperId}/parse-results/${parseId}/confirm`, request)
+    );
+  },
+
+  /**
+   * 丢弃解析结果
+   */
+  discardParseResult(
+    paperId: string,
+    parseId: string
+  ): Promise<UnifiedResult<DiscardParseResultResult>> {
+    return callAndNormalize<DiscardParseResultResult>(
+      apiClient.post(`/user/papers/${paperId}/parse-results/${parseId}/discard`, {})
+    );
+  },
+
+  /**
+   * 保存所有解析结果
+   */
+  saveAllParseResult(
+    paperId: string,
+    parseId: string
+  ): Promise<UnifiedResult<SaveAllParseResultResult>> {
+    return callAndNormalize<SaveAllParseResultResult>(
+      apiClient.post(`/user/papers/${paperId}/parse-results/${parseId}/save-all`, {})
     );
   },
 
@@ -641,6 +695,55 @@ export const adminPaperService = {
   ): Promise<UnifiedResult<CheckBlockParsingStatusResult>> {
     return callAndNormalize<CheckBlockParsingStatusResult>(
       apiClient.get(`/admin/papers/${paperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
+    );
+  },
+
+  /**
+   * 获取管理员论文解析结果
+   */
+  getParseResult(
+    paperId: string,
+    parseId: string
+  ): Promise<UnifiedResult<ParseResult>> {
+    return callAndNormalize<ParseResult>(
+      apiClient.get(`/admin/papers/${paperId}/parse-results/${parseId}`)
+    );
+  },
+
+  /**
+   * 确认管理员论文解析结果
+   */
+  confirmParseResult(
+    paperId: string,
+    parseId: string,
+    request: ConfirmParseResultRequest
+  ): Promise<UnifiedResult<ConfirmParseResultResult>> {
+    return callAndNormalize<ConfirmParseResultResult>(
+      apiClient.post(`/admin/papers/${paperId}/parse-results/${parseId}/confirm`, request)
+    );
+  },
+
+  /**
+   * 丢弃管理员论文解析结果
+   */
+  discardParseResult(
+    paperId: string,
+    parseId: string
+  ): Promise<UnifiedResult<DiscardParseResultResult>> {
+    return callAndNormalize<DiscardParseResultResult>(
+      apiClient.post(`/admin/papers/${paperId}/parse-results/${parseId}/discard`, {})
+    );
+  },
+
+  /**
+   * 保存所有管理员论文解析结果
+   */
+  saveAllParseResult(
+    paperId: string,
+    parseId: string
+  ): Promise<UnifiedResult<SaveAllParseResultResult>> {
+    return callAndNormalize<SaveAllParseResultResult>(
+      apiClient.post(`/admin/papers/${paperId}/parse-results/${parseId}/save-all`, {})
     );
   },
 

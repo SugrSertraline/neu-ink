@@ -16,6 +16,7 @@ import BlockRenderer from './BlockRenderer';
 import BlockEditor from './editor/BlockEditor';
 import InlineTextParserEditor from './editor/InlineTextParserEditor';
 import ParsedBlocksConfirmDialog from './ParsedBlocksConfirmDialog';
+import ParseResultsManager from './ParseResultsManager';
 import {
   SectionContextMenu,
   BlockContextMenu,
@@ -485,6 +486,7 @@ export default function PaperContent({
     blockId: string;
     parsedBlocks?: BlockContent[];
     sessionId?: string;
+    parseId?: string;
   }) => {
     if (data.type === 'cancel') {
       // 用户取消,删除 parsing block
@@ -494,7 +496,114 @@ export default function PaperContent({
       return;
     }
     
-    // 打开确认对话框
+    // 如果有parsedBlocks，直接添加到section中（来自ParseResultsManager的确认）
+    if (data.parsedBlocks && data.parsedBlocks.length > 0) {
+      // 找到对应的 section - 通过 parseId 或 blockId 查找
+      const targetSection = sections.find(s =>
+        s.content?.some(b => {
+          // 检查是否是 parsing block 且有对应的 parseId
+          if (b.type === 'parsing' && data.parseId && b.parseId === data.parseId) {
+            return true;
+          }
+          // 或者直接匹配 blockId（兼容旧逻辑）
+          return b.id === data.blockId;
+        })
+      );
+      
+      if (targetSection) {
+        // 直接添加blocks到section中，不显示确认对话框
+        updateSections?.((sections: Section[]) => {
+          let touched = false;
+          
+          const updatedSections = sections.map((section: Section) => {
+            if (section.id !== targetSection.id) return section;
+           
+            touched = true;
+            let currentBlocks = section.content || [];
+           
+            // 查找并删除 parsing block - 使用 parseId 或 blockId
+            currentBlocks = currentBlocks.filter((block: BlockContent) => {
+              // 如果是 parsing block 且有对应的 parseId，删除它
+              if (block.type === 'parsing' && data.parseId && block.parseId === data.parseId) {
+                return false;
+              }
+              // 或者直接匹配 blockId（兼容旧逻辑）
+              if (block.id === data.blockId) {
+                return false;
+              }
+              return true;
+            });
+           
+            // 添加新的blocks
+            const newBlocks = [...currentBlocks, ...data.parsedBlocks!];
+           
+            return {
+              ...section,
+              content: newBlocks
+            };
+          });
+          
+          return { sections: touched ? updatedSections : sections, touched };
+        });
+        
+        toast.success(`成功添加了 ${data.parsedBlocks.length} 个段落`);
+        
+        // 保存到服务器
+        if (onSaveToServer) {
+          onSaveToServer();
+        }
+      } else {
+        // 如果找不到对应的section，提示用户
+        toast.error('找不到对应的解析块，请刷新页面后重试');
+      }
+      return;
+    }
+    
+    // 如果没有parsedBlocks但有sessionId或parseId，打开解析结果管理器
+    if (!data.parsedBlocks && (data.sessionId || data.parseId)) {
+      // 找到对应的 parsing block
+      const targetSection = sections.find(s =>
+        s.content?.some(b => b.id === data.blockId)
+      );
+      
+      if (targetSection) {
+        const parsingBlock = targetSection.content?.find(b => b.id === data.blockId);
+        
+        if (parsingBlock && parsingBlock.type === 'parsing') {
+          // 更新 parsing block，显示 ParseResultsManager
+          updateSections?.((sections: Section[]) => {
+            let touched = false;
+            
+            const updatedSections = sections.map((section: Section) => {
+              if (section.id !== targetSection.id) return section;
+              
+              touched = true;
+              const currentBlocks = [...(section.content || [])];
+              const blockIndex = currentBlocks.findIndex(b => b.id === data.blockId);
+              
+              if (blockIndex >= 0) {
+                // 更新 parsing block，添加 parseId 和 sessionId
+                currentBlocks[blockIndex] = {
+                  ...currentBlocks[blockIndex],
+                  parseId: data.parseId,
+                  sessionId: data.sessionId,
+                } as BlockContent;
+              }
+              
+              return {
+                ...section,
+                content: currentBlocks
+              };
+            });
+            
+            return { sections: touched ? updatedSections : sections, touched };
+          });
+        }
+      }
+      return;
+    }
+    
+    // 打开确认对话框（原始流程）
     if (data.parsedBlocks) {
       // 找到对应的 section
       const targetSection = sections.find(s =>
@@ -511,7 +620,7 @@ export default function PaperContent({
         setConfirmDialogOpen(true);
       }
     }
-  }, [sections, onBlockDelete]);
+  }, [sections, onBlockDelete, updateSections, onSaveToServer]);
   
   // 处理用户确认选择的blocks
   const handleConfirmParsedBlocks = useCallback(async (selectedBlockIds: string[]) => {
@@ -593,9 +702,56 @@ export default function PaperContent({
       return;
     }
     
-    // 处理解析完成的情况 - 现在需要二次确认
+    // 处理解析完成的情况 - 现在使用ParseResultsManager
     if (result.status === 'completed') {
-      // 优先检查是否有解析结果（addedBlocks 或 blocks），如果有则走确认流程
+      // 检查是否有parseId，如果有则使用新的解析流程
+      if (result.parseId) {
+        // 不再显示toast和自动打开对话框
+        
+        // 更新parsing block为已完成状态，包含parseId
+        updateSections?.((sections: Section[]) => {
+          let touched = false;
+          
+          const updatedSections = sections.map((section: Section) => {
+            const parsingBlockIndex = section.content?.findIndex((block: BlockContent) =>
+              block.id === result.blockId || (block.type === 'parsing' && block.id === result.tempBlockId)
+            );
+            
+            if (parsingBlockIndex !== undefined && parsingBlockIndex >= 0) {
+              touched = true;
+              const currentBlocks = [...(section.content || [])];
+              const parsingBlock = currentBlocks[parsingBlockIndex];
+              
+              // 确保这是一个 parsing block
+              if (parsingBlock.type === 'parsing') {
+                // 更新 parsing block 为已完成状态，包含parseId
+                const updatedBlock: BlockContent = {
+                  ...parsingBlock,
+                  stage: 'completed' as const,
+                  message: '解析完成，请查看结果并选择要保存的内容',
+                  parseId: result.parseId,
+                  tempBlockId: result.tempBlockId,
+                };
+                
+                currentBlocks[parsingBlockIndex] = updatedBlock;
+              }
+              
+              return {
+                ...section,
+                content: currentBlocks
+              };
+            }
+            
+            return section;
+          });
+          
+          return { sections: touched ? updatedSections : sections, touched };
+        });
+        
+        return;
+      }
+      
+      // 旧的处理逻辑：检查是否有解析结果（addedBlocks 或 blocks），如果有则走确认流程
       const parsedBlocks = result.addedBlocks || result.blocks;
       
       if (parsedBlocks && parsedBlocks.length > 0) {

@@ -54,8 +54,15 @@ class PaperContentService:
         """
         llm_utils = get_llm_utils()
 
-        # 构建提示词
-        user_prompt = f"{TEXT_TO_BLOCKS_USER_PROMPT_TEMPLATE}\n\n章节上下文: {section_context or '无'}\n\n{text[:40000]}"
+        # 构建提示词 - 强调要求生成中英文内容
+        user_prompt = f"""{TEXT_TO_BLOCKS_USER_PROMPT_TEMPLATE}
+
+章节上下文: {section_context or '无'}
+
+待解析文本:
+{text[:40000]}
+
+重要提醒：请务必为每个block同时生成中文(zh)和英文(en)内容！如果原文是英文，请翻译为中文；如果原文是中文，请翻译为英文。不要让zh字段为空数组！"""
 
         messages = [
             {"role": "system", "content": TEXT_TO_BLOCKS_SYSTEM_PROMPT},
@@ -896,12 +903,13 @@ class PaperContentService:
         is_user_paper: bool = False,
     ) -> Dict[str, Any]:
         """
-        使用大模型解析文本并将生成的block添加到指定section中（异步后台任务版本）
+        使用大模型解析文本并将生成的block添加到指定section中（基于ParseBlocks临时表版本）
         
         工作流程：
-        1. 立即创建临时进度block并插入到section
+        1. 创建ParseBlocks记录和临时进度block
         2. 启动后台任务进行解析
-        3. 返回临时block ID，前端通过轮询检测block是否被替换
+        3. 解析完成后将结果存储在ParseBlocks表中，不直接插入section
+        4. 返回parseId，前端通过轮询检测解析状态
         """
         try:
             # 检查论文是否存在及权限
@@ -920,6 +928,7 @@ class PaperContentService:
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "管理员只能操作公开的论文")
 
             # 修改权限检查逻辑：如果是个人论文库中的操作，允许用户修改
+            # 只有在非个人论文库操作且非管理员的情况下，才检查创建者
             if not is_user_paper and not is_admin and paper.get("createdBy") != user_id:
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
@@ -937,39 +946,47 @@ class PaperContentService:
             if target_section.get("paperId") != paper_id:
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此章节")
 
-            # 生成临时进度block ID
-            temp_block_id = str(uuid.uuid4())
+            # 生成临时进度block ID和解析记录ID
+            temp_block_id = "temp_" + generate_id()
+            parse_id = "pb_" + generate_id()
             
             # 确保section有content字段
             if "content" not in target_section:
                 target_section["content"] = []
             
-            # 确定插入位置
-            current_blocks = target_section["content"]
-            insert_index = len(current_blocks)
+            # 计算插入位置
+            insert_index = self._calculate_insert_index(target_section, after_block_id)
             
-            if after_block_id:
-                for i, block in enumerate(current_blocks):
-                    if block.get("id") == after_block_id:
-                        insert_index = i + 1
-                        break
-            
-            # 创建临时进度block
+            # 插入临时parsing block（注意：不再预先插入parsed blocks）
             temp_block = {
                 "id": temp_block_id,
                 "type": "parsing",
                 "stage": "structuring",
                 "message": "正在解析文本...",
-                "createdAt": get_current_time().isoformat()
+                "createdAt": get_current_time().isoformat(),
+                "parseId": parse_id  # 新增：方便前端拿
             }
             
-            # 插入临时block
-            current_blocks.insert(insert_index, temp_block)
-            
-            # 更新section
-            if not self.section_model.update_direct(section_id, {"$set": {"content": current_blocks}}):
-                return self._wrap_error("添加临时进度块失败")
-            
+            content = target_section["content"]
+            content.insert(insert_index, temp_block)
+            self.section_model.update_direct(section_id, {"$set": {"content": content}})
+
+            # 在ParseBlocks表中创建记录
+            from ..models.parseBlocks import get_parse_blocks_model
+            parse_model = get_parse_blocks_model()
+            parse_model.create_record(
+                parse_id=parse_id,
+                user_id=user_id,
+                paper_id=paper_id,
+                section_id=section_id,
+                text=text,
+                after_block_id=after_block_id,
+                insert_index=insert_index,
+                temp_block_id=temp_block_id,
+                is_admin=is_admin,
+                user_paper_id=paper_id if is_user_paper else None
+            )
+
             # 启动后台任务进行解析
             from ..utils.background_tasks import get_task_manager
             task_manager = get_task_manager()
@@ -989,7 +1006,7 @@ class PaperContentService:
                     
                     with app_context:
                         # 阶段1: 解析文本结构
-                        logger.info(f"开始解析文本结构 - temp_block: {temp_block_id}")
+                        logger.info(f"开始解析文本结构 - parse_id: {parse_id}")
                         
                         # 更新进度block状态
                         self._update_temp_block_stage(section_id, temp_block_id, "structuring", "正在解析文本...")
@@ -1006,18 +1023,26 @@ class PaperContentService:
                         
                         logger.info(f"解析完成 - 生成 {len(parsed_blocks)} 个blocks")
                         
-                        # 完成：替换临时block
-                        self._replace_temp_block_with_parsed(
-                            section_id, temp_block_id, insert_index, parsed_blocks
+                        # 写入ParseBlocks表
+                        parse_model.set_completed(parse_id, parsed_blocks)
+                        
+                        # 更新临时block状态（但不要插入parsed_blocks到section）
+                        self._update_temp_block_stage(
+                            section_id, temp_block_id, "completed",
+                            "解析完成，请查看结果并选择要保存的内容",
+                            extra_fields={"parseId": parse_id}
                         )
                         
-                        logger.info(f"后台解析任务完成 - temp_block: {temp_block_id}")
+                        logger.info(f"后台解析任务完成 - parse_id: {parse_id}")
                         
                 except Exception as e:
                     logger.error(f"后台解析任务失败: {e}")
+                    # 更新ParseBlocks记录为失败状态
+                    parse_model.set_failed(parse_id, str(e))
                     # 更新临时block为错误状态
                     self._update_temp_block_stage(
-                        section_id, temp_block_id, "failed", f"解析失败: {str(e)}"
+                        section_id, temp_block_id, "failed",
+                        f"解析失败: {str(e)}"
                     )
             
             # 提交后台任务
@@ -1026,13 +1051,13 @@ class PaperContentService:
                 func=background_parse_task
             )
             
-            # 立即返回，包含临时block信息
+            # 立即返回，包含parseId信息
             return self._wrap_success(
                 "已开始解析文本，请通过轮询检查进度",
                 {
                     "tempBlockId": temp_block_id,
                     "sectionId": section_id,
-                    "message": "后台任务已启动，前端可以通过轮询section数据检测解析进度"
+                    "parseId": parse_id  # 新增：这一次解析的ParseBlocks ID
                 }
             )
 
@@ -1041,7 +1066,7 @@ class PaperContentService:
             error_details = f"从文本添加block到section失败: {exc}\n详细错误: {traceback.format_exc()}"
             return self._wrap_error(error_details)
     
-    def _update_temp_block_stage(self, section_id: str, temp_block_id: str, stage: str, message: str):
+    def _update_temp_block_stage(self, section_id: str, temp_block_id: str, stage: str, message: str, extra_fields: Optional[Dict[str, Any]] = None):
         """更新临时进度block的阶段"""
         try:
             section = self.section_model.find_by_id(section_id)
@@ -1053,13 +1078,46 @@ class PaperContentService:
                 if block.get("id") == temp_block_id:
                     content[i]["stage"] = stage
                     content[i]["message"] = message
+                    
+                    # 添加额外字段，如parseId
+                    if extra_fields:
+                        for key, value in extra_fields.items():
+                            content[i][key] = value
+                    
                     break
             
             self.section_model.update_direct(section_id, {"$set": {"content": content}})
         except Exception as e:
             logger.error(f"更新临时block阶段失败: {e}")
  
+         
+    def _calculate_insert_index(self, section: Dict[str, Any], after_block_id: Optional[str]) -> int:
+        """计算插入位置"""
+        content = section.get("content", []) or []
+        if not after_block_id:
+            return len(content)
         
+        for i, block in enumerate(content):
+            if block.get("id") == after_block_id:
+                return i + 1
+        
+        return len(content)
+
+    def _remove_temp_block(self, section_id: str, temp_block_id: str) -> bool:
+        """从section中移除临时parsing block"""
+        try:
+            section = self.section_model.find_by_id(section_id)
+            if not section:
+                return False
+            
+            content = section.get("content", []) or []
+            new_content = [b for b in content if b.get("id") != temp_block_id]
+            
+            return self.section_model.update_direct(section_id, {"$set": {"content": new_content}})
+        except Exception as e:
+            logger.error(f"移除临时block失败: {e}")
+            return False
+
     def _replace_temp_block_with_parsed(
         self,
         section_id: str,

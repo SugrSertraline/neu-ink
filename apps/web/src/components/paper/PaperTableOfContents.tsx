@@ -122,10 +122,10 @@ function traverseSections(
     const sectionNumber = generateSectionNumber(currentPath);
     const sectionTitle = section.title || section.titleZh || '未命名章节';
     
-    // 添加章节项
+    // 添加章节项 - 直接使用原始标题，不添加系统计算的编号
     const sectionItem: TOCItem = {
       id: section.id,
-      title: `${sectionNumber} ${sectionTitle}`,
+      title: sectionTitle, // 直接使用原始标题，包含原始编号（如1.3.1）
       level: currentPath.length,
       type: 'section',
       icon: <BookOpen className="w-3 h-3" />,

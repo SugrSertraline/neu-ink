@@ -75,7 +75,7 @@ def create_app():
     else:
         # 生产环境：从环境变量读取CORS配置
         cors_origins = os.getenv("CORS_ORIGINS",
-            "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3002,http://localhost:8000,http://127.0.0.1:8000")
+            "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://localhost:3002,http://127.0.0.1:3002,http://localhost:8000,http://127.0.0.1:8000,http://localhost:8080,http://127.0.0.1:8080")
         
         # 将逗号分隔的字符串转换为列表
         origins_list = [origin.strip() for origin in cors_origins.split(",") if origin.strip()]
