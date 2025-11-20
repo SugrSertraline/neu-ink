@@ -16,11 +16,7 @@ import { authService, isSuccess } from '@/lib/services/auth';
 import { AuthAwareResult, shouldResetAuth } from '@/lib/http/normalize';
 import type { User, LoginResponse } from '@/types/user';
 import type { UnifiedResult } from '@/types/api';
-<<<<<<< HEAD
-import { ResponseCode } from '@/types/api';
-=======
 import { ResponseCode, BusinessCode } from '@/types/api';
->>>>>>> origin/main
 import { apiClient } from '@/lib/http/client';
 
 interface LoginResult {
@@ -124,9 +120,6 @@ function AuthProviderContent({ children }: { children: React.ReactNode }) {
           clearRedirectGuard();
           return { ok: true };
         }
-<<<<<<< HEAD
-        // 对于400等错误，normalize.ts已经处理了toast，这里只需要返回结果
-=======
         // 对于401等错误，normalize.ts已经处理了部分逻辑，这里只需要返回结果
         // 特别处理登录失败的情况
         if (uni.topCode === ResponseCode.UNAUTHORIZED) {
@@ -138,7 +131,6 @@ function AuthProviderContent({ children }: { children: React.ReactNode }) {
           return { ok: false, message: '用户名或密码错误', businessCode: BusinessCode.LOGIN_FAILED };
         }
         // 对于其他错误，使用业务错误信息
->>>>>>> origin/main
         return { ok: false, message: uni.bizMessage || '登录失败', businessCode: uni.bizCode };
       } catch (err: any) {
         // 处理网络错误或其他异常
@@ -176,13 +168,6 @@ function AuthProviderContent({ children }: { children: React.ReactNode }) {
         redirectToLogin();
       }
     } catch (error) {
-<<<<<<< HEAD
-      const err = error as { authReset?: boolean; message?: string; status?: number };
-      console.error('Refresh user error:', err);
-      
-      // 处理401错误或明确的认证错误
-      if (err?.authReset || err?.status === 401) {
-=======
       const err = error as { authReset?: boolean; message?: string; status?: number; isAuthError?: boolean };
       console.error('Refresh user error:', err);
       
@@ -201,7 +186,6 @@ function AuthProviderContent({ children }: { children: React.ReactNode }) {
         }
         
         // 刷新失败，清除token并重定向
->>>>>>> origin/main
         authService.clearToken();
         setUser(null);
         
@@ -214,12 +198,9 @@ function AuthProviderContent({ children }: { children: React.ReactNode }) {
       } else if (!isPublicPath(pathname)) {
         // 静默失败，不打断用户体验
       }
-<<<<<<< HEAD
-=======
       
       // 确保不会抛出未捕获的异常
       return;
->>>>>>> origin/main
     }
   }, [clearRedirectGuard, needsRedirect, redirectToLogin, pathname]);
 
@@ -250,12 +231,9 @@ function AuthProviderContent({ children }: { children: React.ReactNode }) {
     const init = async () => {
       try {
         await refreshUser();
-<<<<<<< HEAD
-=======
       } catch (error) {
         // 确保即使 refreshUser 抛出错误，也能正确处理
         console.error('Auth initialization error:', error);
->>>>>>> origin/main
       } finally {
         setIsLoading(false);
       }

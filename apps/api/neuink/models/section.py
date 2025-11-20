@@ -55,9 +55,6 @@ class SectionModel:
         """
         根据论文ID查找所有章节
         """
-<<<<<<< HEAD
-        return list(self.collection.find({"paperId": paper_id}, {"_id": 0}).sort("createdAt", 1))
-=======
         print(f"[DEBUG] 查找论文章节: paperId={paper_id}")
         try:
             sections = list(self.collection.find({"paperId": paper_id}, {"_id": 0}).sort("createdAt", 1))
@@ -66,7 +63,6 @@ class SectionModel:
         except Exception as e:
             print(f"[DEBUG] 查找章节失败: {e}", exc_info=True)
             raise e
->>>>>>> origin/main
 
     def update(self, section_id: str, update_data: Dict[str, Any]) -> bool:
         """

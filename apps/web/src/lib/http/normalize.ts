@@ -24,16 +24,6 @@ export function normalize<T = any>(res: ApiResponse<T | BusinessResponse<T>>): U
   const topCode = (res.code ?? ResponseCode.SUCCESS) as number;
   const topMessage = res.message ?? '';
 
-<<<<<<< HEAD
-  // 检查是否是业务响应格式：{code: 0, message: "...", data: {...}}
-  if (isBusinessEnvelope<T>(res.data)) {
-    return {
-      topCode,
-      topMessage,
-      bizCode: res.data.code,
-      bizMessage: res.data.message,
-      data: res.data.data,
-=======
   // 处理双重嵌套的业务响应格式
   // 由于 client.ts 已经包装了一层，所以 res.data 可能是 {code: 200, data: {code: 0, data: {...}, message: "..."}}
   let actualData = res.data;
@@ -55,7 +45,6 @@ export function normalize<T = any>(res: ApiResponse<T | BusinessResponse<T>>): U
       bizCode: actualData.code,
       bizMessage: actualData.message,
       data: businessData,
->>>>>>> origin/main
       raw: res as ApiResponse<any>,
     };
   }
@@ -65,11 +54,7 @@ export function normalize<T = any>(res: ApiResponse<T | BusinessResponse<T>>): U
     topMessage,
     bizCode: BusinessCode.SUCCESS,
     bizMessage: '操作成功',
-<<<<<<< HEAD
-    data: res.data as T,
-=======
     data: actualData as T,
->>>>>>> origin/main
     raw: res as ApiResponse<any>,
   };
 }
@@ -132,16 +117,8 @@ export function shouldResetAuth(topCode: number, bizCode?: number, errMsg?: stri
 
 export function markAuthReset(target: unknown) {
   try {
-<<<<<<< HEAD
-    // 使用 authService 而不是直接使用 apiClient
-    // 这里需要动态导入以避免循环依赖
-    import('../services/auth').then(({ authService }) => {
-      authService.clearToken();
-    });
-=======
     // 直接使用 apiClient.clearToken() 避免循环依赖
     apiClient.clearToken();
->>>>>>> origin/main
   } catch {
     /* noop */
   }
@@ -166,14 +143,6 @@ export async function callAndNormalize<T>(
     const msg = err?.message || String(err);
     
     // 特殊处理401错误 - 认证失败
-<<<<<<< HEAD
-    if (err && typeof err === 'object' && 'status' in err && err.status === ResponseCode.UNAUTHORIZED) {
-      // 显示登录过期的提示
-      toast.error('登录已过期', {
-        description: '您的登录状态已失效，请重新登录',
-        duration: 5000
-      });
-=======
     if (err && typeof err === 'object' && (
       ('status' in err && err.status === ResponseCode.UNAUTHORIZED) ||
       ('authReset' in err && err.authReset === true)
@@ -191,20 +160,10 @@ export async function callAndNormalize<T>(
           duration: 5000
         });
       }
->>>>>>> origin/main
       
       // 标记需要重置认证状态
       markAuthReset(err);
       
-<<<<<<< HEAD
-      // 返回统一的结果对象，避免页面崩溃
-      return {
-        success: false,
-        topCode: err.status,
-        topMessage: '登录已过期',
-        bizCode: BusinessCode.TOKEN_EXPIRED,
-        bizMessage: '您的登录状态已失效，请重新登录',
-=======
       // 尝试从错误响应中提取业务错误信息
       let bizCode = BusinessCode.TOKEN_EXPIRED;
       let bizMessage = isLoginError ? '用户名或密码错误' : '您的登录状态已失效，请重新登录';
@@ -229,7 +188,6 @@ export async function callAndNormalize<T>(
         topMessage: isLoginError ? '登录失败' : '登录已过期',
         bizCode,
         bizMessage,
->>>>>>> origin/main
         data: null as T,
         raw: err,
         authReset: true,
@@ -248,8 +206,6 @@ export async function callAndNormalize<T>(
             errorMessage = getErrorMessage(err.payload.data.code, ERROR_MESSAGES.BAD_REQUEST);
           } else if (err.payload.message) {
             errorMessage = err.payload.message;
-<<<<<<< HEAD
-=======
           } else if (err.payload.bizMessage) {
             errorMessage = err.payload.bizMessage;
           }
@@ -261,7 +217,6 @@ export async function callAndNormalize<T>(
             } else if (err.payload.data.bizMessage) {
               errorMessage = err.payload.data.bizMessage;
             }
->>>>>>> origin/main
           }
         }
         
@@ -288,10 +243,6 @@ export async function callAndNormalize<T>(
         if (err.payload && typeof err.payload === 'object') {
           if (err.payload.message) {
             errorMessage = err.payload.message;
-<<<<<<< HEAD
-          } else if (err.payload.data && typeof err.payload.data === 'object' && 'message' in err.payload.data) {
-            errorMessage = err.payload.data.message;
-=======
           } else if (err.payload.bizMessage) {
             errorMessage = err.payload.bizMessage;
           } else if (err.payload.data && typeof err.payload.data === 'object') {
@@ -300,7 +251,6 @@ export async function callAndNormalize<T>(
             } else if (err.payload.data.bizMessage) {
               errorMessage = err.payload.data.bizMessage;
             }
->>>>>>> origin/main
           }
         }
         
@@ -320,12 +270,6 @@ export async function callAndNormalize<T>(
       }
     }
     
-<<<<<<< HEAD
-    if (shouldResetAuth(ResponseCode.UNAUTHORIZED, undefined, msg)) {
-      markAuthReset(err);
-    }
-    throw err;
-=======
     // 对于其他未处理的错误，也返回统一的结果对象，避免页面崩溃
     console.error('Unhandled API error:', err);
     toast.error('请求失败', { description: msg });
@@ -339,7 +283,6 @@ export async function callAndNormalize<T>(
       data: null as T,
       raw: err,
     } as AuthAwareResult<T>;
->>>>>>> origin/main
   }
 }
 

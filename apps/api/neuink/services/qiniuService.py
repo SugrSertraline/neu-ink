@@ -323,13 +323,28 @@ class QiniuService:
             return False, f"文件大小超过限制，最大允许 {max_size // (1024*1024)}MB"
         
         # 检查文件类型
-        mime_limit = QiniuConfig.UPLOAD_POLICY.get('mimeLimit', 'image/*')
+        mime_limit = QiniuConfig.UPLOAD_POLICY.get('mimeLimit', 'image/*;application/pdf;text/*')
         content_type = self._get_content_type(file_extension)
         
-        # 简单的MIME类型检查
-        if 'image/*' in mime_limit and not content_type.startswith('image/'):
-            if 'application/pdf' in mime_limit and content_type != 'application/pdf':
-                return False, f"不支持的文件类型: {content_type}"
+        # 解析允许的MIME类型
+        allowed_types = [t.strip() for t in mime_limit.split(';')]
+        
+        # 检查文件类型是否在允许列表中
+        is_allowed = False
+        for allowed_type in allowed_types:
+            if allowed_type.endswith('/*'):
+                # 通配符匹配
+                prefix = allowed_type[:-1]
+                if content_type.startswith(prefix):
+                    is_allowed = True
+                    break
+            elif allowed_type == content_type:
+                # 精确匹配
+                is_allowed = True
+                break
+        
+        if not is_allowed:
+            return False, f"不支持的文件类型: {content_type}，允许的类型: {mime_limit}"
         
         return True, ""
 

@@ -145,7 +145,7 @@ class QiniuConfig:
     # 上传策略配置
     UPLOAD_POLICY = {
         "mimeLimit": "image/*;application/pdf;text/*",  # 限制上传文件类型
-        "fsizeLimit": 10485760,  # 限制文件大小为10MB
+        "fsizeLimit": 52428800,  # 限制文件大小为50MB (50 * 1024 * 1024)
         "detectMime": 1,  # 自动检测MIME类型
     }
     
@@ -153,6 +153,7 @@ class QiniuConfig:
     FILE_PREFIXES = {
         "image": "neuink/image/",  # 图片存储路径前缀
         "document": "neuink/document/",  # 文档存储路径前缀
+        "pdf": "neuink/pdf/",  # PDF文件存储路径前缀
         "markdown": "neuink/markdown/",  # Markdown文件存储路径前缀
         "paper_image": "neuink/paper_image/",  # 论文图片存储路径前缀
     }

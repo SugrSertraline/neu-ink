@@ -134,23 +134,23 @@ def upload_image():
         return internal_error_response(error_msg)
 
 
-@bp.route("/document", methods=["POST"])
+@bp.route("/pdf", methods=["POST"])
 @login_required
-def upload_document():
+def upload_pdf():
     """
-    上传文档到七牛云
+    上传PDF文件到七牛云
     
     请求格式: multipart/form-data
     参数:
-        file: 文档文件
+        file: PDF文件
         
     返回示例:
         {
             "code": 0,
             "message": "上传成功",
             "data": {
-                "url": "https://your-domain.com/papers/documents/12345678_abc123.pdf",
-                "key": "papers/documents/12345678_abc123.pdf",
+                "url": "https://your-domain.com/neuink/pdf/12345678_abc123.pdf",
+                "key": "neuink/pdf/12345678_abc123.pdf",
                 "size": 1024000,
                 "contentType": "application/pdf",
                 "uploadedAt": "2023-12-01T10:00:00.000Z"
@@ -173,7 +173,77 @@ def upload_document():
             return bad_request_response("没有选择文件")
         
         # 检查文件类型是否允许
-        allowed_extensions = {'pdf', 'doc', 'docx', 'ppt', 'pptx', 'txt', 'md'}
+        allowed_extensions = {'pdf'}
+        if not allowed_file(file.filename, allowed_extensions):
+            return bad_request_response(f"不支持的文件类型，仅支持: {', '.join(allowed_extensions)}")
+        
+        # 获取文件扩展名
+        filename = secure_filename(file.filename)
+        file_extension = os.path.splitext(filename)[1].lower()
+        
+        # 读取文件数据
+        file_data = file.read()
+        
+        # 获取七牛云服务实例
+        qiniu_service = get_qiniu_service()
+        
+        # 验证文件
+        is_valid, error_message = qiniu_service.validate_file(file_data, file_extension)
+        if not is_valid:
+            return bad_request_response(error_message)
+        
+        # 上传文件到七牛云，使用PDF路径前缀
+        upload_result = qiniu_service.upload_file_data(file_data, file_extension, file_type="pdf")
+        
+        if upload_result["success"]:
+            return success_response(upload_result, "PDF文件上传成功")
+        else:
+            return internal_error_response(f"PDF文件上传失败: {upload_result['error']}")
+            
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/document", methods=["POST"])
+@login_required
+def upload_document():
+    """
+    上传文档到七牛云（除PDF和Markdown外的其他文档类型）
+    
+    请求格式: multipart/form-data
+    参数:
+        file: 文档文件
+        
+    返回示例:
+        {
+            "code": 0,
+            "message": "上传成功",
+            "data": {
+                "url": "https://your-domain.com/neuink/document/12345678_abc123.docx",
+                "key": "neuink/document/12345678_abc123.docx",
+                "size": 1024000,
+                "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "uploadedAt": "2023-12-01T10:00:00.000Z"
+            }
+        }
+    """
+    try:
+        # 检查七牛云是否已配置
+        if not is_qiniu_configured():
+            return bad_request_response("七牛云存储未配置，请联系管理员")
+        
+        # 检查是否有文件上传
+        if 'file' not in request.files:
+            return bad_request_response("没有选择文件")
+        
+        file = request.files['file']
+        
+        # 检查文件名是否为空
+        if file.filename == '':
+            return bad_request_response("没有选择文件")
+        
+        # 检查文件类型是否允许（排除PDF和Markdown，因为它们有专门的接口）
+        allowed_extensions = {'doc', 'docx', 'ppt', 'pptx', 'txt'}
         if not allowed_file(file.filename, allowed_extensions):
             return bad_request_response(f"不支持的文件类型，仅支持: {', '.join(allowed_extensions)}")
         
@@ -434,9 +504,10 @@ def get_upload_config():
         
         config = {
             "isConfigured": configured,
-            "maxFileSize": 10485760,  # 10MB
+            "maxFileSize": 52428800,  # 50MB (50 * 1024 * 1024)
             "allowedImageTypes": ["png", "jpg", "jpeg", "gif", "webp"],
-            "allowedDocumentTypes": ["pdf", "doc", "docx", "ppt", "pptx", "txt"],
+            "allowedPdfTypes": ["pdf"],
+            "allowedDocumentTypes": ["doc", "docx", "ppt", "pptx", "txt"],
             "allowedMarkdownTypes": ["md", "markdown"],
         }
         

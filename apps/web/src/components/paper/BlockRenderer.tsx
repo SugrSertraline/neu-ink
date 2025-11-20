@@ -12,18 +12,12 @@ import {
   TableCell,
   TableRow,
 } from '@/types/paper';
-<<<<<<< HEAD
-import InlineRenderer from './InlineRenderer';
-import TextSelectionToolbar from './TextSelectionToolbar';
-import ParseProgressBlock from './ParseProgressBlock';
-=======
 import type { ParsingBlock } from '@/types/paper/content';
 import InlineRenderer from './InlineRenderer';
 import TextSelectionToolbar from './TextSelectionToolbar';
 import ParseProgressBlock from './ParseProgressBlock';
 import ParsedBlocksConfirmDialog from './ParsedBlocksConfirmDialog';
 import ParseResultsManager from './ParseResultsManager';
->>>>>>> origin/main
 import {
   toggleBold,
   toggleItalic,
@@ -72,14 +66,6 @@ interface BlockRendererProps {
   paperId?: string;
   sectionId?: string;
   onParseComplete?: (result: any) => void;
-<<<<<<< HEAD
-  userPaperId?: string | null;
-  streamProgressData?: Record<string, {
-    message: string;
-    progress: number;
-    sessionId?: string;
-  }>;
-=======
   onParsePreview?: (data: {
     type: 'preview' | 'cancel';
     blockId: string;
@@ -96,7 +82,6 @@ interface BlockRendererProps {
       sessionId?: string;
     }
   >;
->>>>>>> origin/main
 }
 
 type InlineRendererBaseProps = Omit<ComponentProps<typeof InlineRenderer>, 'nodes'>;
@@ -111,18 +96,6 @@ const hasLocalizedContent = (value: unknown): value is LocalizedInlineValue => {
 };
 
 const COMPONENT_LABEL_MAP: Record<
-<<<<<<< HEAD
-  BlockContent['type'] |
-  'tableHeader' |
-  'tableCell' |
-  'figureCaption' |
-  'figureDesc' |
-  'tableCaption' |
-  'tableDesc' |
-  'codeCaption' |
-  'listItem' |
-  'loading',
-=======
   | BlockContent['type']
   | 'tableHeader'
   | 'tableCell'
@@ -134,7 +107,6 @@ const COMPONENT_LABEL_MAP: Record<
   | 'listItem'
   | 'loading'
   | 'parsing',
->>>>>>> origin/main
   string
 > = {
   heading: '标题',
@@ -148,10 +120,7 @@ const COMPONENT_LABEL_MAP: Record<
   quote: '引用',
   divider: '分割线',
   loading: '加载中',
-<<<<<<< HEAD
-=======
   parsing: '解析中',
->>>>>>> origin/main
   tableHeader: '表格',
   tableCell: '表格',
   figureCaption: '图片',
@@ -162,12 +131,6 @@ const COMPONENT_LABEL_MAP: Record<
   listItem: '列表',
 };
 
-<<<<<<< HEAD
-const zhPlaceholder = (label: string) => (
-  <span className="inline-block rounded px-1 bg-gray-100 text-gray-500 italic">
-    {`该${label}组件未配置中文`}
-  </span>
-=======
 /** ===================== 中英文样式常量 ===================== */
 
 const ZH_INLINE_CLASS = 'inline-block rounded px-1 bg-amber-50';
@@ -176,7 +139,6 @@ const ZH_PLACEHOLDER_CLASS = 'inline-block rounded px-1 bg-gray-100 text-gray-50
 
 const zhPlaceholder = (label: string) => (
   <span className={ZH_PLACEHOLDER_CLASS}>{`该${label}组件未配置中文`}</span>
->>>>>>> origin/main
 );
 
 const hasZh = (v?: InlineContent[] | string | number | null): boolean => {
@@ -197,11 +159,7 @@ const renderInlineValue = (
   if (Array.isArray(value)) {
     if (lang === 'zh' && opts?.wrapZhBg) {
       return (
-<<<<<<< HEAD
-        <span className="rounded px-1 bg-gray-50">
-=======
         <span className={ZH_INLINE_CLASS}>
->>>>>>> origin/main
           <InlineRenderer nodes={value as InlineContent[]} {...baseProps} />
         </span>
       );
@@ -219,21 +177,13 @@ const renderInlineValue = (
       }
       if (Array.isArray(preferred)) {
         return (
-<<<<<<< HEAD
-          <span className="rounded px-1 bg-gray-50">
-=======
           <span className={ZH_INLINE_CLASS}>
->>>>>>> origin/main
             <InlineRenderer nodes={preferred as InlineContent[]} {...baseProps} />
           </span>
         );
       }
       return (
-<<<<<<< HEAD
-        <span className="rounded px-1 bg-gray-50">
-=======
         <span className={ZH_INLINE_CLASS}>
->>>>>>> origin/main
           {typeof preferred === 'object' ? JSON.stringify(preferred) : String(preferred)}
         </span>
       );
@@ -247,11 +197,7 @@ const renderInlineValue = (
 
   if (typeof value === 'string' || typeof value === 'number') {
     if (lang === 'zh' && opts?.wrapZhBg) {
-<<<<<<< HEAD
-      return <span className="rounded px-1 bg-gray-50">{String(value)}</span>;
-=======
       return <span className={ZH_INLINE_CLASS}>{String(value)}</span>;
->>>>>>> origin/main
     }
     return value;
   }
@@ -325,10 +271,7 @@ export default function BlockRenderer({
   paperId,
   sectionId,
   onParseComplete,
-<<<<<<< HEAD
-=======
   onParsePreview,
->>>>>>> origin/main
   userPaperId,
   streamProgressData,
 }: BlockRendererProps) {
@@ -344,15 +287,12 @@ export default function BlockRenderer({
   const [isEditing, setIsEditing] = useState(false);
   const [draftBlock, setDraftBlock] = useState<BlockContent>(() => cloneBlock(block));
   const [isSaving, setIsSaving] = useState(false);
-<<<<<<< HEAD
-=======
   const [showParseResultsManager, setShowParseResultsManager] = useState(false);
   const [parseResultsData, setParseResultsData] = useState<{
     parseId: string;
     tempBlockId: string;
     blockId: string;
   } | null>(null);
->>>>>>> origin/main
 
   useEffect(() => {
     if (!isEditing) return;
@@ -432,14 +372,9 @@ export default function BlockRenderer({
     references,
   };
 
-<<<<<<< HEAD
-  const baseClass = `transition-all duration-200 rounded-lg ${isActive ? 'bg-blue-50 ring-2 ring-blue-200 shadow-sm' : ''
-    }`;
-=======
   const baseClass = `transition-all duration-200 rounded-lg ${
     isActive ? 'bg-blue-50 ring-2 ring-blue-200 shadow-sm' : ''
   }`;
->>>>>>> origin/main
 
   const enterEditMode = useCallback(() => {
     if (!inlineEditingEnabled || isEditing) return;
@@ -586,14 +521,7 @@ export default function BlockRenderer({
   }, [showToolbar, selectedText, handleToolbarClose]);
 
   const applyStyle = useCallback(
-<<<<<<< HEAD
-    (
-      styleType: 'bold' | 'italic' | 'underline' | 'color' | 'bg' | 'clear',
-      value?: string
-    ) => {
-=======
     (styleType: 'bold' | 'italic' | 'underline' | 'color' | 'bg' | 'clear', value?: string) => {
->>>>>>> origin/main
       if (!inlineEditingEnabled || !onBlockUpdate || !selectedText) return;
 
       const currentBlock = block as ParagraphBlock | HeadingBlock;
@@ -659,23 +587,13 @@ export default function BlockRenderer({
     const enNodes = headingBlock.content?.en ?? [];
     const zhNodes = headingBlock.content?.zh;
 
-<<<<<<< HEAD
-    const numberPart = headingBlock.number ? (
-      <span className="text-blue-600 mr-2">{`${headingBlock.number}.`}</span>
-    ) : null;
-=======
     // 不使用系统自动计算的编号，直接显示原始标题内容（包含原始编号）
     const numberPart = null;
->>>>>>> origin/main
 
     const renderContent = () => {
       if (lang === 'both') {
         const enPart = (
-<<<<<<< HEAD
-          <span className="mr-1 align-baseline">
-=======
           <span className="mr-1 align-baseline text-gray-900">
->>>>>>> origin/main
             <InlineRenderer nodes={enNodes} {...inlineRendererBaseProps} />
           </span>
         );
@@ -683,21 +601,11 @@ export default function BlockRenderer({
         const slash = <span className="mx-1 text-gray-400">/</span>;
 
         const zhPart = hasZh(zhNodes) ? (
-<<<<<<< HEAD
-          <span className="align-baseline">
-            <InlineRenderer nodes={zhNodes as InlineContent[]} {...inlineRendererBaseProps} />
-          </span>
-        ) : (
-          <span className="text-gray-500 italic align-baseline">
-            该标题组件未配置中文
-          </span>
-=======
           <span className={`align-baseline ${ZH_INLINE_CLASS}`}>
             <InlineRenderer nodes={zhNodes as InlineContent[]} {...inlineRendererBaseProps} />
           </span>
         ) : (
           <span className={ZH_PLACEHOLDER_CLASS}>该标题组件未配置中文</span>
->>>>>>> origin/main
         );
 
         return (
@@ -715,23 +623,11 @@ export default function BlockRenderer({
             </span>
           );
         } else {
-<<<<<<< HEAD
-          return (
-            <span className="text-gray-500 italic align-baseline">
-              该标题组件未配置中文
-            </span>
-          );
-        }
-      } else {
-        return (
-          <span className="align-baseline">
-=======
           return <span className={ZH_PLACEHOLDER_CLASS}>该标题组件未配置中文</span>;
         }
       } else {
         return (
           <span className="align-baseline text-gray-900">
->>>>>>> origin/main
             <InlineRenderer nodes={enNodes} {...inlineRendererBaseProps} />
           </span>
         );
@@ -792,19 +688,6 @@ export default function BlockRenderer({
               onMouseUp={inlineEditingEnabled && !isEditing ? handleTextSelection : undefined}
               style={{ userSelect: 'text' }}
             >
-<<<<<<< HEAD
-              <div>
-                <InlineRenderer nodes={enContent} {...inlineRendererBaseProps} />
-              </div>
-              {hasZh(zhContent) ? (
-                <div>
-                  <InlineRenderer nodes={zhContent as InlineContent[]} {...inlineRendererBaseProps} />
-                </div>
-              ) : (
-                <div className="text-gray-500 italic">
-                  该段落组件未配置中文
-                </div>
-=======
               <div className="text-gray-800">
                 <InlineRenderer nodes={enContent} {...inlineRendererBaseProps} />
               </div>
@@ -814,7 +697,6 @@ export default function BlockRenderer({
                 </div>
               ) : (
                 <div className={ZH_PLACEHOLDER_CLASS}>该段落组件未配置中文</div>
->>>>>>> origin/main
               )}
             </div>
           );
@@ -826,14 +708,10 @@ export default function BlockRenderer({
                 onMouseUp={inlineEditingEnabled && !isEditing ? handleTextSelection : undefined}
                 style={{ userSelect: 'text' }}
               >
-<<<<<<< HEAD
-                <InlineRenderer nodes={block.content?.zh as InlineContent[]} {...inlineRendererBaseProps} />
-=======
                 <InlineRenderer
                   nodes={block.content?.zh as InlineContent[]}
                   {...inlineRendererBaseProps}
                 />
->>>>>>> origin/main
               </p>
             );
           } else {
@@ -843,13 +721,7 @@ export default function BlockRenderer({
                 onMouseUp={inlineEditingEnabled && !isEditing ? handleTextSelection : undefined}
                 style={{ userSelect: 'text' }}
               >
-<<<<<<< HEAD
-                <span className="text-gray-500 italic">
-                  该段落组件未配置中文
-                </span>
-=======
                 <span className={ZH_PLACEHOLDER_CLASS}>该段落组件未配置中文</span>
->>>>>>> origin/main
               </p>
             );
           }
@@ -888,17 +760,6 @@ export default function BlockRenderer({
 
             return (
               <div className="space-y-1">
-<<<<<<< HEAD
-                <div>
-                  <InlineRenderer nodes={enCaption} {...inlineRendererBaseProps} />
-                </div>
-                {hasZh(zhCaption) ? (
-                  <div>
-                    <InlineRenderer nodes={zhCaption as InlineContent[]} {...inlineRendererBaseProps} />
-                  </div>
-                ) : (
-                  <div className="text-gray-500 italic text-xs">
-=======
                 <div className="text-gray-800">
                   <InlineRenderer nodes={enCaption} {...inlineRendererBaseProps} />
                 </div>
@@ -911,7 +772,6 @@ export default function BlockRenderer({
                   </div>
                 ) : (
                   <div className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                     该图片组件未配置中文
                   </div>
                 )}
@@ -920,13 +780,6 @@ export default function BlockRenderer({
           } else if (lang === 'zh') {
             if (hasZh(block.caption?.zh)) {
               return (
-<<<<<<< HEAD
-                <InlineRenderer nodes={block.caption?.zh as InlineContent[]} {...inlineRendererBaseProps} />
-              );
-            } else {
-              return (
-                <span className="text-gray-500 italic text-xs">
-=======
                 <InlineRenderer
                   nodes={block.caption?.zh as InlineContent[]}
                   {...inlineRendererBaseProps}
@@ -935,7 +788,6 @@ export default function BlockRenderer({
             } else {
               return (
                 <span className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                   该图片组件未配置中文
                 </span>
               );
@@ -954,17 +806,6 @@ export default function BlockRenderer({
 
             return (
               <div className="space-y-1">
-<<<<<<< HEAD
-                <div>
-                  <InlineRenderer nodes={enDesc} {...inlineRendererBaseProps} />
-                </div>
-                {hasZh(zhDesc) ? (
-                  <div>
-                    <InlineRenderer nodes={zhDesc as InlineContent[]} {...inlineRendererBaseProps} />
-                  </div>
-                ) : (
-                  <div className="text-gray-500 italic text-xs">
-=======
                 <div className="text-gray-800">
                   <InlineRenderer nodes={enDesc} {...inlineRendererBaseProps} />
                 </div>
@@ -977,7 +818,6 @@ export default function BlockRenderer({
                   </div>
                 ) : (
                   <div className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                     该图片组件未配置中文
                   </div>
                 )}
@@ -986,13 +826,6 @@ export default function BlockRenderer({
           } else if (lang === 'zh') {
             if (hasZh(block.description?.zh)) {
               return (
-<<<<<<< HEAD
-                <InlineRenderer nodes={block.description?.zh as InlineContent[]} {...inlineRendererBaseProps} />
-              );
-            } else {
-              return (
-                <span className="text-gray-500 italic text-xs">
-=======
                 <InlineRenderer
                   nodes={block.description?.zh as InlineContent[]}
                   {...inlineRendererBaseProps}
@@ -1001,7 +834,6 @@ export default function BlockRenderer({
             } else {
               return (
                 <span className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                   该图片组件未配置中文
                 </span>
               );
@@ -1070,17 +902,6 @@ export default function BlockRenderer({
 
             return (
               <div className="space-y-1">
-<<<<<<< HEAD
-                <div>
-                  <InlineRenderer nodes={enCaption} {...inlineRendererBaseProps} />
-                </div>
-                {hasZh(zhCaption) ? (
-                  <div>
-                    <InlineRenderer nodes={zhCaption as InlineContent[]} {...inlineRendererBaseProps} />
-                  </div>
-                ) : (
-                  <div className="text-gray-500 italic text-xs">
-=======
                 <div className="text-gray-800">
                   <InlineRenderer nodes={enCaption} {...inlineRendererBaseProps} />
                 </div>
@@ -1093,7 +914,6 @@ export default function BlockRenderer({
                   </div>
                 ) : (
                   <div className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                     该表格组件未配置中文
                   </div>
                 )}
@@ -1102,13 +922,6 @@ export default function BlockRenderer({
           } else if (lang === 'zh') {
             if (hasZh(block.caption?.zh)) {
               return (
-<<<<<<< HEAD
-                <InlineRenderer nodes={block.caption?.zh as InlineContent[]} {...inlineRendererBaseProps} />
-              );
-            } else {
-              return (
-                <span className="text-gray-500 italic text-xs">
-=======
                 <InlineRenderer
                   nodes={block.caption?.zh as InlineContent[]}
                   {...inlineRendererBaseProps}
@@ -1117,7 +930,6 @@ export default function BlockRenderer({
             } else {
               return (
                 <span className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                   该表格组件未配置中文
                 </span>
               );
@@ -1136,17 +948,6 @@ export default function BlockRenderer({
 
             return (
               <div className="space-y-1">
-<<<<<<< HEAD
-                <div>
-                  <InlineRenderer nodes={enDesc} {...inlineRendererBaseProps} />
-                </div>
-                {hasZh(zhDesc) ? (
-                  <div>
-                    <InlineRenderer nodes={zhDesc as InlineContent[]} {...inlineRendererBaseProps} />
-                  </div>
-                ) : (
-                  <div className="text-gray-500 italic text-xs">
-=======
                 <div className="text-gray-800">
                   <InlineRenderer nodes={enDesc} {...inlineRendererBaseProps} />
                 </div>
@@ -1159,7 +960,6 @@ export default function BlockRenderer({
                   </div>
                 ) : (
                   <div className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                     该表格组件未配置中文
                   </div>
                 )}
@@ -1168,13 +968,6 @@ export default function BlockRenderer({
           } else if (lang === 'zh') {
             if (hasZh(block.description?.zh)) {
               return (
-<<<<<<< HEAD
-                <InlineRenderer nodes={block.description?.zh as InlineContent[]} {...inlineRendererBaseProps} />
-              );
-            } else {
-              return (
-                <span className="text-gray-500 italic text-xs">
-=======
                 <InlineRenderer
                   nodes={block.description?.zh as InlineContent[]}
                   {...inlineRendererBaseProps}
@@ -1183,7 +976,6 @@ export default function BlockRenderer({
             } else {
               return (
                 <span className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                   该表格组件未配置中文
                 </span>
               );
@@ -1205,17 +997,6 @@ export default function BlockRenderer({
           const Tag = isHeader ? 'th' : 'td';
 
           return rows.map((row, rowIndex) => (
-<<<<<<< HEAD
-            <tr
-              key={rowIndex}
-              className={isHeader ? '' : 'transition-colors hover:bg-gray-50'}
-            >
-              {row.cells.map((cell, colIndex) => (
-                <Tag
-                  key={colIndex}
-                  className={`border border-gray-300 px-3 py-2 text-sm ${isHeader ? 'font-semibold text-gray-900' : 'text-gray-700'
-                    }`}
-=======
             <tr key={rowIndex} className={isHeader ? '' : 'transition-colors hover:bg-gray-50'}>
               {row.cells.map((cell, colIndex) => (
                 <Tag
@@ -1223,7 +1004,6 @@ export default function BlockRenderer({
                   className={`border border-gray-300 px-3 py-2 text-sm ${
                     isHeader ? 'font-semibold text-gray-900' : 'text-gray-700'
                   }`}
->>>>>>> origin/main
                   style={{
                     textAlign: cell.align || align?.[colIndex] || 'left',
                   }}
@@ -1246,19 +1026,6 @@ export default function BlockRenderer({
 
               return (
                 <div className="space-y-1">
-<<<<<<< HEAD
-                  <div>
-                    <InlineRenderer nodes={enContent as InlineContent[]} {...inlineRendererBaseProps} />
-                  </div>
-                  {hasZh(zhContent) ? (
-                    <div>
-                      <InlineRenderer nodes={zhContent as InlineContent[]} {...inlineRendererBaseProps} />
-                    </div>
-                  ) : (
-                    <div className="text-gray-500 italic text-xs">
-                      未配置中文
-                    </div>
-=======
                   <div className="text-gray-800">
                     <InlineRenderer
                       nodes={enContent as InlineContent[]}
@@ -1274,7 +1041,6 @@ export default function BlockRenderer({
                     </div>
                   ) : (
                     <div className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>未配置中文</div>
->>>>>>> origin/main
                   )}
                 </div>
               );
@@ -1289,11 +1055,6 @@ export default function BlockRenderer({
             if (hasLocalizedContent(value)) {
               const lv = value as LocalizedInlineValue;
               if (hasZh(lv.zh)) {
-<<<<<<< HEAD
-                return <InlineRenderer nodes={lv.zh as InlineContent[]} {...inlineRendererBaseProps} />;
-              } else {
-                return <span className="text-gray-500 italic text-xs">未配置中文</span>;
-=======
                 return (
                   <InlineRenderer
                     nodes={lv.zh as InlineContent[]}
@@ -1302,7 +1063,6 @@ export default function BlockRenderer({
                 );
               } else {
                 return <span className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>未配置中文</span>;
->>>>>>> origin/main
               }
             } else if (Array.isArray(value)) {
               return <InlineRenderer nodes={value} {...inlineRendererBaseProps} />;
@@ -1314,16 +1074,12 @@ export default function BlockRenderer({
           } else {
             if (hasLocalizedContent(value)) {
               const lv = value as LocalizedInlineValue;
-<<<<<<< HEAD
-              return <InlineRenderer nodes={lv.en as InlineContent[]} {...inlineRendererBaseProps} />;
-=======
               return (
                 <InlineRenderer
                   nodes={lv.en as InlineContent[]}
                   {...inlineRendererBaseProps}
                 />
               );
->>>>>>> origin/main
             } else if (Array.isArray(value)) {
               return <InlineRenderer nodes={value} {...inlineRendererBaseProps} />;
             } else {
@@ -1352,11 +1108,6 @@ export default function BlockRenderer({
               {block.headers && (
                 <thead className="bg-gray-100">
                   {/* 检查是否为新格式（有cells属性） */}
-<<<<<<< HEAD
-                  {Array.isArray(block.headers) && block.headers.length > 0 && typeof block.headers[0] === 'object' && 'cells' in block.headers[0] ? (
-                    // 新格式：多行表头
-                    renderTableRows(block.headers as unknown as TableRow[], true, renderCellValue, block.align)
-=======
                   {Array.isArray(block.headers) &&
                   block.headers.length > 0 &&
                   typeof block.headers[0] === 'object' &&
@@ -1368,7 +1119,6 @@ export default function BlockRenderer({
                       renderCellValue,
                       block.align
                     )
->>>>>>> origin/main
                   ) : (
                     // 旧格式：简单表头
                     <tr>
@@ -1387,11 +1137,6 @@ export default function BlockRenderer({
               )}
               <tbody>
                 {/* 检查是否为新格式（有cells属性） */}
-<<<<<<< HEAD
-                {Array.isArray(block.rows) && block.rows.length > 0 && typeof block.rows[0] === 'object' && 'cells' in block.rows[0] ? (
-                  // 新格式：复杂表格行
-                  renderTableRows(block.rows as unknown as TableRow[], false, renderCellValue, block.align)
-=======
                 {Array.isArray(block.rows) &&
                 block.rows.length > 0 &&
                 typeof block.rows[0] === 'object' &&
@@ -1403,7 +1148,6 @@ export default function BlockRenderer({
                     renderCellValue,
                     block.align
                   )
->>>>>>> origin/main
                 ) : (
                   // 旧格式：简单表格行
                   (block.rows as unknown as any[][]).map((row, r) => (
@@ -1440,17 +1184,6 @@ export default function BlockRenderer({
 
             return (
               <div className="space-y-1">
-<<<<<<< HEAD
-                <div>
-                  <InlineRenderer nodes={enCaption} {...inlineRendererBaseProps} />
-                </div>
-                {hasZh(zhCaption) ? (
-                  <div>
-                    <InlineRenderer nodes={zhCaption as InlineContent[]} {...inlineRendererBaseProps} />
-                  </div>
-                ) : (
-                  <div className="text-gray-500 italic text-xs">
-=======
                 <div className="text-gray-800">
                   <InlineRenderer nodes={enCaption} {...inlineRendererBaseProps} />
                 </div>
@@ -1463,7 +1196,6 @@ export default function BlockRenderer({
                   </div>
                 ) : (
                   <div className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                     该代码组件未配置中文
                   </div>
                 )}
@@ -1472,13 +1204,6 @@ export default function BlockRenderer({
           } else if (lang === 'zh') {
             if (hasZh(block.caption?.zh)) {
               return (
-<<<<<<< HEAD
-                <InlineRenderer nodes={block.caption?.zh as InlineContent[]} {...inlineRendererBaseProps} />
-              );
-            } else {
-              return (
-                <span className="text-gray-500 italic text-xs">
-=======
                 <InlineRenderer
                   nodes={block.caption?.zh as InlineContent[]}
                   {...inlineRendererBaseProps}
@@ -1487,7 +1212,6 @@ export default function BlockRenderer({
             } else {
               return (
                 <span className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                   该代码组件未配置中文
                 </span>
               );
@@ -1502,13 +1226,7 @@ export default function BlockRenderer({
         return (
           <div className="my-4">
             {(block.caption?.en || block.caption?.zh) && (
-<<<<<<< HEAD
-              <div className="mb-2 text-xs text-gray-500">
-                {renderCaption()}
-              </div>
-=======
               <div className="mb-2 text-xs text-gray-500">{renderCaption()}</div>
->>>>>>> origin/main
             )}
             <pre className="relative overflow-auto rounded-lg bg-gray-900 p-4 text-sm text-gray-100 shadow-md">
               {block.language && (
@@ -1526,28 +1244,13 @@ export default function BlockRenderer({
         return (
           <ol start={block.start ?? 1} className="my-3 list-decimal space-y-1.5 pl-6">
             {(block.items || []).map((item, i) => {
-<<<<<<< HEAD
-              const renderContent = () => {
-=======
               const renderItemContent = () => {
->>>>>>> origin/main
                 if (lang === 'both') {
                   const enContent = item.content?.en ?? [];
                   const zhContent = item.content?.zh;
 
                   return (
                     <div className="space-y-1">
-<<<<<<< HEAD
-                      <div>
-                        <InlineRenderer nodes={enContent} {...inlineRendererBaseProps} />
-                      </div>
-                      {hasZh(zhContent) ? (
-                        <div>
-                          <InlineRenderer nodes={zhContent as InlineContent[]} {...inlineRendererBaseProps} />
-                        </div>
-                      ) : (
-                        <div className="text-gray-500 italic text-xs">
-=======
                       <div className="text-gray-800">
                         <InlineRenderer
                           nodes={enContent}
@@ -1563,7 +1266,6 @@ export default function BlockRenderer({
                         </div>
                       ) : (
                         <div className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                           该列表项未配置中文
                         </div>
                       )}
@@ -1572,13 +1274,6 @@ export default function BlockRenderer({
                 } else if (lang === 'zh') {
                   if (hasZh(item.content?.zh)) {
                     return (
-<<<<<<< HEAD
-                      <InlineRenderer nodes={item.content?.zh as InlineContent[]} {...inlineRendererBaseProps} />
-                    );
-                  } else {
-                    return (
-                      <span className="text-gray-500 italic text-xs">
-=======
                       <InlineRenderer
                         nodes={item.content?.zh as InlineContent[]}
                         {...inlineRendererBaseProps}
@@ -1587,32 +1282,23 @@ export default function BlockRenderer({
                   } else {
                     return (
                       <span className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                         该列表项未配置中文
                       </span>
                     );
                   }
                 } else {
                   return (
-<<<<<<< HEAD
-                    <InlineRenderer nodes={item.content?.en ?? []} {...inlineRendererBaseProps} />
-=======
                     <InlineRenderer
                       nodes={item.content?.en ?? []}
                       {...inlineRendererBaseProps}
                     />
->>>>>>> origin/main
                   );
                 }
               };
 
               return (
                 <li key={i} className="leading-relaxed text-gray-700">
-<<<<<<< HEAD
-                  {renderContent()}
-=======
                   {renderItemContent()}
->>>>>>> origin/main
                 </li>
               );
             })}
@@ -1623,28 +1309,13 @@ export default function BlockRenderer({
         return (
           <ul className="my-3 list-disc space-y-1.5 pl-6">
             {(block.items || []).map((item, i) => {
-<<<<<<< HEAD
-              const renderContent = () => {
-=======
               const renderItemContent = () => {
->>>>>>> origin/main
                 if (lang === 'both') {
                   const enContent = item.content?.en ?? [];
                   const zhContent = item.content?.zh;
 
                   return (
                     <div className="space-y-1">
-<<<<<<< HEAD
-                      <div>
-                        <InlineRenderer nodes={enContent} {...inlineRendererBaseProps} />
-                      </div>
-                      {hasZh(zhContent) ? (
-                        <div>
-                          <InlineRenderer nodes={zhContent as InlineContent[]} {...inlineRendererBaseProps} />
-                        </div>
-                      ) : (
-                        <div className="text-gray-500 italic text-xs">
-=======
                       <div className="text-gray-800">
                         <InlineRenderer
                           nodes={enContent}
@@ -1660,7 +1331,6 @@ export default function BlockRenderer({
                         </div>
                       ) : (
                         <div className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                           该列表项未配置中文
                         </div>
                       )}
@@ -1669,13 +1339,6 @@ export default function BlockRenderer({
                 } else if (lang === 'zh') {
                   if (hasZh(item.content?.zh)) {
                     return (
-<<<<<<< HEAD
-                      <InlineRenderer nodes={item.content?.zh as InlineContent[]} {...inlineRendererBaseProps} />
-                    );
-                  } else {
-                    return (
-                      <span className="text-gray-500 italic text-xs">
-=======
                       <InlineRenderer
                         nodes={item.content?.zh as InlineContent[]}
                         {...inlineRendererBaseProps}
@@ -1684,32 +1347,23 @@ export default function BlockRenderer({
                   } else {
                     return (
                       <span className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                         该列表项未配置中文
                       </span>
                     );
                   }
                 } else {
                   return (
-<<<<<<< HEAD
-                    <InlineRenderer nodes={item.content?.en ?? []} {...inlineRendererBaseProps} />
-=======
                     <InlineRenderer
                       nodes={item.content?.en ?? []}
                       {...inlineRendererBaseProps}
                     />
->>>>>>> origin/main
                   );
                 }
               };
 
               return (
                 <li key={i} className="leading-relaxed text-gray-700">
-<<<<<<< HEAD
-                  {renderContent()}
-=======
                   {renderItemContent()}
->>>>>>> origin/main
                 </li>
               );
             })}
@@ -1717,28 +1371,13 @@ export default function BlockRenderer({
         );
 
       case 'quote': {
-<<<<<<< HEAD
-        const renderContent = () => {
-=======
         const renderQuoteContent = () => {
->>>>>>> origin/main
           if (lang === 'both') {
             const enContent = block.content?.en ?? [];
             const zhContent = block.content?.zh;
 
             return (
               <div className="space-y-2">
-<<<<<<< HEAD
-                <div className="italic">
-                  <InlineRenderer nodes={enContent} {...inlineRendererBaseProps} />
-                </div>
-                {hasZh(zhContent) ? (
-                  <div className="italic">
-                    <InlineRenderer nodes={zhContent as InlineContent[]} {...inlineRendererBaseProps} />
-                  </div>
-                ) : (
-                  <div className="text-gray-500 italic text-xs">
-=======
                 <div className="italic text-gray-800">
                   <InlineRenderer nodes={enContent} {...inlineRendererBaseProps} />
                 </div>
@@ -1751,7 +1390,6 @@ export default function BlockRenderer({
                   </div>
                 ) : (
                   <div className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                     该引用组件未配置中文
                   </div>
                 )}
@@ -1761,23 +1399,15 @@ export default function BlockRenderer({
             if (hasZh(block.content?.zh)) {
               return (
                 <div className="italic">
-<<<<<<< HEAD
-                  <InlineRenderer nodes={block.content?.zh as InlineContent[]} {...inlineRendererBaseProps} />
-=======
                   <InlineRenderer
                     nodes={block.content?.zh as InlineContent[]}
                     {...inlineRendererBaseProps}
                   />
->>>>>>> origin/main
                 </div>
               );
             } else {
               return (
-<<<<<<< HEAD
-                <span className="text-gray-500 italic text-xs">
-=======
                 <span className={`${ZH_PLACEHOLDER_CLASS} text-xs`}>
->>>>>>> origin/main
                   该引用组件未配置中文
                 </span>
               );
@@ -1793,11 +1423,7 @@ export default function BlockRenderer({
 
         return (
           <blockquote className="my-4 rounded-r-lg border-l-4 border-blue-500 bg-blue-50 py-2 pl-4 text-gray-600">
-<<<<<<< HEAD
-            {renderContent()}
-=======
             {renderQuoteContent()}
->>>>>>> origin/main
             {block.author && (
               <div className="mt-2 text-right text-sm font-medium not-italic text-gray-500">
                 — {block.author}
@@ -1810,89 +1436,6 @@ export default function BlockRenderer({
       case 'divider':
         return <hr className="my-6 border-t-2 border-gray-300" />;
 
-<<<<<<< HEAD
-
-      case 'loading': {
-        const progressBlock = block as any;
-        console.log('BlockRenderer progress block:', progressBlock);
-
-        const handleParseComplete = (result: any) => {
-          console.log('BlockRenderer parse complete:', result);
-          onParseComplete?.(result);
-        };
-
-        // 从 streamProgressData 中获取进度数据
-        const targetSectionId = sectionId || progressBlock.sectionId || '';
-        const sectionProgressData = streamProgressData?.[targetSectionId];
-
-        // 优先使用 streamProgressData 中的 sessionId，其次使用 block 中的 sessionId
-        const sessionId = sectionProgressData?.sessionId || progressBlock.sessionId;
-
-        // ⭐ 关键：从 block 自身恢复初始进度（支持刷新后恢复）
-        const normalizedStatus: 'pending' | 'processing' | 'completed' | 'failed' =
-          progressBlock.status === 'parsing' || progressBlock.status === 'processing'
-            ? 'processing'
-            : progressBlock.status === 'completed'
-              ? 'completed'
-              : progressBlock.status === 'failed'
-                ? 'failed'
-                : 'pending';
-
-        const initialProgress = {
-          status: normalizedStatus,
-          progress: typeof progressBlock.progress === 'number' ? progressBlock.progress : 0,
-          message: progressBlock.message || '正在解析...',
-          sessionId,
-          paper: progressBlock.paper,
-          blocks: progressBlock.blocks,
-        };
-
-        // 仍然保留 streamProgressData 作为“实时覆盖”
-        const externalProgress = sectionProgressData
-          ? {
-            status:
-              sectionProgressData.progress >= 100
-                ? ('completed' as const)
-                : ('processing' as const),
-            progress: sectionProgressData.progress,
-            message: sectionProgressData.message,
-            sessionId,
-          }
-          : undefined;
-
-        console.log('BlockRenderer loading block:', {
-          targetSectionId,
-          sessionId,
-          progressBlock,
-          sectionProgressData,
-          initialProgress,
-          externalProgress,
-        });
-
-        return (
-          <ParseProgressBlock
-            paperId={paperId || ''}
-            sectionId={targetSectionId}
-            blockId={progressBlock.id}
-            sessionId={sessionId || ''}
-            onCompleted={handleParseComplete}
-            isPersonalOwner={isPersonalOwner}
-            userPaperId={userPaperId}
-            // ⭐ 新增：用 block 中的数据初始化进度（刷新后也能看到 20%、message 等）
-            initialProgress={initialProgress}
-            // ⭐ 仍然允许上层用 streamProgressData 实时覆盖
-            externalProgress={externalProgress}
-            // ⭐ 新增：启用自动恢复会话连接
-            autoResumeSession={true}
-            onRestart={() => {
-              // 重新开始解析：删除当前的 loading block
-              console.log('重新开始解析，删除 loading block');
-              onParseComplete?.({
-                status: 'restart',
-                blockId: progressBlock.id,
-                sectionId: targetSectionId,
-              });
-=======
       case 'parsing': {
         const parsingBlock = block as ParsingBlock;
         
@@ -1959,7 +1502,6 @@ export default function BlockRenderer({
                   onParsePreview(data);
                 }
               }
->>>>>>> origin/main
             }}
           />
         );
@@ -1978,18 +1520,12 @@ export default function BlockRenderer({
     inlineRendererBaseProps,
     lang,
     onParseComplete,
-<<<<<<< HEAD
-=======
     onParsePreview,
->>>>>>> origin/main
     paperId,
     sectionId,
     isPersonalOwner,
     userPaperId,
-<<<<<<< HEAD
-=======
     streamProgressData,
->>>>>>> origin/main
   ]);
 
   return (
@@ -1997,16 +1533,11 @@ export default function BlockRenderer({
       <div
         ref={blockRef}
         data-block-id={block.id}
-<<<<<<< HEAD
-        className={`${baseClass} group relative mb-3 p-2 ${isEditing ? 'border-2 border-blue-300 bg-white shadow-lg ring-2 ring-blue-200' : ''
-          }`}
-=======
         className={`${baseClass} group relative mb-3 p-2 ${
           isEditing
             ? 'border-2 border-blue-300 bg-white shadow-lg ring-2 ring-blue-200'
             : ''
         }`}
->>>>>>> origin/main
         onMouseEnter={onMouseEnter}
         onMouseLeave={onMouseLeave}
         onClick={handleWrapperClick}
@@ -2070,11 +1601,7 @@ export default function BlockRenderer({
               </div>
             )}
             <div className="pointer-events-none absolute right-3 top-3 opacity-0 transition group-hover:opacity-100 flex items-center gap-2">
-<<<<<<< HEAD
-              {inlineEditingEnabled && block.type !== 'loading' && (
-=======
               {inlineEditingEnabled && block.type !== 'parsing' && (
->>>>>>> origin/main
                 <button
                   type="button"
                   onClick={(event) => {
@@ -2104,8 +1631,6 @@ export default function BlockRenderer({
           onClose={handleToolbarClose}
         />
       )}
-<<<<<<< HEAD
-=======
       
       {/* ParseResultsManager 模态框 */}
       {showParseResultsManager && parseResultsData && (
@@ -2147,7 +1672,6 @@ export default function BlockRenderer({
           }}
         />
       )}
->>>>>>> origin/main
     </>
   );
 }

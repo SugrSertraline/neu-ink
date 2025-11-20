@@ -6,10 +6,6 @@ import type {
     ParagraphBlock,
   } from '@/types/paper';
   
-<<<<<<< HEAD
-  export const generateId = (prefix: string) =>
-    `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-=======
   export const generateId = (prefix: string) => {
     // 生成 UUID v4 格式的 ID
     const generateUUID = () => {
@@ -28,7 +24,6 @@ import type {
     // 如果有前缀，返回 UUID（不再使用前缀，保持与后端一致的格式）
     return generateUUID();
   };
->>>>>>> origin/main
   
   export const createEmptyReference = (): Reference => ({
     id: generateId('ref'),

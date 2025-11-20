@@ -144,10 +144,7 @@ export function usePublicLibraryController() {
   const [error, setError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [availableYears, setAvailableYears] = useState<number[]>([]);
-<<<<<<< HEAD
-=======
   const [papersInLibrary, setPapersInLibrary] = useState<Set<string>>(new Set());
->>>>>>> origin/main
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -278,8 +275,6 @@ export function usePublicLibraryController() {
     void loadPapers();
   }, [loadPapers]);
 
-<<<<<<< HEAD
-=======
   // 检查论文是否在个人库中
   const checkPapersInLibrary = useCallback(async () => {
     if (!isAuthenticated || papers.length === 0) return;
@@ -314,7 +309,6 @@ export function usePublicLibraryController() {
     }
   }, [loading, isAuthenticated, papers, checkPapersInLibrary]);
 
->>>>>>> origin/main
   const requestLogin = useCallback(() => setShowLoginHint(true), []);
   const dismissLoginHint = useCallback(() => setShowLoginHint(false), []);
 
@@ -442,11 +436,8 @@ export function usePublicLibraryController() {
 
         if (isSuccess(result)) {
           toast.success('已成功添加到个人论文库');
-<<<<<<< HEAD
-=======
           // 更新papersInLibrary状态
           setPapersInLibrary(prev => new Set([...prev, paperId]));
->>>>>>> origin/main
         } else {
           toast.error(result.bizMessage || result.topMessage || '添加失败');
         }
@@ -507,10 +498,7 @@ export function usePublicLibraryController() {
     error,
     totalCount,
     availableYears,
-<<<<<<< HEAD
-=======
     papersInLibrary,
->>>>>>> origin/main
 
     // 分页
     currentPage,

@@ -5,23 +5,13 @@ Paper 内容操作服务
 import time
 import uuid
 import re
-<<<<<<< HEAD
-=======
 import json
->>>>>>> origin/main
 import logging
 from typing import Dict, Any, Optional, List, Tuple
 from ..models.paper import PaperModel
 from ..models.section import get_section_model
 from ..config.constants import BusinessCode
 from ..utils.llm_utils import get_llm_utils
-<<<<<<< HEAD
-from ..utils.common import get_current_time
-
-# 初始化logger
-logger = logging.getLogger(__name__)
-
-=======
 from ..utils.common import get_current_time, generate_id
 from ..utils.llm_prompts import (
     TEXT_TO_BLOCKS_SYSTEM_PROMPT,
@@ -43,7 +33,6 @@ def remember_parsed_blocks(temp_block_id: str, section_id: str, parsed_block_ids
 def get_parsed_blocks_from_cache(temp_block_id: str) -> Optional[Dict[str, Any]]:
     """从内存缓存中获取解析结果"""
     return _PARSED_BLOCKS_CACHE.get(temp_block_id)
->>>>>>> origin/main
 
 class PaperContentService:
     """Paper 内容操作服务类"""
@@ -53,8 +42,6 @@ class PaperContentService:
         self.section_model = get_section_model()
 
     # ------------------------------------------------------------------
-<<<<<<< HEAD
-=======
     # LLM 文本解析为 blocks 的内部工具
     # ------------------------------------------------------------------
     def _parse_text_to_blocks_with_llm(
@@ -173,7 +160,6 @@ class PaperContentService:
         return validated_blocks
 
     # ------------------------------------------------------------------
->>>>>>> origin/main
     # Section 操作
     # ------------------------------------------------------------------
     def add_section(
@@ -184,19 +170,6 @@ class PaperContentService:
         is_admin: bool = False,
         parent_section_id: Optional[str] = None,
         position: Optional[int] = None,
-<<<<<<< HEAD
-    ) -> Dict[str, Any]:
-        """
-        向论文添加新章节
-        """
-        try:
-            # 检查论文是否存在及权限
-            paper = self.paper_model.find_by_id(paper_id)
-            if not paper:
-                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
-
-            if not is_admin and paper["createdBy"] != user_id:
-=======
         is_user_paper: bool = False,
     ) -> Dict[str, Any]:
         """
@@ -218,14 +191,11 @@ class PaperContentService:
                 if not paper:
                     return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
 
-            # 管理员只能操作公开的论文
-            if is_admin and not is_user_paper and not paper.get("isPublic", False):
-                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "管理员只能操作公开的论文")
+            # 管理员可以操作所有论文（公开和私有的）
 
             # 修改权限检查逻辑：如果是个人论文库中的操作，允许用户修改
             # 只有在非个人论文库操作且非管理员的情况下，才检查创建者
             if not is_user_paper and not is_admin and paper.get("createdBy") != user_id:
->>>>>>> origin/main
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
             # 获取当前sections
@@ -235,11 +205,6 @@ class PaperContentService:
             title_data = section_data.get("title", {})
             title_zh_data = section_data.get("titleZh", "")
             
-<<<<<<< HEAD
-            if isinstance(title_data, dict) and "en" in title_data:
-                new_section = {
-                    "id": section_data.get("id"),
-=======
             # 优先使用前端提供的ID，如果没有则生成一个
             section_id = section_data.get("id")
             if not section_id:
@@ -249,44 +214,21 @@ class PaperContentService:
             if isinstance(title_data, dict) and "en" in title_data:
                 new_section = {
                     "id": section_id,
->>>>>>> origin/main
                     "title": title_data.get("en", "Untitled Section"),
                     "titleZh": title_data.get("zh", title_zh_data or "未命名章节"),
                     "content": section_data.get("content", [])
                 }
             else:
                 new_section = {
-<<<<<<< HEAD
-                    "id": section_data.get("id"),
-=======
                     "id": section_id,
->>>>>>> origin/main
                     "title": title_data if title_data else "Untitled Section",
                     "titleZh": title_zh_data if title_zh_data else "未命名章节",
                     "content": section_data.get("content", [])
                 }
             
-<<<<<<< HEAD
-            # 如果没有提供ID，生成一个
-            if not new_section["id"]:
-                new_section["id"] = f"section_{len(sections) + 1}_{int(time.time())}"
-            
-            # 确定插入位置
-            if position is None:
-                position = -1
-                
-            # 添加到根级章节
-            if position == -1:
-                sections.append(new_section)
-            elif 0 <= position < len(sections):
-                sections.insert(position, new_section)
-            else:
-                sections.append(new_section)
-=======
             # 确定插入位置，直接使用前端提供的值
             if position is None:
                 position = -1
->>>>>>> origin/main
             
             # 创建新section
             created_section = self.section_model.create({
@@ -297,26 +239,6 @@ class PaperContentService:
                 "content": new_section["content"]
             })
             
-<<<<<<< HEAD
-            if created_section:
-                # 更新论文的sectionIds
-                if self.paper_model.add_section_id(paper_id, new_section["id"]):
-                    return self._wrap_success(
-                        "成功添加章节",
-                        {
-                            "addedSection": created_section,
-                            "addedSectionId": created_section["id"],
-                            "parentSectionId": parent_section_id,
-                            "position": position
-                        }
-                    )
-                else:
-                    # 如果添加sectionId失败，删除已创建的section
-                    self.section_model.delete(created_section["id"])
-                    return self._wrap_error("更新论文失败")
-            else:
-                return self._wrap_error("创建章节失败")
-=======
             if not created_section:
                 return self._wrap_error("创建章节失败")
             
@@ -349,7 +271,6 @@ class PaperContentService:
                 # 如果添加sectionId失败，删除已创建的section
                 self.section_model.delete(created_section["id"])
                 return self._wrap_error("更新论文失败")
->>>>>>> origin/main
 
         except Exception as exc:
             return self._wrap_error(f"添加章节失败: {exc}")
@@ -361,23 +282,13 @@ class PaperContentService:
         update_data: Dict[str, Any],
         user_id: str,
         is_admin: bool = False,
-<<<<<<< HEAD
-=======
         is_user_paper: bool = False,
->>>>>>> origin/main
     ) -> Dict[str, Any]:
         """
         更新指定章节
         """
         try:
             # 检查论文是否存在及权限
-<<<<<<< HEAD
-            paper = self.paper_model.find_by_id(paper_id)
-            if not paper:
-                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
-
-            if not is_admin and paper["createdBy"] != user_id:
-=======
             # 对于个人论文库，需要特殊处理
             if is_user_paper:
                 # 个人论文库中的论文，直接通过section验证权限
@@ -388,14 +299,11 @@ class PaperContentService:
                 if not paper:
                     return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
 
-            # 管理员只能操作公开的论文
-            if is_admin and not is_user_paper and not paper.get("isPublic", False):
-                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "管理员只能操作公开的论文")
+            # 管理员可以操作所有论文（公开和私有的）
 
             # 修改权限检查逻辑：如果是个人论文库中的操作，允许用户修改
             # 只有在非个人论文库操作且非管理员的情况下，才检查创建者
             if not is_user_paper and not is_admin and paper.get("createdBy") != user_id:
->>>>>>> origin/main
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
             # 查找section
@@ -429,8 +337,6 @@ class PaperContentService:
             # 更新section
             if self.section_model.update(section_id, section_update_data):
                 updated_section = self.section_model.find_by_id(section_id)
-<<<<<<< HEAD
-=======
                 # 获取更新后的论文数据
                 if is_user_paper:
                     # 对于个人论文库，需要特殊处理
@@ -438,17 +344,12 @@ class PaperContentService:
                 else:
                     updated_paper = self.paper_model.find_paper_with_sections(paper_id)
                 
->>>>>>> origin/main
                 return self._wrap_success(
                     "章节更新成功",
                     {
                         "updatedSection": updated_section,
-<<<<<<< HEAD
-                        "sectionId": section_id
-=======
                         "sectionId": section_id,
                         "paper": updated_paper  # 添加完整的论文数据
->>>>>>> origin/main
                     }
                 )
             else:
@@ -463,23 +364,13 @@ class PaperContentService:
         section_id: str,
         user_id: str,
         is_admin: bool = False,
-<<<<<<< HEAD
-=======
         is_user_paper: bool = False,
->>>>>>> origin/main
     ) -> Dict[str, Any]:
         """
         删除指定章节
         """
         try:
             # 检查论文是否存在及权限
-<<<<<<< HEAD
-            paper = self.paper_model.find_by_id(paper_id)
-            if not paper:
-                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
-
-            if not is_admin and paper["createdBy"] != user_id:
-=======
             # 对于个人论文库，需要特殊处理
             if is_user_paper:
                 # 个人论文库中的论文，直接通过section验证权限
@@ -490,14 +381,11 @@ class PaperContentService:
                 if not paper:
                     return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
 
-            # 管理员只能操作公开的论文
-            if is_admin and not is_user_paper and not paper.get("isPublic", False):
-                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "管理员只能操作公开的论文")
+            # 管理员可以操作所有论文（公开和私有的）
 
             # 修改权限检查逻辑：如果是个人论文库中的操作，允许用户修改
             # 只有在非个人论文库操作且非管理员的情况下，才检查创建者
             if not is_user_paper and not is_admin and paper.get("createdBy") != user_id:
->>>>>>> origin/main
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
             # 查找section
@@ -513,11 +401,6 @@ class PaperContentService:
             # 删除section
             if self.section_model.delete(section_id):
                 # 从论文中移除sectionId引用
-<<<<<<< HEAD
-                if self.paper_model.remove_section_id(paper_id, section_id):
-                    return self._wrap_success("章节删除成功", {
-                        "deletedSectionId": section_id
-=======
                 if is_user_paper:
                     # 对于个人论文库，需要特殊处理sectionIds的更新
                     success = self._remove_section_id_from_user_paper(paper_id, section_id)
@@ -535,7 +418,6 @@ class PaperContentService:
                     return self._wrap_success("章节删除成功", {
                         "deletedSectionId": section_id,
                         "paper": updated_paper  # 添加完整的论文数据，保持一致性
->>>>>>> origin/main
                     })
                 else:
                     return self._wrap_error("更新论文失败")
@@ -556,23 +438,13 @@ class PaperContentService:
         user_id: str,
         is_admin: bool = False,
         after_block_id: Optional[str] = None,
-<<<<<<< HEAD
-=======
         is_user_paper: bool = False,
->>>>>>> origin/main
     ) -> Dict[str, Any]:
         """
         使用大模型解析文本并将生成的blocks添加到指定section中
         """
         try:
             # 检查论文是否存在及权限
-<<<<<<< HEAD
-            paper = self.paper_model.find_by_id(paper_id)
-            if not paper:
-                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
-
-            if not is_admin and paper["createdBy"] != user_id:
-=======
             # 对于个人论文库，需要特殊处理
             if is_user_paper:
                 # 个人论文库中的论文，直接通过section验证权限
@@ -583,14 +455,11 @@ class PaperContentService:
                 if not paper:
                     return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
 
-            # 管理员只能操作公开的论文
-            if is_admin and not is_user_paper and not paper.get("isPublic", False):
-                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "管理员只能操作公开的论文")
+            # 管理员可以操作所有论文（公开和私有的）
 
             # 修改权限检查逻辑：如果是个人论文库中的操作，允许用户修改
             # 只有在非个人论文库操作且非管理员的情况下，才检查创建者
             if not is_user_paper and not is_admin and paper.get("createdBy") != user_id:
->>>>>>> origin/main
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
             # 检查输入文本
@@ -613,14 +482,8 @@ class PaperContentService:
                 section_context += f", Section内容: {target_section['content'][:200]}..."
 
             # 使用LLM解析文本为blocks
-<<<<<<< HEAD
-            llm_utils = get_llm_utils()
-            try:
-                new_blocks = llm_utils.parse_text_to_blocks(text, section_context)
-=======
             try:
                 new_blocks = self._parse_text_to_blocks_with_llm(text, section_context)
->>>>>>> origin/main
             except Exception as llm_exc:
                 raise Exception(f"LLM文本解析失败: {llm_exc}")
 
@@ -664,8 +527,6 @@ class PaperContentService:
             
             # 执行原子更新 - 使用update_direct处理MongoDB操作符
             if self.section_model.update_direct(section_id, update_operation):
-<<<<<<< HEAD
-=======
                 # 获取更新后的论文数据
                 if is_user_paper:
                     # 对于个人论文库，需要特殊处理
@@ -673,17 +534,12 @@ class PaperContentService:
                 else:
                     updated_paper = self.paper_model.find_paper_with_sections(paper_id)
                 
->>>>>>> origin/main
                 return self._wrap_success(
                     f"成功向section添加了{len(new_blocks)}个blocks",
                     {
                         "addedBlocks": new_blocks,
-<<<<<<< HEAD
-                        "sectionId": section_id
-=======
                         "sectionId": section_id,
                         "paper": updated_paper  # 添加完整的论文数据
->>>>>>> origin/main
                     }
                 )
             else:
@@ -700,23 +556,13 @@ class PaperContentService:
         update_data: Dict[str, Any],
         user_id: str,
         is_admin: bool = False,
-<<<<<<< HEAD
-=======
         is_user_paper: bool = False,
->>>>>>> origin/main
     ) -> Dict[str, Any]:
         """
         更新指定block
         """
         try:
             # 检查论文是否存在及权限
-<<<<<<< HEAD
-            paper = self.paper_model.find_by_id(paper_id)
-            if not paper:
-                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
-
-            if not is_admin and paper["createdBy"] != user_id:
-=======
             # 对于个人论文库，需要特殊处理
             if is_user_paper:
                 # 个人论文库中的论文，直接通过section验证权限
@@ -727,14 +573,11 @@ class PaperContentService:
                 if not paper:
                     return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
 
-            # 管理员只能操作公开的论文
-            if is_admin and not is_user_paper and not paper.get("isPublic", False):
-                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "管理员只能操作公开的论文")
+            # 管理员可以操作所有论文（公开和私有的）
 
             # 修改权限检查逻辑：如果是个人论文库中的操作，允许用户修改
             # 只有在非个人论文库操作且非管理员的情况下，才检查创建者
             if not is_user_paper and not is_admin and paper.get("createdBy") != user_id:
->>>>>>> origin/main
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
             # 查找目标section
@@ -767,16 +610,10 @@ class PaperContentService:
 
             blocks[target_block_index] = target_block
             target_section["content"] = blocks
-<<<<<<< HEAD
-            sections[section_index] = target_section
-=======
->>>>>>> origin/main
 
             # 更新section
             target_section["content"] = blocks
             if self.section_model.update(section_id, {"content": blocks}):
-<<<<<<< HEAD
-=======
                 # 获取更新后的论文数据
                 if is_user_paper:
                     # 对于个人论文库，需要特殊处理
@@ -784,18 +621,13 @@ class PaperContentService:
                 else:
                     updated_paper = self.paper_model.find_paper_with_sections(paper_id)
                 
->>>>>>> origin/main
                 return self._wrap_success(
                     "block更新成功",
                     {
                         "updatedBlock": target_block,
                         "blockId": target_block["id"],
-<<<<<<< HEAD
-                        "sectionId": section_id
-=======
                         "sectionId": section_id,
                         "paper": updated_paper  # 添加完整的论文数据
->>>>>>> origin/main
                     }
                 )
             else:
@@ -811,23 +643,13 @@ class PaperContentService:
         block_id: str,
         user_id: str,
         is_admin: bool = False,
-<<<<<<< HEAD
-=======
         is_user_paper: bool = False,
->>>>>>> origin/main
     ) -> Dict[str, Any]:
         """
         删除指定block
         """
         try:
             # 检查论文是否存在及权限
-<<<<<<< HEAD
-            paper = self.paper_model.find_by_id(paper_id)
-            if not paper:
-                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
-
-            if not is_admin and paper["createdBy"] != user_id:
-=======
             # 对于个人论文库，需要特殊处理
             if is_user_paper:
                 # 个人论文库中的论文，直接通过section验证权限
@@ -838,14 +660,11 @@ class PaperContentService:
                 if not paper:
                     return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
 
-            # 管理员只能操作公开的论文
-            if is_admin and not is_user_paper and not paper.get("isPublic", False):
-                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "管理员只能操作公开的论文")
+            # 管理员可以操作所有论文（公开和私有的）
 
             # 修改权限检查逻辑：如果是个人论文库中的操作，允许用户修改
             # 只有在非个人论文库操作且非管理员的情况下，才检查创建者
             if not is_user_paper and not is_admin and paper.get("createdBy") != user_id:
->>>>>>> origin/main
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
             # 查找目标section
@@ -873,19 +692,10 @@ class PaperContentService:
             # 删除block
             blocks.pop(target_block_index)
             target_section["content"] = blocks
-<<<<<<< HEAD
-            sections[section_index] = target_section
-=======
->>>>>>> origin/main
 
             # 更新section
             target_section["content"] = blocks
             if self.section_model.update(section_id, {"content": blocks}):
-<<<<<<< HEAD
-                return self._wrap_success("block删除成功", {
-                    "deletedBlockId": block_id,
-                    "sectionId": section_id
-=======
                 # 获取更新后的论文数据
                 if is_user_paper:
                     # 对于个人论文库，需要特殊处理
@@ -897,7 +707,6 @@ class PaperContentService:
                     "deletedBlockId": block_id,
                     "sectionId": section_id,
                     "paper": updated_paper  # 添加完整的论文数据
->>>>>>> origin/main
                 })
             else:
                 return self._wrap_error("更新章节失败")
@@ -913,23 +722,13 @@ class PaperContentService:
         user_id: str,
         is_admin: bool = False,
         after_block_id: Optional[str] = None,
-<<<<<<< HEAD
-=======
         is_user_paper: bool = False,
->>>>>>> origin/main
     ) -> Dict[str, Any]:
         """
         直接向指定section添加一个block，不通过LLM解析
         """
         try:
             # 检查论文是否存在及权限
-<<<<<<< HEAD
-            paper = self.paper_model.find_by_id(paper_id)
-            if not paper:
-                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
-
-            if not is_admin and paper["createdBy"] != user_id:
-=======
             # 对于个人论文库，需要特殊处理
             if is_user_paper:
                 # 个人论文库中的论文，直接通过section验证权限
@@ -940,14 +739,11 @@ class PaperContentService:
                 if not paper:
                     return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
 
-            # 管理员只能操作公开的论文
-            if is_admin and not is_user_paper and not paper.get("isPublic", False):
-                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "管理员只能操作公开的论文")
+            # 管理员可以操作所有论文（公开和私有的）
 
             # 修改权限检查逻辑：如果是个人论文库中的操作，允许用户修改
             # 只有在非个人论文库操作且非管理员的情况下，才检查创建者
             if not is_user_paper and not is_admin and paper.get("createdBy") != user_id:
->>>>>>> origin/main
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
             # 验证block数据
@@ -983,11 +779,7 @@ class PaperContentService:
             if frontend_id and isinstance(frontend_id, str):
                 new_block_id = frontend_id
             else:
-<<<<<<< HEAD
-                new_block_id = f"block_{int(time.time())}_{uuid.uuid4().hex[:8]}"
-=======
                 new_block_id = str(uuid.uuid4())
->>>>>>> origin/main
             
             new_block = {
                 "id": new_block_id,
@@ -1064,8 +856,6 @@ class PaperContentService:
             
             # 执行原子更新 - 使用update_direct处理MongoDB操作符
             if self.section_model.update_direct(section_id, update_operation):
-<<<<<<< HEAD
-=======
                 # 获取更新后的论文数据
                 if is_user_paper:
                     # 对于个人论文库，需要特殊处理
@@ -1073,18 +863,13 @@ class PaperContentService:
                 else:
                     updated_paper = self.paper_model.find_paper_with_sections(paper_id)
                 
->>>>>>> origin/main
                 return self._wrap_success(
                     "成功添加block",
                     {
                         "addedBlock": new_block,
                         "blockId": new_block["id"],
-<<<<<<< HEAD
-                        "sectionId": section_id
-=======
                         "sectionId": section_id,
                         "paper": updated_paper  # 添加完整的论文数据
->>>>>>> origin/main
                     }
                 )
             else:
@@ -1101,19 +886,6 @@ class PaperContentService:
         user_id: str,
         is_admin: bool = False,
         after_block_id: Optional[str] = None,
-<<<<<<< HEAD
-    ) -> Dict[str, Any]:
-        """
-        使用大模型解析文本并将生成的block添加到指定section中
-        """
-        try:
-            # 检查论文是否存在及权限
-            paper = self.paper_model.find_by_id(paper_id)
-            if not paper:
-                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
-
-            if not is_admin and paper["createdBy"] != user_id:
-=======
         is_user_paper: bool = False,
     ) -> Dict[str, Any]:
         """
@@ -1137,14 +909,11 @@ class PaperContentService:
                 if not paper:
                     return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
 
-            # 管理员只能操作公开的论文
-            if is_admin and not is_user_paper and not paper.get("isPublic", False):
-                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "管理员只能操作公开的论文")
+            # 管理员可以操作所有论文（公开和私有的）
 
             # 修改权限检查逻辑：如果是个人论文库中的操作，允许用户修改
             # 只有在非个人论文库操作且非管理员的情况下，才检查创建者
             if not is_user_paper and not is_admin and paper.get("createdBy") != user_id:
->>>>>>> origin/main
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
             # 检查输入文本
@@ -1161,69 +930,6 @@ class PaperContentService:
             if target_section.get("paperId") != paper_id:
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此章节")
 
-<<<<<<< HEAD
-            # 获取section上下文信息
-            section_context = f"Section标题: {target_section.get('title', '未知')}"
-            if target_section.get('content'):
-                section_context += f", Section内容: {target_section['content'][:200]}..."
-
-            # 使用LLM解析文本为blocks
-            llm_utils = get_llm_utils()
-            try:
-                new_blocks = llm_utils.parse_text_to_blocks(text, section_context)
-            except Exception as llm_exc:
-                raise Exception(f"LLM文本解析失败: {llm_exc}")
-
-            if not new_blocks:
-                return self._wrap_error("文本解析失败，无法生成有效的blocks")
-
-            # 将新blocks添加到section中
-            if "content" not in target_section:
-                target_section["content"] = []
-            
-            # 根据after_block_id确定插入位置
-            current_blocks = target_section["content"]
-            insert_index = len(current_blocks)
-            
-            if after_block_id:
-                for i, block in enumerate(current_blocks):
-                    if block.get("id") == after_block_id:
-                        insert_index = i + 1
-                        break
-            
-            # 使用MongoDB原子更新操作
-            if insert_index == len(current_blocks):
-                # 在末尾添加，使用$push
-                update_operation = {
-                    "$push": {
-                        "content": {
-                            "$each": new_blocks
-                        }
-                    }
-                }
-            else:
-                # 在中间插入，使用$push配合$position，避免替换整个数组
-                update_operation = {
-                    "$push": {
-                        "content": {
-                            "$each": new_blocks,
-                            "$position": insert_index
-                        }
-                    }
-                }
-            
-            # 执行原子更新 - 使用update_direct处理MongoDB操作符
-            if self.section_model.update_direct(section_id, update_operation):
-                return self._wrap_success(
-                    f"成功向section添加了{len(new_blocks)}个blocks",
-                    {
-                        "addedBlocks": new_blocks,
-                        "sectionId": section_id
-                    }
-                )
-            else:
-                return self._wrap_error("更新章节失败")
-=======
             # 生成临时进度block ID和解析记录ID
             temp_block_id = "temp_" + generate_id()
             parse_id = "pb_" + generate_id()
@@ -1338,237 +1044,11 @@ class PaperContentService:
                     "parseId": parse_id  # 新增：这一次解析的ParseBlocks ID
                 }
             )
->>>>>>> origin/main
 
         except Exception as exc:
             import traceback
             error_details = f"从文本添加block到section失败: {exc}\n详细错误: {traceback.format_exc()}"
             return self._wrap_error(error_details)
-<<<<<<< HEAD
-
-    # ------------------------------------------------------------------
-    # 参考文献操作
-    # ------------------------------------------------------------------
-    def parse_references(self, text: str) -> Dict[str, Any]:
-        """
-        解析参考文献文本，返回结构化的参考文献列表
-        """
-        try:
-            # 使用parse_reference_text方法解析参考文献
-            result = self.parse_reference_text(text)
-            
-            # 检查是否有任何成功解析的参考文献
-            if not result["references"] and not result["errors"]:
-                return self._wrap_error("参考文献解析失败，无法提取有效的参考文献")
-            
-            # 返回包含成功解析的参考文献和错误信息的结果
-            return self._wrap_success(
-                "参考文献解析完成",
-                {
-                    "references": result["references"],
-                    "count": result["count"],
-                    "errors": result["errors"]
-                }
-            )
-        except Exception as exc:
-            return self._wrap_error(f"参考文献解析失败: {exc}")
-
-    @staticmethod
-    def parse_reference_text(text: str) -> Dict[str, Any]:
-        """
-        简化的参考文献解析方法，主要提取标题和原始文本
-        """
-        # 分条
-        def split_entries(s: str) -> List[Tuple[Optional[int], str]]:
-            """分割参考文献条目"""
-            items: List[Tuple[Optional[int], str]] = []
-            matches = list(re.finditer(r'\[(\d+)\]\s*', s))
-            if not matches:
-                return [(None, s.strip())]
-            for i, m in enumerate(matches):
-                idx = int(m.group(1))
-                start = m.end()
-                end = matches[i + 1].start() if i + 1 < len(matches) else len(s)
-                raw = s[start:end].strip().rstrip('.')
-                items.append((idx, raw))
-            return items
-
-        # 提取标题
-        def extract_title(raw: str) -> str:
-            """从原始文本中提取标题（在引号内的内容）"""
-            # 尝试匹配双引号内的标题
-            m = re.search(r'"([^"]+)"', raw)
-            if m:
-                return m.group(1).strip()
-            
-            # 尝试匹配单引号内的标题
-            m = re.search(r"'([^']+)'", raw)
-            if m:
-                return m.group(1).strip()
-            
-            # 如果没有引号，尝试提取第一个逗号前的内容作为标题
-            parts = raw.split(',', 1)
-            if len(parts) > 1:
-                return parts[0].strip()
-            
-            # 如果都没有，返回整个文本的前50个字符作为标题
-            return raw[:50].strip() + ('...' if len(raw) > 50 else '')
-
-        def parse_one(raw: str, idx: Optional[int]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-            print(f"\n[解析开始] 处理参考文献 #{idx}: '{raw[:100]}...'")
-            
-            # 提取标题
-            title = extract_title(raw)
-            print(f"[解析过程] 提取的标题: '{title}'")
-            
-            # 提取年份
-            year_match = re.search(r'(19|20|21)\d{2}', raw)
-            year = int(year_match.group()) if year_match else None
-            print(f"[解析过程] 提取的年份: {year}")
-            
-            # 创建参考文献记录
-            rec = {
-                'index': idx,
-                'type': 'journal',
-                'authors': [],
-                'has_et_al': False,
-                'title': title,
-                'venue': '',
-                'volume': None,
-                'number': None,
-                'pages': None,
-                'article_no': None,
-                'year': year,
-                'doi': None,
-                'eprint': None,
-                'eprint_type': None,
-                'raw': raw.strip(),
-                'is_incomplete': False if title else True,
-                'originalText': raw.strip()
-            }
-            
-            if not title:
-                error_message = '未能提取标题'
-                rec['is_incomplete'] = True
-                rec['title'] = f'【解析错误】{error_message}'
-                err = {'index': idx, 'raw': raw.strip(), 'message': error_message}
-                print(f"[解析错误] {error_message}")
-                return rec, err
-            
-            print(f"[解析成功] 标题: {rec.get('title', '')}, 年份: {rec.get('year', '')}")
-            return rec, None
-
-        refs: List[Dict[str, Any]] = []
-        errors: List[Dict[str, Any]] = []
-        
-        entries = split_entries(text)
-        print(f"\n[参考文献解析] 开始解析{len(entries)}条参考文献")
-        
-        for idx, raw in entries:
-            rec, err = parse_one(raw, idx)
-            if rec:
-                refs.append(rec)
-                if rec.get('is_incomplete', False) and err:
-                    errors.append(err)
-            elif err:
-                errors.append(err)
-
-        print(f"\n[参考文献解析] 解析完成: 成功{len(refs)}条，失败{len(errors)}条")
-        if errors:
-            print(f"[参考文献解析] 解析错误列表:")
-            for err in errors:
-                print(f"  - 索引{err.get('index')}: {err.get('message')}")
-        
-        return {
-            'references': refs,
-            'count': len(refs),
-            'errors': errors,
-        }
-
-    def add_references_to_paper(
-        self,
-        paper_id: str,
-        references: List[Dict[str, Any]],
-        user_id: str,
-        is_admin: bool = False,
-    ) -> Dict[str, Any]:
-        """
-        将解析后的参考文献添加到论文中，只保存原始文本，不进行重复检测
-        """
-        try:
-            # 检查论文是否存在及权限
-            paper = self.paper_model.find_by_id(paper_id)
-            if not paper:
-                return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
-
-            if not is_admin and paper["createdBy"] != user_id:
-                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
-
-            # 获取当前参考文献列表
-            current_references = paper.get("references", [])
-            
-            # 按照解析出的index字段排序
-            sorted_references = sorted(references, key=lambda x: x.get("index", 0))
-            
-            # 处理参考文献：直接添加，不进行重复检测
-            added_references = []
-            
-            print(f"\n[参考文献处理] 开始处理{len(sorted_references)}条参考文献")
-            print(f"[参考文献处理] 当前已有{len(current_references)}条参考文献")
-            
-            for ref in sorted_references:
-                ref_index = ref.get("index")
-                
-                print(f"\n[参考文献处理] 处理参考文献 #{ref_index}")
-                
-                if ref_index is None:
-                    print(f"[参考文献处理] 跳过索引为None的参考文献")
-                    continue
-                
-                ref_id = f"ref-{ref_index}"
-                ref_number = ref_index
-                
-                new_ref = {
-                    "id": ref_id,
-                    "number": ref_number,
-                    "authors": ref.get("authors", []),
-                    "title": ref.get("title", ""),
-                    "publication": ref.get("venue"),
-                    "year": ref.get("year"),
-                    "doi": ref.get("doi"),
-                    "url": None,
-                    "pages": ref.get("pages"),
-                    "volume": ref.get("volume"),
-                    "issue": ref.get("number"),
-                    "originalText": ref.get("originalText", "")
-                }
-                
-                # 移除空值字段
-                new_ref = {k: v for k, v in new_ref.items() if v is not None}
-                
-                print(f"[参考文献处理] 添加新参考文献")
-                added_references.append(new_ref)
-                current_references.append(new_ref)
-            
-            # 更新论文
-            update_data = {"references": current_references}
-            if self.paper_model.update(paper_id, update_data):
-                result_message = f"成功添加{len(added_references)}条参考文献"
-                
-                return self._wrap_success(
-                    result_message,
-                    {
-                        "addedReferences": added_references,
-                        "totalProcessed": len(sorted_references),
-                        "totalReferences": len(current_references)
-                    }
-                )
-            else:
-                return self._wrap_error("更新论文失败")
-                
-        except Exception as exc:
-            return self._wrap_error(f"添加参考文献失败: {exc}")
-=======
     
     def _update_temp_block_stage(self, section_id: str, temp_block_id: str, stage: str, message: str, extra_fields: Optional[Dict[str, Any]] = None):
         """更新临时进度block的阶段"""
@@ -1612,9 +1092,17 @@ class PaperContentService:
         try:
             section = self.section_model.find_by_id(section_id)
             if not section:
-                return False
+                logger.info(f"Section不存在，跳过移除临时block - section_id: {section_id}")
+                return True  # Section不存在也算成功，因为block肯定不存在
             
             content = section.get("content", []) or []
+            # 检查临时block是否存在
+            temp_block_exists = any(b.get("id") == temp_block_id for b in content)
+            
+            if not temp_block_exists:
+                logger.info(f"临时block不存在，跳过移除 - temp_block_id: {temp_block_id}")
+                return True  # Block不存在也算成功
+            
             new_content = [b for b in content if b.get("id") != temp_block_id]
             
             return self.section_model.update_direct(section_id, {"$set": {"content": new_content}})
@@ -1691,7 +1179,6 @@ class PaperContentService:
             )
         except Exception as e:
             logger.error(f"替换临时block失败: {e}")
->>>>>>> origin/main
 
     # ------------------------------------------------------------------
     # 辅助方法
@@ -1719,8 +1206,6 @@ class PaperContentService:
             "message": message,
             "data": None,
         }
-<<<<<<< HEAD
-=======
 
     def _get_user_paper_with_sections(self, user_paper_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -1799,4 +1284,3 @@ class PaperContentService:
         except Exception as e:
             logger.error(f"从个人论文库移除sectionId失败: {e}")
             return False
->>>>>>> origin/main

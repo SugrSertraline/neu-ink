@@ -11,10 +11,7 @@ import {
 } from '../utils/noteAdapters';
 import { extractPlainText } from '../utils/paperHelpers';
 import { ensureUnified } from '../utils/apiHelpers';
-<<<<<<< HEAD
-=======
 import { toast } from 'sonner';
->>>>>>> origin/main
 
 export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
   const [notesByBlock, setNotesByBlock] = useState<Record<string, PersonalNoteItem[]>>({});
@@ -47,14 +44,6 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
   const createNote = useCallback(
     async (blockId: string, content: InlineContent[]) => {
       if (!userPaperId) {
-<<<<<<< HEAD
-        alert('未找到个人论文标识，无法创建笔记。');
-        return;
-      }
-      setIsMutating(true);
-      try {
-        const payload: CreateNoteRequest = {
-=======
         toast.error('未找到个人论文标识，无法创建笔记。');
         return;
       }
@@ -90,24 +79,10 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
       try {
         const payload: CreateNoteRequest = {
           id: noteId,  // 使用前端生成的ID
->>>>>>> origin/main
           userPaperId,
           blockId,
           content,
           plainText: extractPlainText(content),
-<<<<<<< HEAD
-        } as CreateNoteRequest;
-        const response = await noteService.createNote(payload);
-        const created = adaptNoteFromApi(ensureUnified(response), blockId);
-        setNotesByBlock(prev => {
-          const next = { ...prev };
-          const bucket = next[created.blockId] ?? [];
-          next[created.blockId] = sortNotesDesc([...bucket, created]);
-          return next;
-        });
-      } catch (err) {
-        alert(err instanceof Error ? err.message : '创建笔记失败，请稍后重试');
-=======
         };
         const response = await noteService.createNote(payload);
         
@@ -154,7 +129,6 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
         });
         
         toast.error(err instanceof Error ? err.message : '创建笔记失败，请稍后重试');
->>>>>>> origin/main
       } finally {
         setIsMutating(false);
       }
@@ -165,11 +139,7 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
   const updateNote = useCallback(
     async (blockId: string, noteId: string, content: InlineContent[]) => {
       if (!userPaperId) {
-<<<<<<< HEAD
-        alert('未找到个人论文标识，无法更新笔记。');
-=======
         toast.error('未找到个人论文标识，无法更新笔记。');
->>>>>>> origin/main
         return;
       }
       setIsMutating(true);
@@ -177,21 +147,6 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
         const payload: UpdateNoteRequest = {
           content,
           plainText: extractPlainText(content),
-<<<<<<< HEAD
-        } as UpdateNoteRequest;
-        const response = await noteService.updateNote(noteId, payload);
-        const updated = adaptNoteFromApi(ensureUnified(response), blockId);
-
-        setNotesByBlock(prev => {
-          const next = { ...prev };
-          const originalBucket = next[blockId] ?? [];
-          const stillInOriginal = originalBucket.some(note => note.id === noteId);
-          if (stillInOriginal) {
-            const cleaned = originalBucket.filter(note => note.id !== noteId);
-            if (cleaned.length) next[blockId] = sortNotesDesc(cleaned);
-            else delete next[blockId];
-          }
-=======
         };
         const response = await noteService.updateNote(noteId, payload);
         
@@ -222,18 +177,11 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
           }
           
           // 将更新后的笔记添加到其blockId中
->>>>>>> origin/main
           const targetBucket = next[updated.blockId] ?? [];
           next[updated.blockId] = sortNotesDesc([
             ...targetBucket.filter(note => note.id !== updated.id),
             updated,
           ]);
-<<<<<<< HEAD
-          return next;
-        });
-      } catch (err) {
-        alert(err instanceof Error ? err.message : '更新笔记失败，请稍后重试');
-=======
           
           return next;
         });
@@ -241,7 +189,6 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
         toast.success('笔记更新成功');
       } catch (err) {
         toast.error(err instanceof Error ? err.message : '更新笔记失败，请稍后重试');
->>>>>>> origin/main
       } finally {
         setIsMutating(false);
       }
@@ -252,11 +199,7 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
   const deleteNote = useCallback(
     async (blockId: string, noteId: string) => {
       if (!userPaperId) {
-<<<<<<< HEAD
-        alert('未找到个人论文标识，无法删除笔记。');
-=======
         toast.error('未找到个人论文标识，无法删除笔记。');
->>>>>>> origin/main
         return;
       }
       setIsMutating(true);
@@ -265,21 +208,6 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
         if (response.bizCode !== 0) {
           throw new Error(response.bizMessage ?? '删除笔记失败，请稍后重试');
         }
-<<<<<<< HEAD
-        setNotesByBlock(prev => {
-          const next = { ...prev };
-          const bucket = next[blockId] ?? [];
-          const remaining = bucket.filter(note => note.id !== noteId);
-          if (remaining.length) {
-            next[blockId] = sortNotesDesc(remaining);
-          } else {
-            delete next[blockId];
-          }
-          return next;
-        });
-      } catch (err) {
-        alert(err instanceof Error ? err.message : '删除笔记失败，请稍后重试');
-=======
         
         // 从所有block中查找并删除笔记
         setNotesByBlock(prev => {
@@ -303,7 +231,6 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
         toast.success('笔记删除成功');
       } catch (err) {
         toast.error(err instanceof Error ? err.message : '删除笔记失败，请稍后重试');
->>>>>>> origin/main
       } finally {
         setIsMutating(false);
       }

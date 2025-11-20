@@ -75,8 +75,6 @@ def list_public_papers():
         filters = _parse_public_filters()
 
         service = get_paper_service()
-<<<<<<< HEAD
-=======
         
         # 检查是否是管理员，如果是，则只返回该管理员创建的公开论文
         from flask import g
@@ -87,7 +85,6 @@ def list_public_papers():
             if user and user.get("role") == "admin":
                 user_id = g.current_user["user_id"]
         
->>>>>>> origin/main
         result = service.get_public_papers(
             page=page,
             page_size=page_size,
@@ -95,18 +92,11 @@ def list_public_papers():
             sort_order=sort_order,
             search=search,
             filters=filters,
-<<<<<<< HEAD
-        )
-
-        if result["code"] != BusinessCode.SUCCESS:
-            return bad_request_response(result["message"])
-=======
             user_id=user_id,
         )
 
         if result["code"] != BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return success_response(result["data"], result["message"])
     except ValueError:
         return bad_request_response("无效的参数格式")
@@ -126,15 +116,9 @@ def get_public_paper_detail(paper_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
         if result["code"] == BusinessCode.PERMISSION_DENIED:
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -160,15 +144,9 @@ def check_and_complete_translation_public(paper_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
         if result["code"] == BusinessCode.PERMISSION_DENIED:
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -195,11 +173,7 @@ def get_translation_status_public(paper_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -217,15 +191,9 @@ def get_public_paper_content(paper_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
         if result["code"] == BusinessCode.PERMISSION_DENIED:
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")

@@ -14,6 +14,7 @@ export interface UploadConfig {
   isConfigured: boolean;
   maxFileSize: number;
   allowedImageTypes: string[];
+  allowedPdfTypes: string[];
   allowedDocumentTypes: string[];
   allowedMarkdownTypes: string[];
   domain?: string;
@@ -25,10 +26,6 @@ export interface UploadConfig {
  * @returns 上传结果
  */
 export async function uploadImage(file: File): Promise<UploadResponse> {
-<<<<<<< HEAD
-  console.log('[DEBUG] 开始上传图片:', file.name, file.type, file.size);
-=======
->>>>>>> origin/main
   const formData = new FormData();
   formData.append('file', file);
 
@@ -36,18 +33,9 @@ export async function uploadImage(file: File): Promise<UploadResponse> {
     apiClient.upload<UploadResponse>('/upload/image', formData)
   );
   
-<<<<<<< HEAD
-  console.log('[DEBUG] 图片上传响应:', response);
-  
   // 处理嵌套的响应结构
   // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
   if (response.data && typeof response.data === 'object' && 'data' in response.data) {
-    console.log('[DEBUG] 解析嵌套响应，提取真实数据:', response.data.data);
-=======
-  // 处理嵌套的响应结构
-  // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
-  if (response.data && typeof response.data === 'object' && 'data' in response.data) {
->>>>>>> origin/main
     return response.data.data as UploadResponse;
   }
   
@@ -55,7 +43,28 @@ export async function uploadImage(file: File): Promise<UploadResponse> {
 }
 
 /**
- * 上传文档到七牛云
+ * 上传PDF文件到七牛云
+ * @param file PDF文件
+ * @returns 上传结果
+ */
+export async function uploadPdf(file: File): Promise<UploadResponse> {
+  const formData = new FormData();
+  formData.append('file', file);
+
+  const response = await callAndNormalize<UploadResponse>(
+    apiClient.upload<UploadResponse>('/upload/pdf', formData)
+  );
+  
+  // 处理嵌套的响应结构
+  if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+    return response.data.data as UploadResponse;
+  }
+  
+  return response.data;
+}
+
+/**
+ * 上传文档到七牛云（除PDF和Markdown外的其他文档类型）
  * @param file 文档文件
  * @returns 上传结果
  */
@@ -103,10 +112,6 @@ export async function uploadMarkdown(file: File): Promise<UploadResponse> {
  * @returns 上传结果
  */
 export async function uploadPaperImage(file: File, paperId?: string): Promise<UploadResponse> {
-<<<<<<< HEAD
-  console.log('[DEBUG] 开始上传论文图片:', file.name, file.type, file.size, 'paperId:', paperId);
-=======
->>>>>>> origin/main
   const formData = new FormData();
   formData.append('file', file);
   if (paperId) {
@@ -117,18 +122,9 @@ export async function uploadPaperImage(file: File, paperId?: string): Promise<Up
     apiClient.upload<UploadResponse>('/upload/paper-image', formData)
   );
   
-<<<<<<< HEAD
-  console.log('[DEBUG] 论文图片上传响应:', response);
-  
   // 处理嵌套的响应结构
   // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
   if (response.data && typeof response.data === 'object' && 'data' in response.data) {
-    console.log('[DEBUG] 解析嵌套响应，提取真实数据:', response.data.data);
-=======
-  // 处理嵌套的响应结构
-  // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
-  if (response.data && typeof response.data === 'object' && 'data' in response.data) {
->>>>>>> origin/main
     return response.data.data as UploadResponse;
   }
   

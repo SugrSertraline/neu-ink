@@ -43,10 +43,7 @@ interface PaperCardProps {
   personalMeta?: PersonalMeta;
   isAdmin?: boolean;
   isLoading?: boolean;
-<<<<<<< HEAD
-=======
   isInLibrary?: boolean;
->>>>>>> origin/main
 }
 
 function getStatusColor(status: string): string {
@@ -187,10 +184,7 @@ export default function PaperCard({
   personalMeta,
   isAdmin = false,
   isLoading = false,
-<<<<<<< HEAD
-=======
   isInLibrary = false,
->>>>>>> origin/main
 }: PaperCardProps) {
   const authors = paper.authors
     .slice(0, 3)
@@ -276,11 +270,6 @@ export default function PaperCard({
             </div>
           )}
 
-<<<<<<< HEAD
-          <h3 className="relative z-10 mb-2 line-clamp-2 pr-20 text-sm font-semibold text-slate-900 dark:text-slate-100">
-            {getSafeTitle(paper.title)}
-          </h3>
-=======
           <div className="relative z-10 mb-2 pr-20">
             <h3 className="line-clamp-1 text-sm font-semibold text-slate-900 dark:text-slate-100">
               {getSafeTitle(paper.title)}
@@ -291,7 +280,6 @@ export default function PaperCard({
               </h4>
             )}
           </div>
->>>>>>> origin/main
 
           <p className="relative z-10 mb-3 line-clamp-1 text-xs text-slate-700/80 dark:text-slate-300/90">
             {authorsDisplay || '未知作者'}
@@ -405,15 +393,11 @@ export default function PaperCard({
               {showLoginRequired && (
                 <span className="text-xs text-[#28418A]">登录后查看详情</span>
               )}
-<<<<<<< HEAD
-              {onAddToLibrary && (
-=======
               {isInLibrary ? (
                 <span className="text-xs text-[#28418A] bg-[#28418A]/10 px-2 py-1 rounded-md border border-[#28418A]/30 backdrop-blur-sm">
                   已在个人论文库中
                 </span>
               ) : onAddToLibrary && (
->>>>>>> origin/main
                 <Button
                   size="sm"
                   variant="ghost"
@@ -421,11 +405,7 @@ export default function PaperCard({
                     event.stopPropagation();
                     onAddToLibrary();
                   }}
-<<<<<<< HEAD
-                  className="h-7 text-xs bg-white/30 hover:bg-white/40 border border-white/30 backdrop-blur-sm text-[#28418A]"
-=======
                   className="h-7 text-xs bg-[#28418A]/10 hover:bg-[#28418A]/20 border border-[#28418A]/30 backdrop-blur-sm text-[#28418A] dark:bg-white/30 dark:hover:bg-white/40 dark:border-white/30"
->>>>>>> origin/main
                 >
                   <Plus className="mr-1 h-3 w-3" />
                   添加到我的论文库
@@ -439,11 +419,7 @@ export default function PaperCard({
                     event.stopPropagation();
                     onDelete();
                   }}
-<<<<<<< HEAD
-                  className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50/50 dark:hover:bg-rose-900/20 bg-white/30 border border-white/30 backdrop-blur-sm"
-=======
                   className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50/50 dark:hover:bg-rose-900/20 bg-rose-50/30 border border-rose-200/50 backdrop-blur-sm dark:bg-white/30 dark:border-white/30"
->>>>>>> origin/main
                 >
                   <Trash2 className="mr-1 h-3 w-3" />
                   删除
@@ -457,11 +433,7 @@ export default function PaperCard({
                     event.stopPropagation();
                     onRemoveFromLibrary();
                   }}
-<<<<<<< HEAD
-                  className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50/50 dark:text-rose-300 dark:hover:bg-rose-900/20 bg-white/30 border border-white/30 backdrop-blur-sm"
-=======
                   className="h-7 text-xs text-rose-600 hover:text-rose-700 hover:bg-rose-50/50 dark:text-rose-300 dark:hover:bg-rose-900/20 bg-rose-50/30 border border-rose-200/50 backdrop-blur-sm dark:bg-white/30 dark:border-white/30"
->>>>>>> origin/main
                 >
                   <Trash2 className="mr-1 h-3 w-3" />
                   从个人库删除
@@ -475,11 +447,7 @@ export default function PaperCard({
                     event.stopPropagation();
                     onEdit();
                   }}
-<<<<<<< HEAD
-                  className="h-7 text-xs bg-white/30 hover:bg-white/40 border border-white/30 backdrop-blur-sm"
-=======
                   className="h-7 text-xs bg-slate-100/70 hover:bg-slate-200/70 border border-slate-300/50 backdrop-blur-sm text-slate-700 dark:bg-white/30 dark:hover:bg-white/40 dark:border-white/30 dark:text-slate-200"
->>>>>>> origin/main
                 >
                   编辑
                 </Button>

@@ -259,7 +259,7 @@ def _confirm_parse_result_common(paper_id, parse_id):
                     insert_index = len(current_content)
             else:
                 # 临时block不存在，记录日志但继续执行
-                logger.warning(f"临时block不存在，可能已被移除 - temp_block_id: {temp_block_id}")
+                logger.info(f"临时block不存在，可能已被移除 - temp_block_id: {temp_block_id}")
                 # 确保插入位置有效
                 if insert_index >= len(current_content):
                     insert_index = len(current_content)
@@ -348,9 +348,9 @@ def _discard_parse_result_common(paper_id, parse_id):
             # 尝试移除临时block，但不因为失败而中断整个操作
             try:
                 if not content_service._remove_temp_block(section_id, temp_block_id):
-                    logger.warning(f"移除临时block失败，可能已被移除 - temp_block_id: {temp_block_id}")
+                    logger.info(f"移除临时block失败，可能已被移除 - temp_block_id: {temp_block_id}")
             except Exception as e:
-                logger.warning(f"移除临时block时发生异常，继续执行 - temp_block_id: {temp_block_id}, error: {e}")
+                logger.info(f"移除临时block时发生异常，继续执行 - temp_block_id: {temp_block_id}, error: {e}")
         
         # 更新解析记录状态为已消费
         parse_model.set_consumed(parse_id)
@@ -479,7 +479,7 @@ def _save_all_parse_result_common(paper_id, parse_id):
                     insert_index = len(current_content)
             else:
                 # 临时block不存在，记录日志但继续执行
-                logger.warning(f"临时block不存在，可能已被移除 - temp_block_id: {temp_block_id}")
+                logger.info(f"临时block不存在，可能已被移除 - temp_block_id: {temp_block_id}")
                 # 确保插入位置有效
                 if insert_index >= len(current_content):
                     insert_index = len(current_content)

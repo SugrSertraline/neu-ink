@@ -11,10 +11,7 @@ from ..services.paperService import get_paper_service
 from ..services.paperContentService import PaperContentService
 from ..services.paperTranslationService import PaperTranslationService
 from ..models.paper import PaperModel
-<<<<<<< HEAD
-=======
 from ..models.section import get_section_model
->>>>>>> origin/main
 from ..utils.auth import login_required, admin_required
 from ..utils.common import (
     success_response,
@@ -24,6 +21,7 @@ from ..utils.common import (
     get_current_time,
 )
 from ..config.constants import BusinessCode
+from ..utils.common import ResponseCode
 
 # 初始化logger
 logger = logging.getLogger(__name__)
@@ -102,11 +100,7 @@ def list_admin_papers():
         )
 
         if result["code"] != BusinessCode.SUCCESS:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return success_response(result["data"], result["message"])
     except ValueError:
         return bad_request_response("无效的参数格式")
@@ -138,11 +132,7 @@ def create_paper():
 
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
-<<<<<<< HEAD
-        return internal_error_response(result["message"])
-=======
         return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
 
@@ -177,11 +167,7 @@ def create_paper_from_text():
         
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
-<<<<<<< HEAD
-        return internal_error_response(result["message"])
-=======
         return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
 
@@ -225,15 +211,9 @@ def add_section(paper_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
         if result["code"] == BusinessCode.PERMISSION_DENIED:
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -262,15 +242,9 @@ def update_paper(paper_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
         if result["code"] == BusinessCode.PERMISSION_DENIED:
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -294,15 +268,9 @@ def delete_paper(paper_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(None, result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
-=======
             return success_response(None, result["message"], result["code"])
         if result["code"] == BusinessCode.PERMISSION_DENIED:
             return success_response(None, result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -321,11 +289,7 @@ def get_statistics():
 
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
-<<<<<<< HEAD
-        return internal_error_response(result["message"])
-=======
         return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
 
@@ -347,15 +311,9 @@ def get_admin_paper_detail(paper_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
         if result["code"] == BusinessCode.PERMISSION_DENIED:
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:  # pylint: disable=broad-except
         return internal_error_response(f"服务器错误: {exc}")
@@ -411,15 +369,9 @@ def add_block_to_section(paper_id, section_id):
                 response_data["blockId"] = response_data["addedBlock"]["id"]
             return success_response(response_data, result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
         if result["code"] == BusinessCode.PERMISSION_DENIED:
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -460,22 +412,14 @@ def add_block_from_text_to_section(paper_id, section_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
         if result["code"] == BusinessCode.PERMISSION_DENIED:
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
 
 
-<<<<<<< HEAD
-=======
 @bp.route("/<paper_id>/sections/<section_id>/blocks/<block_id>/parsing-status", methods=["GET"])
 @login_required
 @admin_required
@@ -663,7 +607,6 @@ def get_block_parsing_status(paper_id, section_id, block_id):
         return internal_error_response(f"服务器错误: {exc}")
 
 
->>>>>>> origin/main
 @bp.route("/<paper_id>/sections/<section_id>", methods=["PUT"])
 @login_required
 @admin_required
@@ -729,15 +672,9 @@ def update_section(paper_id, section_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
         if result["code"] == BusinessCode.PERMISSION_DENIED:
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         logger.error(f"update_section路由异常: {exc}")
@@ -766,15 +703,9 @@ def delete_section(paper_id, section_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
         if result["code"] == BusinessCode.PERMISSION_DENIED:
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -813,15 +744,9 @@ def update_block(paper_id, section_id, block_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
         if result["code"] == BusinessCode.PERMISSION_DENIED:
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -858,15 +783,9 @@ def update_paper_visibility(paper_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
         if result["code"] == BusinessCode.PERMISSION_DENIED:
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -892,15 +811,9 @@ def parse_references(paper_id):
         text = data.get("text")
         
         # 首先解析参考文献
-<<<<<<< HEAD
-        paper_model = PaperModel()
-        content_service = PaperContentService(paper_model)
-        parse_result = content_service.parse_references(text)
-=======
         from ..services.paperReferenceService import get_paper_reference_service
         reference_service = get_paper_reference_service()
         parse_result = reference_service.parse_reference_text(text)
->>>>>>> origin/main
         
         # 即使解析失败，也继续处理，因为解析结果中包含了错误信息
         # 这样前端可以显示部分解析成功的结果和错误信息
@@ -912,16 +825,7 @@ def parse_references(paper_id):
             return bad_request_response("未能从文本中解析出有效的参考文献")
         
         # 将解析后的参考文献添加到论文中
-<<<<<<< HEAD
-        add_result = content_service.add_references_to_paper(
-            paper_id=paper_id,
-            references=parsed_references,
-            user_id=g.current_user["user_id"],
-            is_admin=True
-        )
-=======
         add_result = reference_service.add_references_to_paper(paper_id, parsed_references)
->>>>>>> origin/main
         
         if add_result["code"] == BusinessCode.SUCCESS:
             # 在响应中包含解析结果（包括错误信息）
@@ -933,11 +837,7 @@ def parse_references(paper_id):
             }
             return success_response(response_data, add_result["message"])
         else:
-<<<<<<< HEAD
-            return bad_request_response(add_result["message"])
-=======
             return success_response(add_result["data"], add_result["message"], add_result["code"])
->>>>>>> origin/main
             
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -963,11 +863,7 @@ def check_and_complete_translation(paper_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -994,11 +890,7 @@ def get_translation_status(paper_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -1027,11 +919,7 @@ def migrate_title_format():
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -1060,11 +948,7 @@ def migrate_abstract_format():
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -1093,11 +977,7 @@ def migrate_translation_status():
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
@@ -1107,78 +987,6 @@ def migrate_translation_status():
 @admin_required
 def add_block_from_text_to_section_stream(paper_id, section_id):
     """
-<<<<<<< HEAD
-    管理员向指定论文的指定section中流式添加block（使用大模型解析文本）
-    
-    GET 请求参数示例:
-    ?text=这是需要解析并添加到section中的文本内容...&afterBlockId=block_123&sessionId=session_123
-    
-    POST 请求体示例:
-    {
-        "text": "这是需要解析并添加到section中的文本内容...",
-        "afterBlockId": "block_123",
-        "sessionId": "session_123"
-    }
-    """
-    try:
-        # 根据请求方法获取参数
-        if request.method == "POST":
-            data = request.get_json() or {}
-            text = data.get("text")
-            after_block_id = data.get("afterBlockId")  # 获取插入位置
-            session_id = data.get("sessionId")  # 获取会话ID，用于恢复连接
-        else:  # GET
-            text = request.args.get("text")
-            after_block_id = request.args.get("afterBlockId")  # 获取插入位置
-            session_id = request.args.get("sessionId")  # 获取会话ID，用于恢复连接
-        
-        if not text and not session_id:
-            return bad_request_response("文本内容或会话ID不能为空")
-        
-        # 减少调试日志频率，但添加特殊符号检测
-        logger.info(f"收到管理员流式请求 - sessionId: {session_id}, paper_id: {paper_id}, section_id: {section_id}")
-        
-        # 检查文本中的特殊符号
-        if text:
-            import re
-            special_chars_pattern = re.compile(r'[&?=%+]')
-            if special_chars_pattern.search(text):
-                logger.warning(f"检测到特殊符号在文本中: {text[:100]}...")
-                special_positions = [i for i, char in enumerate(text) if special_chars_pattern.search(char)]
-                logger.warning(f"特殊符号位置: {special_positions}")
-        
-        # 使用通用的流式传输方法
-        service = get_paper_service()
-        response = service.add_block_from_text_stream(
-            paper_id=paper_id,
-            section_id=section_id,
-            text=text,
-            after_block_id=after_block_id,
-            session_id=session_id,
-            user_id=g.current_user["user_id"],
-            is_admin=True
-        )
-        
-        # 设置正确的 Server-Sent Events 响应头
-        from flask import Response
-        return Response(
-            response,
-            mimetype='text/event-stream',
-            headers={
-                'Cache-Control': 'no-cache',
-                'Connection': 'keep-alive',
-                'Access-Control-Allow-Origin': '*',
-                'Access-Control-Allow-Headers': 'Cache-Control',
-                'Access-Control-Allow-Credentials': 'true'
-            }
-        )
-    
-    except Exception as exc:
-        print(f"❌ 路由处理异常: {str(exc)}")
-        import traceback
-        print(traceback.format_exc())
-        return internal_error_response(f"服务器错误: {exc}")
-=======
     （已废弃）管理员流式添加 block 接口。
 
     流式解析功能已关闭，请改用非流式接口：
@@ -1200,7 +1008,6 @@ def add_block_from_text_to_section_stream(paper_id, section_id):
         ),
         400,
     )
->>>>>>> origin/main
 
 
 
@@ -1390,6 +1197,303 @@ def delete_parsing_session(paper_id, section_id, session_id):
         return internal_error_response(f"服务器错误: {exc}")
 
 
+@bp.route("/<paper_id>/attachments", methods=["PUT"])
+@login_required
+@admin_required
+def update_paper_attachments(paper_id):
+    """
+    管理员更新论文附件
+    
+    请求体示例:
+    {
+        "attachments": {
+            "pdf": {
+                "url": "https://your-domain.com/neuink/pdf/12345678_abc123.pdf",
+                "key": "neuink/pdf/12345678_abc123.pdf",
+                "size": 1024000,
+                "uploadedAt": "2023-12-01T10:00:00.000Z"
+            },
+            "markdown": {
+                "url": "https://your-domain.com/neuink/markdown/12345678_abc123.md",
+                "key": "neuink/markdown/12345678_abc123.md",
+                "size": 102400,
+                "uploadedAt": "2023-12-01T10:00:00.000Z"
+            }
+        }
+    }
+    """
+    try:
+        data = request.get_json()
+        if not data or "attachments" not in data:
+            return bad_request_response("attachments字段不能为空")
+        
+        attachments = data.get("attachments")
+        
+        # 验证attachments结构
+        if not isinstance(attachments, dict):
+            return bad_request_response("attachments必须是对象")
+        
+        # 验证PDF和Markdown附件结构
+        for attachment_type in ["pdf", "markdown"]:
+            if attachment_type in attachments:
+                attachment = attachments[attachment_type]
+                if not isinstance(attachment, dict):
+                    return bad_request_response(f"{attachment_type}附件必须是对象")
+                
+                required_fields = ["url", "key", "size", "uploadedAt"]
+                for field in required_fields:
+                    if field not in attachment:
+                        return bad_request_response(f"{attachment_type}附件缺少{field}字段")
+        
+        service = get_paper_service()
+        result = service.update_paper_attachments(
+            paper_id=paper_id,
+            attachments=attachments,
+            user_id=g.current_user["user_id"],
+            is_admin=True
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return success_response(result["data"], result["message"], result["code"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return success_response(result["data"], result["message"], result["code"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>/attachments/<attachment_type>", methods=["DELETE"])
+@login_required
+@admin_required
+def delete_paper_attachment(paper_id, attachment_type):
+    """
+    管理员删除论文附件
+    
+    参数:
+    attachment_type: 附件类型 (pdf 或 markdown)
+    """
+    try:
+        if attachment_type not in ["pdf", "markdown"]:
+            return bad_request_response("附件类型只能是pdf或markdown")
+        
+        service = get_paper_service()
+        result = service.delete_paper_attachment(
+            paper_id=paper_id,
+            attachment_type=attachment_type,
+            user_id=g.current_user["user_id"],
+            is_admin=True
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        if result["code"] == BusinessCode.PAPER_NOT_FOUND:
+            return success_response(result["data"], result["message"], result["code"])
+        if result["code"] == BusinessCode.PERMISSION_DENIED:
+            return success_response(result["data"], result["message"], result["code"])
+        return internal_error_response(result["message"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>/upload-pdf", methods=["POST"])
+@login_required
+@admin_required
+def upload_admin_paper_pdf(paper_id):
+   """
+   管理员上传论文PDF附件
+   
+   请求格式: multipart/form-data
+   参数:
+       file: PDF文件
+   """
+   try:
+       # 首先获取论文详情，确保管理员有权限
+       from ..services.paperService import get_paper_service
+       service = get_paper_service()
+       paper_result = service.get_admin_paper_detail(
+           paper_id=paper_id,
+           user_id=g.current_user["user_id"]
+       )
+       
+       if paper_result["code"] != BusinessCode.SUCCESS:
+           if paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+               return bad_request_response(paper_result["message"])
+           elif paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+               from flask import jsonify
+               return jsonify({
+                   "code": ResponseCode.FORBIDDEN,
+                   "message": paper_result["message"],
+                   "data": None
+               }), ResponseCode.FORBIDDEN
+           else:
+               return bad_request_response(paper_result["message"])
+       
+       paper_data = paper_result["data"]
+       
+       # 检查是否有文件上传
+       if 'file' not in request.files:
+           return bad_request_response("没有选择文件")
+       
+       file = request.files['file']
+       
+       # 检查文件名是否为空
+       if file.filename == '':
+           return bad_request_response("没有选择文件")
+       
+       # 检查文件类型
+       if file.content_type != 'application/pdf':
+           return bad_request_response("请选择PDF文件")
+       
+       # 读取文件数据
+       file_data = file.read()
+       
+       # 检查文件大小（50MB限制）
+       max_size = 50 * 1024 * 1024  # 50MB
+       if len(file_data) > max_size:
+           return bad_request_response(f"文件大小超过限制，最大允许 {max_size // (1024*1024)}MB")
+       
+       # 导入上传服务
+       from ..services.qiniuService import get_qiniu_service
+       qiniu_service = get_qiniu_service()
+       
+       # 上传文件到七牛云，使用PDF路径前缀
+       upload_result = qiniu_service.upload_file_data(file_data, ".pdf")
+       
+       if upload_result["success"]:
+           # 使用paperService更新附件
+           from ..services.paperService import get_paper_service
+           paper_service = get_paper_service()
+           
+           # 构建附件数据
+           attachments = paper_data.get("attachments", {})
+           attachments["pdf"] = {
+               "url": upload_result["url"],
+               "key": upload_result["key"],
+               "size": upload_result["size"],
+               "uploadedAt": upload_result["uploadedAt"]
+           }
+           
+           # 更新论文附件
+           result = paper_service.update_paper_attachments(
+               paper_id=paper_id,
+               attachments=attachments,
+               user_id=g.current_user["user_id"],
+               is_admin=True
+           )
+           
+           if result["code"] == BusinessCode.SUCCESS:
+               return success_response(result["data"], "PDF上传成功")
+           else:
+               return bad_request_response(result["message"])
+       else:
+           return internal_error_response(f"PDF上传失败: {upload_result['error']}")
+           
+   except Exception as exc:
+       return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>/upload-markdown", methods=["POST"])
+@login_required
+@admin_required
+def upload_admin_paper_markdown(paper_id):
+   """
+   管理员上传论文Markdown附件
+   
+   请求格式: multipart/form-data
+   参数:
+       file: Markdown文件
+   """
+   try:
+       # 首先获取论文详情，确保管理员有权限
+       from ..services.paperService import get_paper_service
+       service = get_paper_service()
+       paper_result = service.get_admin_paper_detail(
+           paper_id=paper_id,
+           user_id=g.current_user["user_id"]
+       )
+       
+       if paper_result["code"] != BusinessCode.SUCCESS:
+           if paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+               return bad_request_response(paper_result["message"])
+           elif paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+               from flask import jsonify
+               return jsonify({
+                   "code": ResponseCode.FORBIDDEN,
+                   "message": paper_result["message"],
+                   "data": None
+               }), ResponseCode.FORBIDDEN
+           else:
+               return bad_request_response(paper_result["message"])
+       
+       paper_data = paper_result["data"]
+       
+       # 检查是否有文件上传
+       if 'file' not in request.files:
+           return bad_request_response("没有选择文件")
+       
+       file = request.files['file']
+       
+       # 检查文件名是否为空
+       if file.filename == '':
+           return bad_request_response("没有选择文件")
+       
+       # 检查文件类型（允许.md和.markdown）
+       file_extension = file.filename.split('.')[-1].lower() if '.' in file.filename else ''
+       if file_extension not in ['md', 'markdown']:
+           return bad_request_response("请选择Markdown文件")
+       
+       # 导入上传服务
+       from ..services.qiniuService import get_qiniu_service
+       qiniu_service = get_qiniu_service()
+       
+       # 读取文件数据
+       file_data = file.read()
+       
+       # 检查文件大小（50MB限制）
+       max_size = 50 * 1024 * 1024  # 50MB
+       if len(file_data) > max_size:
+           return bad_request_response(f"文件大小超过限制，最大允许 {max_size // (1024*1024)}MB")
+       
+       # 上传文件到七牛云，使用Markdown路径前缀
+       upload_result = qiniu_service.upload_file_data(file_data, ".md")
+       
+       if upload_result["success"]:
+           # 使用paperService更新附件
+           from ..services.paperService import get_paper_service
+           paper_service = get_paper_service()
+           
+           # 构建附件数据
+           attachments = paper_data.get("attachments", {})
+           attachments["markdown"] = {
+               "url": upload_result["url"],
+               "key": upload_result["key"],
+               "size": upload_result["size"],
+               "uploadedAt": upload_result["uploadedAt"]
+           }
+           
+           # 更新论文附件
+           result = paper_service.update_paper_attachments(
+               paper_id=paper_id,
+               attachments=attachments,
+               user_id=g.current_user["user_id"],
+               is_admin=True
+           )
+           
+           if result["code"] == BusinessCode.SUCCESS:
+               return success_response(result["data"], "Markdown文件上传成功")
+           else:
+               return bad_request_response(result["message"])
+       else:
+           return internal_error_response(f"Markdown文件上传失败: {upload_result['error']}")
+           
+   except Exception as exc:
+       return internal_error_response(f"服务器错误: {exc}")
+
+
+
+
 
 @bp.route("/<paper_id>/sections/<section_id>/blocks/<block_id>", methods=["DELETE"])
 @login_required
@@ -1412,15 +1516,9 @@ def delete_block(paper_id, section_id, block_id):
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
-<<<<<<< HEAD
-            return bad_request_response(result["message"])
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return bad_request_response(result["message"])
-=======
             return success_response(result["data"], result["message"], result["code"])
         if result["code"] == BusinessCode.PERMISSION_DENIED:
             return success_response(result["data"], result["message"], result["code"])
->>>>>>> origin/main
         return internal_error_response(result["message"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")

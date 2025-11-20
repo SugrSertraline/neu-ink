@@ -90,10 +90,7 @@ export default function PublicLibraryPage() {
     error,
     totalCount,
     availableYears,
-<<<<<<< HEAD
-=======
     papersInLibrary,
->>>>>>> origin/main
     showLoginHint,
     dismissLoginHint,
     navigateToLogin,
@@ -259,11 +256,7 @@ export default function PublicLibraryPage() {
                   {papers.map(paper => (
                     <div
                       key={paper.id}
-<<<<<<< HEAD
-                      className="w-[320px] flex-shrink-0 rounded-2xl border border-white/70 bg-white/78 p-4 shadow backdrop-blur-2xl transition-transform duration-300 hover:-translate-y-1.5 hover:shadow-[0_24px_54px_rgba(28,45,96,0.2)]"
-=======
                       className="w-[320px] shrink-0 rounded-2xl border border-white/70 bg-white/78 p-4 shadow backdrop-blur-2xl transition-transform duration-300 hover:-translate-y-1.5 hover:shadow-[0_24px_54px_rgba(28,45,96,0.2)]"
->>>>>>> origin/main
                     >
                       <PaperCard
                         paper={paper}
@@ -273,10 +266,7 @@ export default function PublicLibraryPage() {
                         showLoginRequired={!isAuthenticated}
                         isAdmin={isAdmin}
                         isLoading={openingPaperId === paper.id}
-<<<<<<< HEAD
-=======
                         isInLibrary={papersInLibrary.has(paper.id)}
->>>>>>> origin/main
                       />
                     </div>
                   ))}

@@ -1,19 +1,12 @@
 """
 用户相关路由 - 只负责HTTP处理
 """
-<<<<<<< HEAD
-from flask import Blueprint, jsonify, request, g
-from neuink.config.constants import ResponseCode, BusinessCode
-from neuink.services.userService import get_user_service
-from neuink.utils.auth import login_required, admin_required
-=======
 import os
 import jwt
 from flask import Blueprint, jsonify, request, g
 from neuink.config.constants import ResponseCode, BusinessCode, JWT_ALGORITHM
 from neuink.services.userService import get_user_service
 from neuink.utils.auth import login_required, admin_required, generate_token, get_token_from_request
->>>>>>> origin/main
 from neuink.utils.common import (
     create_response, success_response, created_response, bad_request_response,
     unauthorized_response, not_found_response, conflict_response,
@@ -53,20 +46,6 @@ def login():
         # 检查登录是否成功
         if result.get("code") == BusinessCode.SUCCESS:
             # 登录成功，返回成功响应
-<<<<<<< HEAD
-            return jsonify(create_response(
-                code=ResponseCode.SUCCESS,
-                message="登录成功",
-                data=result.get("data")
-            )), ResponseCode.SUCCESS
-        else:
-            # 登录失败，返回失败响应
-            return jsonify(create_response(
-                code=ResponseCode.SUCCESS,
-                message="请求处理完成",
-                data=result
-            )), ResponseCode.SUCCESS
-=======
             # 按照API文档的格式，data字段应该包含业务响应格式
             return jsonify(create_response(
                 code=ResponseCode.SUCCESS,
@@ -90,7 +69,6 @@ def login():
                 message="登录失败",
                 data=error_data
             )), ResponseCode.UNAUTHORIZED
->>>>>>> origin/main
         
     except Exception as e:
         print(f"Exception异常: {str(e)}")
@@ -104,17 +82,10 @@ def login():
             "data": None
         }
         return jsonify(create_response(
-<<<<<<< HEAD
-            code=ResponseCode.SUCCESS,
-            message="请求处理完成",
-            data=error_result
-        )), ResponseCode.SUCCESS
-=======
             code=ResponseCode.INTERNAL_ERROR,
             message="服务器内部错误",
             data=error_result
         )), ResponseCode.INTERNAL_ERROR
->>>>>>> origin/main
 
 @bp.route("/logout", methods=["POST"])
 @login_required
@@ -135,8 +106,6 @@ def logout():
         return success_response(None, "登出成功")
 
 
-<<<<<<< HEAD
-=======
 @bp.route("/refresh", methods=["POST"])
 def refresh_token():
     """刷新JWT token"""
@@ -174,7 +143,6 @@ def refresh_token():
         return internal_error_response(f"刷新token失败: {str(e)}")
 
 
->>>>>>> origin/main
 @bp.route("/current", methods=["GET"])
 @login_required
 def get_current_user():
@@ -219,12 +187,8 @@ def create_user():
         return created_response(user, "用户创建成功")
         
     except ValueError as e:
-<<<<<<< HEAD
-        return conflict_response(str(e))
-=======
         # 对于用户已存在的情况，返回200状态码但在响应体中包含业务错误码
         return success_response(None, str(e), BusinessCode.USER_EXISTS)
->>>>>>> origin/main
     except Exception as e:
         return internal_error_response(f"创建用户失败: {str(e)}")
 
@@ -240,12 +204,8 @@ def delete_user(user_id):
         return success_response(None, "用户删除成功")
         
     except ValueError as e:
-<<<<<<< HEAD
-        return bad_request_response(str(e))
-=======
         # 对于业务逻辑错误，返回200状态码但在响应体中包含业务错误码
         return success_response(None, str(e), BusinessCode.INVALID_PARAMS)
->>>>>>> origin/main
     except Exception as e:
         return internal_error_response(f"删除用户失败: {str(e)}")
 
@@ -273,12 +233,8 @@ def change_password():
         return success_response(None, "密码修改成功")
         
     except ValueError as e:
-<<<<<<< HEAD
-        return bad_request_response(str(e))
-=======
         # 对于业务逻辑错误，返回200状态码但在响应体中包含业务错误码
         return success_response(None, str(e), BusinessCode.OLD_PASSWORD_WRONG)
->>>>>>> origin/main
     except Exception as e:
         return internal_error_response(f"修改密码失败: {str(e)}")
 
@@ -303,12 +259,8 @@ def change_role(user_id: str):
         return success_response(updated_user, "角色更新成功")
 
     except ValueError as e:
-<<<<<<< HEAD
-        return bad_request_response(str(e))
-=======
         # 对于业务逻辑错误，返回200状态码但在响应体中包含业务错误码
         return success_response(None, str(e), BusinessCode.INVALID_PARAMS)
->>>>>>> origin/main
     except Exception as e:
         return internal_error_response(f"角色更新失败: {str(e)}")
 
@@ -331,12 +283,8 @@ def get_users():
         return success_response(result, "获取用户列表成功")
         
     except ValueError as e:
-<<<<<<< HEAD
-        return bad_request_response(f"参数错误: {str(e)}")
-=======
         # 对于业务逻辑错误，返回200状态码但在响应体中包含业务错误码
         return success_response(None, f"参数错误: {str(e)}", BusinessCode.INVALID_PARAMS)
->>>>>>> origin/main
     except Exception as e:
         return internal_error_response(f"获取用户列表失败: {str(e)}")
 
@@ -351,12 +299,8 @@ def get_user(user_id):
         return success_response(user, "获取用户详情成功")
         
     except ValueError as e:
-<<<<<<< HEAD
-        return not_found_response(str(e))
-=======
         # 对于业务逻辑错误，返回200状态码但在响应体中包含业务错误码
         return success_response(None, str(e), BusinessCode.USER_NOT_FOUND)
->>>>>>> origin/main
     except Exception as e:
         return internal_error_response(f"获取用户详情失败: {str(e)}")
 
@@ -382,11 +326,7 @@ def update_user(user_id):
         return success_response(updated_user, "用户信息更新成功")
         
     except ValueError as e:
-<<<<<<< HEAD
-        return bad_request_response(str(e))
-=======
         # 对于业务逻辑错误，返回200状态码但在响应体中包含业务错误码
         return success_response(None, str(e), BusinessCode.INVALID_PARAMS)
->>>>>>> origin/main
     except Exception as e:
         return internal_error_response(f"更新用户信息失败: {str(e)}")

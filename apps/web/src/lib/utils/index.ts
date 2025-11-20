@@ -40,11 +40,6 @@ export function formatDate(
   return d.toLocaleDateString('zh-CN');
 }
 
-<<<<<<< HEAD
-/** 生成随机ID */
-export function generateId(): string {
-  return Math.random().toString(36).slice(2, 11);
-=======
 /** 生成随机ID (UUID格式) */
 export function generateId(): string {
   // 生成 UUID v4 格式的 ID
@@ -53,7 +48,6 @@ export function generateId(): string {
     const v = c === 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
   });
->>>>>>> origin/main
 }
 
 /** 延迟执行 */

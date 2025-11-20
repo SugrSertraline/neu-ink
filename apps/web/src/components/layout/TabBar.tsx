@@ -51,12 +51,6 @@ function TabBarContent({
 
   const [showLeftGradient, setShowLeftGradient] = useState(false);
   const [showRightGradient, setShowRightGradient] = useState(false);
-<<<<<<< HEAD
-  const [isDragging, setIsDragging] = useState(false);
-  const [startX, setStartX] = useState(0);
-  const [scrollLeft, setScrollLeft] = useState(0);
-=======
->>>>>>> origin/main
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const tabBarRef = useRef<HTMLDivElement>(null);
@@ -148,41 +142,6 @@ function TabBarContent({
     };
   }, [visibleTabs]);
 
-<<<<<<< HEAD
-  const handleMouseDown = useCallback((event: React.MouseEvent) => {
-    if (!scrollContainerRef.current) return;
-    setIsDragging(true);
-    setStartX(event.pageX - scrollContainerRef.current.offsetLeft);
-    setScrollLeft(scrollContainerRef.current.scrollLeft);
-  }, []);
-
-  const handleMouseUp = useCallback(() => {
-    setIsDragging(false);
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.style.cursor = '';
-    }
-  }, []);
-
-  const handleMouseMove = useCallback(
-    (event: React.MouseEvent) => {
-      if (!isDragging || !scrollContainerRef.current) return;
-      event.preventDefault();
-      const x = event.pageX - scrollContainerRef.current.offsetLeft;
-      const walk = (x - startX) * 2;
-      scrollContainerRef.current.scrollLeft = scrollLeft - walk;
-    },
-    [isDragging, startX, scrollLeft],
-  );
-
-  const handleMouseLeave = useCallback(() => {
-    if (!isDragging) return;
-    setIsDragging(false);
-    if (scrollContainerRef.current) {
-      scrollContainerRef.current.style.cursor = '';
-    }
-  }, [isDragging]);
-=======
->>>>>>> origin/main
 
   const scrollToDirection = (direction: 'left' | 'right') => {
     if (!scrollContainerRef.current) return;
@@ -285,14 +244,11 @@ function TabBarContent({
     const tab = tabs.find(item => item.id === tabId);
     if (!tab) return;
 
-<<<<<<< HEAD
-=======
     // 如果点击的是当前活动标签页，不做任何操作
     if (tabId === activeTabId && currentHref === tab.path) {
       return;
     }
 
->>>>>>> origin/main
     const navItem = navItems.find(item => item.id === tabId);
     if (navItem) {
       onNavigate(navItem);
@@ -394,17 +350,8 @@ function TabBarContent({
 
           <div
             ref={scrollContainerRef}
-<<<<<<< HEAD
-            onMouseDown={handleMouseDown}
-            onMouseUp={handleMouseUp}
-            onMouseMove={handleMouseMove}
-            onMouseLeave={handleMouseLeave}
-            className="flex items-center gap-2 h-full overflow-x-auto overflow-y-hidden scrollbar-hide py-2 select-none"
-            style={{ scrollbarWidth: 'none', msOverflowStyle: 'none', cursor: isDragging ? 'grabbing' : 'grab' }}
-=======
             className="flex items-center gap-2 h-full overflow-x-auto overflow-y-hidden scrollbar-hide py-2 select-none"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
->>>>>>> origin/main
           >
             {visibleTabs.map(tab => {
               const isActive = tab.id === activeTabId;

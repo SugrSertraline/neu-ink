@@ -21,6 +21,7 @@ def create_app():
     app.config["SECRET_KEY"] = os.getenv("SECRET_KEY", "dev")
     app.config["MONGO_URI"] = os.getenv("MONGO_URI", "mongodb://localhost:27017/NeuInk")
     app.config["API_PREFIX"] = os.getenv("API_PREFIX", "/api/v1")
+    app.config["MAX_CONTENT_LENGTH"] = 100 * 1024 * 1024  # 100MB 最大上传文件大小
     
     # 配置日志，确保在Windows环境下也能立即输出
     import logging
@@ -51,31 +52,6 @@ def create_app():
                 line_buffering=True
             )
 
-<<<<<<< HEAD
-    CORS(app, resources={
-        r"/*": {
-            "origins": [
-                "http://localhost:3000",
-                "http://127.0.0.1:3000",
-                "http://localhost:3001",
-                "http://localhost:3002",
-                "http://127.0.0.1:3002",
-                "http://localhost:8000",
-                "http://127.0.0.1:8000",
-            ],
-            "methods": ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
-            "allow_headers": "*",
-            "expose_headers": [
-                "Content-Type",
-                "Authorization",
-                "X-Total-Count",
-                "Cache-Control",
-                "Connection"
-            ],
-            "supports_credentials": True
-        }
-    })
-=======
     # 检查是否为开发环境
     is_development = os.getenv("FLASK_ENV", "development") == "development" or os.getenv("DEBUG", "0") == "1"
     
@@ -122,7 +98,6 @@ def create_app():
                 "supports_credentials": True
             }
         })
->>>>>>> origin/main
 
     prefix = app.config["API_PREFIX"]
 
@@ -151,5 +126,15 @@ def create_app():
         from flask import request
         print(f"[OUT] {request.method} {request.path} -> {response.status_code}")
         return response
+
+    # 添加413错误处理
+    @app.errorhandler(413)
+    def handle_file_too_large(e):
+        from flask import jsonify
+        return jsonify({
+            "code": 413,
+            "message": "上传的文件过大，请确保文件大小不超过100MB",
+            "data": None
+        }), 413
 
     return app

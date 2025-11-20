@@ -36,36 +36,23 @@ class UserPaperModel:
         self.collection.create_index("addedAt")
         # 新增：阅读相关索引
         self.collection.create_index("lastReadTime")
-<<<<<<< HEAD
-
-    def create(self, user_paper_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        创建新的个人论文库条目
-=======
         # 新增：sectionIds索引
         self.collection.create_index("sectionIds")
 
     def create(self, user_paper_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         创建新的个人论文库条目（支持扁平化结构）
->>>>>>> origin/main
         """
         user_paper_id = generate_id()
         current_time = get_current_time()
 
-<<<<<<< HEAD
-=======
         # 支持新的扁平化结构，同时兼容旧的 paperData 结构
         paper_data = user_paper_data.get("paperData", {})
         
->>>>>>> origin/main
         user_paper = {
             "id": user_paper_id,
             "userId": user_paper_data["userId"],
             "sourcePaperId": user_paper_data.get("sourcePaperId"),
-<<<<<<< HEAD
-            "paperData": user_paper_data["paperData"],
-=======
             # 扁平化字段（优先使用直接字段，回退到 paperData）
             "metadata": user_paper_data.get("metadata") or paper_data.get("metadata", {}),
             "abstract": user_paper_data.get("abstract") or paper_data.get("abstract"),
@@ -75,7 +62,6 @@ class UserPaperModel:
             # 保持向后兼容
             "paperData": paper_data,
             "sectionIds": user_paper_data.get("sectionIds", []),  # section ID列表
->>>>>>> origin/main
             "customTags": user_paper_data.get("customTags", []),
             "readingStatus": user_paper_data.get("readingStatus", "unread"),
             "priority": user_paper_data.get("priority", "medium"),
@@ -93,11 +79,6 @@ class UserPaperModel:
 
     def find_by_id(self, user_paper_id: str) -> Optional[Dict[str, Any]]:
         """
-<<<<<<< HEAD
-        根据ID查找个人论文
-        """
-        return self.collection.find_one({"id": user_paper_id}, {"_id": 0})
-=======
         根据ID查找个人论文（包含sections数据）
         """
         user_paper = self.collection.find_one({"id": user_paper_id}, {"_id": 0})
@@ -121,7 +102,6 @@ class UserPaperModel:
             user_paper["sections"] = sections
         
         return user_paper
->>>>>>> origin/main
 
     def find_by_user_and_source(
         self, user_id: str, source_paper_id: str
@@ -272,10 +252,7 @@ class UserPaperModel:
             "id": 1,
             "userId": 1,
             "sourcePaperId": 1,
-<<<<<<< HEAD
-=======
             "sectionIds": 1,  # 新增：section ID列表
->>>>>>> origin/main
             "customTags": 1,
             "readingStatus": 1,
             "priority": 1,

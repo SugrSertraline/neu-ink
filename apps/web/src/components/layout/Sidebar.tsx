@@ -2,17 +2,11 @@
 'use client';
 
 import React from 'react';
-<<<<<<< HEAD
-import { Loader2, Users } from 'lucide-react';
-=======
 import { Loader2, Users, ChevronLeft, ChevronRight } from 'lucide-react';
->>>>>>> origin/main
 import { useRouter } from 'next/navigation';
 import { NavItem } from '@/types/navigation';
 import { User } from '@/types/user';
 import { cn } from '@/lib/utils';
-<<<<<<< HEAD
-=======
 import { useSidebarStore } from '@/stores/useSidebarStore';
 import {
   Tooltip,
@@ -20,7 +14,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
->>>>>>> origin/main
 
 interface SidebarProps {
   navItems: NavItem[];
@@ -58,15 +51,12 @@ export default function Sidebar({
   isAuthenticated,
 }: SidebarProps) {
   const router = useRouter();
-<<<<<<< HEAD
-=======
   const { isCollapsed, toggleSidebar } = useSidebarStore();
   const [isMounted, setIsMounted] = React.useState(false);
   
   React.useEffect(() => {
     setIsMounted(true);
   }, []);
->>>>>>> origin/main
 
   const NavButton = ({ item }: { item: NavItem }) => {
     const isActive = activeTabId === item.id;
@@ -80,26 +70,16 @@ export default function Sidebar({
     const glow = glowMap[key] ?? glowMap.blue;
     const gradient = gradientMap[key] ?? gradientMap.blue;
 
-<<<<<<< HEAD
-    return (
-=======
     const buttonContent = (
->>>>>>> origin/main
       <button
         onClick={() => onNavigate(item)}
         disabled={isLoading || isDisabled}
         data-glow="true"
         className={cn(
-<<<<<<< HEAD
-          'relative w-full flex items-center gap-3 px-3.5 py-3 rounded-xl transition-all duration-250 text-sm font-medium group overflow-hidden',
-          'focus:outline-none focus-visible:outline-none focus:ring-0',
-          'backdrop-blur-xl border border-white/45',
-=======
           'relative w-full flex items-center rounded-xl transition-all duration-250 text-sm font-medium group overflow-hidden',
           'focus:outline-none focus-visible:outline-none focus:ring-0',
           'backdrop-blur-xl border border-white/45',
           isCollapsed ? 'justify-center px-3 py-3' : 'gap-3 px-3.5 py-3',
->>>>>>> origin/main
           isActive && !isDisabled
             ? `bg-linear-to-r ${gradient} text-white shadow-md ${glow} scale-[1.01]`
             : isDisabled
@@ -124,61 +104,6 @@ export default function Sidebar({
           />
         )}
 
-<<<<<<< HEAD
-        <span className="flex-1 text-left truncate">{item.label}</span>
-
-        {isDisabled && item.requiresAuth && (
-          <span className="text-xs text-slate-400 shrink-0 px-2 py-0.5 bg-white/40 rounded-full backdrop-blur-sm border border-white/40">
-            需登录
-          </span>
-        )}
-
-        {isDisabled && item.disabled && isAuthenticated && (
-          <span className="text-xs text-slate-400 shrink-0 px-2 py-0.5 bg-white/40 rounded-full backdrop-blur-sm border border-white/40">
-            即将推出
-          </span>
-        )}
-
-        {badge && !isDisabled && (
-          <span
-            className={cn(
-              'px-2 py-0.5 text-xs font-semibold rounded-full shrink-0 backdrop-blur-sm border border-white/50',
-              isActive
-                ? 'bg-white/38 text-white shadow-[0_0_10px_rgba(255,255,255,0.48)]'
-                : 'bg-[#F7C242]/80 text-[#7A4E00]',
-            )}
-          >
-            {badge}
-          </span>
-        )}
-
-        {isActive && !isLoading && !isDisabled && (
-          <div className="w-2 h-2 bg-white rounded-full animate-pulse shrink-0 shadow-[0_0_10px_rgba(255,255,255,0.72)]" />
-        )}
-      </button>
-    );
-  };
-
-  return (
-    <aside
-      className="w-60 h-full flex flex-col rounded-2xl border border白/60 bg-white/72 backdrop-blur-3xl shadow-[0_20px_54px_rgba(15,23,42,0.16)] px-4 py-5"
-      data-glow="true"
-    >
-      <div
-        className="h-12 flex items-center px-2.5 mb-4 rounded-xl border border-white/65 bg-white/85 backdrop-blur-2xl shadow-[0_8px_22px_rgba(40,65,138,0.14)]"
-        data-glow="true"
-      >
-        <div className="flex items-center gap-2">
-          <div className="h-10 w-10 rounded-full flex items-center justify-center shrink-0 ">
-            <img src="/neuink_logo.png" alt="NeuInk" className="w-9 h-9" />
-          </div>
-          <span
-            className="font-semibold text-xl text-[#28418A]"
-            style={{ fontFamily: 'Playball-Regular, system-ui, sans-serif' }}
-          >
-            NeuInk
-          </span>
-=======
         {isMounted && !isCollapsed && (
           <>
             <span className="flex-1 text-left truncate">{item.label}</span>
@@ -266,7 +191,6 @@ export default function Sidebar({
               NeuInk
             </span>
           )}
->>>>>>> origin/main
         </div>
       </div>
 
@@ -280,51 +204,6 @@ export default function Sidebar({
         </div>
 
         <div className="relative flex items-center">
-<<<<<<< HEAD
-          <span className="w全 border-b border-white/55" />
-        </div>
-
-        {isAuthenticated ? (
-          <div
-            className="p-3.5 rounded-xl border border白/60 bg-white/75 backdrop-blur-2xl shadow-[0_14px_30px_rgba(40,65,138,0.18)]"
-            data-glow="true"
-          >
-            <div className="text-sm">
-              <div className="font-semibold text-slate-900 truncate mb-1">
-                {user?.nickname || user?.username}
-              </div>
-              <div className="text-slate-500 text-xs flex items-center gap-2">
-                <span
-                  className={cn(
-                    'inline-flex h-2 w-2 rounded-full shadow-[0_0_10px_rgba(40,65,138,0.38)]',
-                    isAdmin
-                      ? 'bg-linear-to-r from-[#28418A] to-[#3F66B0]'
-                      : 'bg-linear-to-r from-[#3F66B0] to-[#6CAAD6]',
-                  )}
-                />
-                {isAdmin ? '管理员' : '普通用户'}
-              </div>
-            </div>
-          </div>
-        ) : (
-          <div
-            className="p-3.5 rounded-xl border border白/60 bg白/75 backdrop-blur-2xl shadow-[0_14px_30px_rgba(40,65,138,0.18)] text-center"
-            data-glow="true"
-          >
-            <div className="font-semibold text-slate-800 mb-1">未登录</div>
-            <div className="text-slate-500 text-xs mb-3">登录后可使用更多功能</div>
-            <button
-              onClick={() => router.push('/login')}
-              className="w-full px-4 py-2 rounded-lg bg-linear-to-r from-[#28418A] to-[#3F66B0] text-white text-xs font-medium shadow-[0_12px_30px_rgba(40,65,138,0.32)] hover:shadow-[0_14px_32px_rgba(40,65,138,0.38)] hover:scale-[1.01] transition-all duration-250"
-              data-glow="true"
-            >
-              立即登录
-            </button>
-          </div>
-        )}
-      </nav>
-    </aside>
-=======
           <span className="w-full border-b border-white/55" />
         </div>
 
@@ -467,6 +346,5 @@ export default function Sidebar({
         `}</style>
       </aside>
     </TooltipProvider>
->>>>>>> origin/main
   );
 }

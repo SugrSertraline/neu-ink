@@ -39,11 +39,7 @@ export interface PersonalNotePanelProps {
 
 type EditingState =
     | { mode: 'idle' }
-<<<<<<< HEAD
-    | { mode: 'creating'; draft: InlineContent[] }
-=======
     | { mode: 'creating'; draft: InlineContent[]; tempId?: string }
->>>>>>> origin/main
     | { mode: 'editing'; noteId: string; draft: InlineContent[] };
 
 const hasContent = (nodes: InlineContent[]): boolean => {
@@ -105,10 +101,6 @@ export default function PersonalNotePanel({
     const handleSave = useCallback(async () => {
         if (state.mode === 'creating') {
             if (!hasContent(state.draft)) return;
-<<<<<<< HEAD
-            await onCreateNote(state.draft);
-            setState({ mode: 'idle' });
-=======
             try {
                 await onCreateNote(state.draft);
                 setState({ mode: 'idle' });
@@ -116,16 +108,11 @@ export default function PersonalNotePanel({
                 // 创建失败时不重置状态，让用户可以重试
                 console.error('创建笔记失败:', error);
             }
->>>>>>> origin/main
             return;
         }
 
         if (state.mode === 'editing') {
             if (!hasContent(state.draft)) return;
-<<<<<<< HEAD
-            await onUpdateNote(state.noteId, state.draft);
-            setState({ mode: 'idle' });
-=======
             try {
                 await onUpdateNote(state.noteId, state.draft);
                 setState({ mode: 'idle' });
@@ -133,7 +120,6 @@ export default function PersonalNotePanel({
                 // 更新失败时不重置状态，让用户可以重试
                 console.error('更新笔记失败:', error);
             }
->>>>>>> origin/main
         }
     }, [state, onCreateNote, onUpdateNote]);
 
@@ -175,56 +161,6 @@ export default function PersonalNotePanel({
             );
         }
 
-<<<<<<< HEAD
-        return sortedNotes.map(note => (
-            <article
-                key={note.id}
-                className="rounded-lg border border-slate-200 bg-white p-3 shadow-sm dark:border-slate-700 dark:bg-slate-900"
-            >
-                <header className="mb-2 flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
-                    <span>
-                        更新于{' '}
-                        {formatDistanceToNow(note.updatedAt, {
-                            addSuffix: true,
-                            locale: zhCN,
-                        })}
-                    </span>
-                    <div className="flex items-center gap-2">
-                        <button
-                            type="button"
-                            disabled={isMutating}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-slate-800"
-                            onClick={() => startEdit(note)}
-                        >
-                            <Pencil className="h-3.5 w-3.5" />
-                            编辑
-                        </button>
-                        <button
-                            type="button"
-                            disabled={isMutating}
-                            className="inline-flex items-center gap-1 rounded px-2 py-1 text-red-500 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-red-900/30"
-                            onClick={async () => {
-                                if (isMutating) return;
-                                await onDeleteNote(note.id);
-                            }}
-                        >
-                            <Trash2 className="h-3.5 w-3.5" />
-                            删除
-                        </button>
-                    </div>
-                </header>
-
-                <InlineRenderer
-                    nodes={note.content}
-                    searchQuery=""
-                    highlightedRefs={highlightedRefs}
-                    setHighlightedRefs={setHighlightedRefs}
-                    contentRef={contentRef}
-                    references={references}
-                />
-            </article>
-        ));
-=======
         return sortedNotes.map(note => {
             const isTempNote = note.id.startsWith('temp-');
             
@@ -291,7 +227,6 @@ export default function PersonalNotePanel({
                 </article>
             );
         });
->>>>>>> origin/main
     };
   
     return (

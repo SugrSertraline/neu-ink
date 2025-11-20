@@ -9,12 +9,8 @@ interface ParseTextDialogProps {
   onClose: () => void;
   onConfirm: (text: string) => Promise<{
     success: boolean;
-<<<<<<< HEAD
-    addedBlocks?: BlockContent[];
-=======
     parseId?: string;  // 新增：返回parseId
     tempBlockId?: string;  // 新增：返回临时block ID
->>>>>>> origin/main
     error?: string;
   }>;
   sectionTitle: string;
@@ -68,12 +64,8 @@ export default function ParseTextDialog({
         onClose();
         setText('');
         setError(null);
-<<<<<<< HEAD
-        // 成功添加了blocks，无需显示调试信息
-=======
         // 成功启动解析，显示parseId信息
         console.log('解析已启动，parseId:', result.parseId, 'tempBlockId:', result.tempBlockId);
->>>>>>> origin/main
       } else {
         setError(result.error || '解析失败，请重试');
       }
@@ -169,11 +161,7 @@ export default function ParseTextDialog({
           <button
             onClick={handleSubmit}
             disabled={isLoading || !text.trim()}
-<<<<<<< HEAD
-            className="rounded-lg px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 min-w-[80px] justify-center"
-=======
             className="rounded-lg px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 min-w-20 justify-center"
->>>>>>> origin/main
           >
             {isLoading ? (
               <>

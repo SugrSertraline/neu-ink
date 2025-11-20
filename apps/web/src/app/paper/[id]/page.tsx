@@ -33,6 +33,14 @@ import PaperContent from '@/components/paper/PaperContent';
 import PaperReferences from '@/components/paper/PaperReferences';
 import PersonalNotePanel from '@/components/paper/PersonalNotePanel';
 import PaperTableOfContents from '@/components/paper/PaperTableOfContents';
+import dynamic from 'next/dynamic';
+const PaperAttachmentsDrawer = dynamic(
+  () => import('@/components/paper/PaperAttachmentsDrawer').then(mod => mod.PaperAttachmentsDrawer),
+  {
+    ssr: false, 
+    loading: () => null, // 或者写一个 Loading 占位
+  },
+);
 
 import type {
   Paper,
@@ -54,6 +62,8 @@ import {
 import MetadataEditorDialog from '@/components/paper/MetadataEditorDialog';
 import AbstractAndKeywordsEditorDialog from '@/components/paper/AbstractAndKeywordsEditorDialog';
 import ReferenceEditorDialog from '@/components/paper/ReferenceEditorDialog';
+import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
+import { Button } from '@/components/ui/button';
 
 type Lang = 'en' | 'both';
 const HEADER_STICKY_OFFSET = 8;
@@ -332,7 +342,7 @@ function useAutoHeaderHeight(varName = '--app-header-h', extraScrollPad = 24, st
       const actual = Math.round(h);
       const total = actual + stickyOffset;
       const root = document.documentElement;
-      
+
       // 使用更稳定的更新方式，减少布局抖动
       root.style.setProperty(varName, `${total}px`);
     };
@@ -355,7 +365,7 @@ function useAutoHeaderHeight(varName = '--app-header-h', extraScrollPad = 24, st
     // 初始设置高度
     setVars(el.getBoundingClientRect().height);
     ro.observe(el);
-    
+
     return () => {
       ro.disconnect();
       if (timeoutRef.current) {
@@ -427,7 +437,7 @@ function PaperPageContent() {
   );
 
   const effectiveSource = activeSource ?? sourceCandidates[0] ?? 'public-guest';
-  
+
   const permissions = usePaperEditPermissions(effectiveSource);
 
   const canEditContent = permissions.canEditContent;
@@ -439,11 +449,7 @@ function PaperPageContent() {
     if (paper) {
       setIsPublicVisible(paper.isPublic);
     }
-<<<<<<< HEAD
-  }, [paper?.isPublic]);
-=======
   }, [paper]);
->>>>>>> origin/main
 
   const { setHasUnsavedChanges, switchToEdit, clearEditing, currentEditingId } = useEditingState();
 
@@ -472,7 +478,7 @@ function PaperPageContent() {
   const [isAbstractKeywordsSubmitting, setIsAbstractKeywordsSubmitting] = useState(false);
   const [isHeaderAffixed, setIsHeaderAffixed] = useState(false);
   const [isParseReferencesOpen, setIsParseReferencesOpen] = useState(false);
-  
+
 
   const contentRef = useRef<HTMLDivElement>(null);
   const wrapperRef = useRef<HTMLDivElement>(null); // 外层居中壳
@@ -490,6 +496,8 @@ function PaperPageContent() {
 
   const displayContent = editableDraft ?? paper ?? null;
   const metadata = displayContent?.metadata ?? null;
+  const [attachments, setAttachments] = useState(displayContent?.attachments ?? {});
+  const [isAttachmentsDrawerOpen, setIsAttachmentsDrawerOpen] = useState(false);
   const urlUserPaperId = searchParams?.get('userPaperId');
 
   const resolvedUserPaperId = useMemo(() => {
@@ -650,6 +658,7 @@ function PaperPageContent() {
     }
     setEditableDraft(paper);
     setHasUnsavedChanges(false);
+    setAttachments(paper.attachments ?? {});
   }, [paper, setHasUnsavedChanges]);
 
   useEffect(() => {
@@ -681,16 +690,13 @@ function PaperPageContent() {
       return;
     }
 
-<<<<<<< HEAD
-=======
     // 缓存上次计算的值,避免不必要的状态更新
     let lastStyle: { top: number; left: number; width: number; height: number } | null = null;
-    
+
     // 节流计时器引用
     let throttleTimer: NodeJS.Timeout | null = null;
     let rafId: number | null = null;
 
->>>>>>> origin/main
     const compute = () => {
       const wrapper = wrapperRef.current;
       if (!wrapper) return;
@@ -701,23 +707,6 @@ function PaperPageContent() {
       const gap = NOTES_PANEL_GAP;
 
       const top = headerH + gap;
-<<<<<<< HEAD
-      const left = rect.right - NOTES_PANEL_WIDTH; // 紧贴 wrapper 右侧
-      const height = Math.max(200, window.innerHeight - top - gap);
-
-      setNotesFixedStyle({
-        top,
-        left,
-        width: NOTES_PANEL_WIDTH,
-        height,
-      });
-    };
-
-    compute();
-
-    const roWrapper = new ResizeObserver(() => compute());
-    const roHeader = new ResizeObserver(() => compute());
-=======
       const left = rect.right - NOTES_PANEL_WIDTH;
       const height = Math.max(200, window.innerHeight - top - gap);
 
@@ -753,7 +742,7 @@ function PaperPageContent() {
     // 节流版本的 compute - 用于高频事件(滚动)
     const throttledCompute = () => {
       if (throttleTimer) return;
-      
+
       throttleTimer = setTimeout(() => {
         scheduleCompute();
         throttleTimer = null;
@@ -778,29 +767,11 @@ function PaperPageContent() {
     // ResizeObserver 使用节流
     const roWrapper = new ResizeObserver(() => throttledCompute());
     const roHeader = new ResizeObserver(() => throttledCompute());
-    
->>>>>>> origin/main
+
     if (wrapperRef.current) roWrapper.observe(wrapperRef.current);
     // @ts-ignore
     if (headerRef?.current) roHeader.observe(headerRef.current as Element);
 
-<<<<<<< HEAD
-    const onResize = () => compute();
-    const onScroll = () => compute();
-
-    window.addEventListener('resize', onResize, { passive: true });
-    window.addEventListener('scroll', onScroll, { passive: true });
-
-    // 打开标志（动画由 framer 执行）
-    const raf = requestAnimationFrame(() => setNotesOpen(true));
-
-    return () => {
-      roWrapper.disconnect();
-      roHeader.disconnect();
-      window.removeEventListener('resize', onResize);
-      window.removeEventListener('scroll', onScroll);
-      cancelAnimationFrame(raf);
-=======
     // 窗口 resize 使用防抖
     window.addEventListener('resize', debouncedCompute, { passive: true });
     // 滚动使用节流
@@ -815,12 +786,11 @@ function PaperPageContent() {
       roHeader.disconnect();
       window.removeEventListener('resize', debouncedCompute);
       window.removeEventListener('scroll', throttledCompute);
-      
+
       if (throttleTimer) clearTimeout(throttleTimer);
       if (debounceTimer) clearTimeout(debounceTimer);
       if (rafId) cancelAnimationFrame(rafId);
       cancelAnimationFrame(openRaf);
->>>>>>> origin/main
     };
   }, [showNotesPanel, headerRef]);
 
@@ -928,13 +898,15 @@ function PaperPageContent() {
           return;
         }
 
+        // 确保附件信息包含在payload中
+        const payloadWithAttachments = {
+          ...payload,
+          attachments: attachments
+        };
+
         const result = isPersonalOwner
-<<<<<<< HEAD
-          ? await userPaperService.updateUserPaper(id, { paperData: payload })
-=======
-          ? await userPaperService.updateUserPaper(id, payload)
->>>>>>> origin/main
-          : await adminPaperService.updatePaper(id, payload);
+          ? await userPaperService.updateUserPaper(id, payloadWithAttachments)
+          : await adminPaperService.updatePaper(id, payloadWithAttachments);
 
         if (result.bizCode === 0) {
           setHasUnsavedChanges(false);
@@ -949,8 +921,14 @@ function PaperPageContent() {
         toast.error('保存出错', { description: message });
       }
     },
-    [editableDraft, paperId, resolvedUserPaperId, isPersonalOwner, setHasUnsavedChanges]
+    [editableDraft, paperId, resolvedUserPaperId, isPersonalOwner, setHasUnsavedChanges, attachments]
   );
+
+  // 处理附件变更
+  const handleAttachmentsChange = useCallback((newAttachments: typeof attachments) => {
+    setAttachments(newAttachments);
+    setHasUnsavedChanges(true);
+  }, [setAttachments, setHasUnsavedChanges]);
 
   const handleMetadataOverlaySubmit = useCallback(
     async (next: PaperMetadataModel, abstract?: { en?: string; zh?: string }, keywords?: string[]) => {
@@ -1089,13 +1067,8 @@ function PaperPageContent() {
         const result = await handleAddBlocksFromText(sectionId, text, paperId, resolvedUserPaperId, isPersonalOwner, afterBlockId);
 
         if (result.success) {
-<<<<<<< HEAD
-          // 现在返回的是 loadingBlockId，而不是 addedBlocks
-          return { success: true, loadingBlockId: result.loadingBlockId };
-=======
           // 现在返回的是 tempBlockId，而不是 addedBlocks
           return { success: true, tempBlockId: result.tempBlockId };
->>>>>>> origin/main
         } else {
           return { success: false, error: result.error };
         }
@@ -1216,11 +1189,11 @@ function PaperPageContent() {
         const timer = setTimeout(() => {
           window.location.href = '/library';
         }, 3000);
-        
+
         return () => clearTimeout(timer);
       }, []);
     }
-    
+
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-slate-950 flex items-center justify-center">
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg p-8 max-w-md">
@@ -1269,9 +1242,10 @@ function PaperPageContent() {
             onSearchNavigate={handleSearchNavigate}
             actions={headerActions}
             viewerSource={effectiveSource}
+            onOpenAttachments={() => setIsAttachmentsDrawerOpen(true)}
           />
         </div>
-
+    
         <div ref={pageContainerRef} style={{ paddingBottom: 32 }}>
           <div
             ref={wrapperRef}
@@ -1349,50 +1323,37 @@ function PaperPageContent() {
                     onBlockMove={handleBlockMove}
                     onBlockAddComponent={handleBlockAddComponent}
                     onParseTextAdd={canEditContent ? handleParseTextAdd : undefined}
-<<<<<<< HEAD
-                    onParseTextComplete={canEditContent ? (sectionId, blocks, afterBlockId) => {
-                       const isTempProgressBlock =
-                        blocks?.length === 1 && (blocks[0] as any).type === 'loading';
-                      // 处理流式解析完成后的blocks
-=======
                     onParseTextComplete={canEditContent ? (sectionId, blocks, afterBlockId, paperData) => {
-                       const isTempProgressBlock =
+                      const isTempProgressBlock =
                         blocks?.length === 1 && (blocks[0] as any).type === 'parsing';
-                      
+
                       // ★ 关键修复：优先使用完整的 paperData
                       if (paperData && paperData.sections) {
                         // 更新整个论文数据
                         setEditableDraft(paperData);
                         setHasUnsavedChanges(false);
-                        
+
                         // 显示成功消息
                         toast.success('解析完成，论文内容已更新');
                         return;
                       }
-                      
+
                       // 如果没有完整的paperData，则回退到只处理blocks（兼容旧逻辑）
->>>>>>> origin/main
                       updateSections(sections => {
                         let touched = false;
-                        
+
                         const updatedSections = sections.map(section => {
                           if (section.id === sectionId) {
                             touched = true;
                             let currentBlocks = section.content || [];
-                            
-<<<<<<< HEAD
-                            // ★ 关键修复：先删除所有临时进度块(type='loading')
-                            currentBlocks = currentBlocks.filter(block =>
-                              (block as any).type !== 'loading'
-=======
+
                             // 先删除所有临时进度块(type='parsing')
                             currentBlocks = currentBlocks.filter(block =>
                               (block as any).type !== 'parsing'
->>>>>>> origin/main
                             );
-                            
+
                             let insertIndex = currentBlocks.length; // 默认在末尾
-                            
+
                             if (afterBlockId) {
                               for (let i = 0; i < currentBlocks.length; i++) {
                                 if (currentBlocks[i].id === afterBlockId) {
@@ -1401,11 +1362,11 @@ function PaperPageContent() {
                                 }
                               }
                             }
-                            
+
                             // 插入新的blocks
                             const newBlocks = [...currentBlocks];
                             newBlocks.splice(insertIndex, 0, ...blocks);
-                            
+
                             return {
                               ...section,
                               content: newBlocks
@@ -1413,12 +1374,12 @@ function PaperPageContent() {
                           }
                           return section;
                         });
-                        
+
                         return { sections: touched ? updatedSections : sections, touched };
                       });
-                      
+
                       // 显示成功消息
-                         if (!isTempProgressBlock && blocks && blocks.length > 0) {
+                      if (!isTempProgressBlock && blocks && blocks.length > 0) {
                         toast.success(`成功解析并添加了${blocks.length}个段落`);
                       }
                     } : undefined}
@@ -1435,10 +1396,6 @@ function PaperPageContent() {
                     }}
                     onParseComplete={(result) => {
                       // 处理解析完成的结果，可以更新 UI 或状态
-<<<<<<< HEAD
-                      console.log('Parse completed:', result);
-=======
->>>>>>> origin/main
                       // 这里可以添加额外的处理逻辑，比如更新状态或显示通知
                     }}
                     notesByBlock={notesByBlock}
@@ -1643,9 +1600,23 @@ function PaperPageContent() {
             onReferencesAdded={handleReferencesAdded}
           />
         )}
+
+        {/* 附件管理抽屉 */}
+        <PaperAttachmentsDrawer
+          isOpen={isAttachmentsDrawerOpen}
+          onClose={() => setIsAttachmentsDrawerOpen(false)}
+          paperId={paperId}
+          userPaperId={resolvedUserPaperId}
+          isPersonalOwner={isPersonalOwner}
+          isAdmin={isAdmin}
+          attachments={attachments}
+          onAttachmentsChange={handleAttachmentsChange}
+          onSaveToServer={handleSaveToServer}
+        />
       </div>
     </PaperEditPermissionsContext.Provider>
   );
+
 }
 
 export default function PaperPage() {

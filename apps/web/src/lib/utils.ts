@@ -39,12 +39,6 @@ export function formatDate(date: string | Date, format: 'date' | 'datetime' | 'r
 }
 
 /**
-<<<<<<< HEAD
- * 生成随机ID
- */
-export function generateId(): string {
-  return Math.random().toString(36).substr(2, 9);
-=======
  * 生成随机ID (UUID格式)
  */
 export function generateId(): string {
@@ -54,7 +48,6 @@ export function generateId(): string {
     const v = c === 'x' ? r : (r & 0x3 | 0x8);
     return v.toString(16);
   });
->>>>>>> origin/main
 }
 
 /**

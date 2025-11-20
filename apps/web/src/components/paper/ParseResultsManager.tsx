@@ -15,6 +15,7 @@ import { Button } from '@/components/ui/button';
 import BlockRenderer from './BlockRenderer';
 import { CheckCircle, XCircle, Loader2, Check, X, Save } from 'lucide-react';
 import { userPaperService, adminPaperService } from '@/lib/services/paper';
+import { cn } from '@/lib/utils';
 
 interface ParseResultsManagerProps {
   isOpen: boolean;
@@ -197,9 +198,10 @@ export default function ParseResultsManager({
       
       // 成功确认，关闭对话框
       onOpenChange(false);
-      onConfirm?.();
-      onClose?.();
-      onSuccess?.();
+      // 注意：不调用onConfirm和onSuccess，避免触发页面刷新
+      // onConfirm?.();
+      // onClose?.();
+      // onSuccess?.();
     } catch (err: any) {
       setError(err.message || '确认解析结果失败');
     } finally {
@@ -265,9 +267,10 @@ export default function ParseResultsManager({
       
       // 成功保存，关闭对话框
       onOpenChange(false);
-      onConfirm?.();
-      onClose?.();
-      onSuccess?.();
+      // 注意：不调用onConfirm和onSuccess，避免触发页面刷新
+      // onConfirm?.();
+      // onClose?.();
+      // onSuccess?.();
     } catch (err: any) {
       setError(err.message || '保存解析结果失败');
     } finally {
@@ -276,7 +279,12 @@ export default function ParseResultsManager({
   };
 
   // 切换block选择状态
-  const toggleBlock = (blockId: string) => {
+  const toggleBlock = (blockId: string, event?: React.MouseEvent) => {
+    // 阻止事件冒泡，防止触发 PaperContent 的 onBlockClick
+    if (event) {
+      event.stopPropagation();
+    }
+    
     setSelectedBlockIds(prev => {
       const newSet = new Set(prev);
       if (newSet.has(blockId)) {
@@ -314,19 +322,28 @@ export default function ParseResultsManager({
     }
   }, [isOpen, parseId, parseResult?.status, sectionId, paperId, userPaperId]);
 
-  if (!isOpen) return null;
+  const glowButtonFilled =
+    'rounded-xl bg-gradient-to-r from-[#28418A]/92 via-[#28418A]/88 to-[#28418A]/92 ' +
+    'shadow-[0_16px_38px_rgba(40,65,138,0.28)] hover:shadow-[0_20px_46px_rgba(40,65,138,0.36)] ' +
+    'border border-white/70 focus-visible:ring-2 focus-visible:ring-[#4769b8]/40 focus-visible:ring-offset-2 focus-visible:ring-offset-white active:translate-y-[1px]';
+
+  const glowButtonGhost =
+    'rounded-xl border border-white/70 bg-white/78 text-[#28418A] shadow-[0_12px_30px_rgba(40,65,138,0.18)] ' +
+    'backdrop-blur-xl hover:bg-white/90 hover:text-[#263b78] focus-visible:ring-2 focus-visible:ring-[#4769b8]/35 focus-visible:ring-offset-2 focus-visible:ring-offset-white';
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>解析结果管理</DialogTitle>
-          <DialogDescription>
-            预览和管理解析结果，选择要保留的内容。
-          </DialogDescription>
+      <DialogContent className="max-w-6xl max-h-[85vh] overflow-hidden rounded-2xl border border-white/45 bg-white/55 shadow-[0_28px_72px_rgba(15,23,42,0.28)] backdrop-blur-xl flex flex-col p-0">
+        <DialogHeader className="flex items-center justify-between border-b border-white/40 bg-white/50 px-6 py-5 flex-shrink-0">
+          <div className="text-left">
+            <DialogTitle className="text-lg font-semibold text-slate-900">解析结果管理</DialogTitle>
+            <DialogDescription className="text-sm text-slate-600 mt-1">
+              预览和管理解析结果，选择要保留的内容。
+            </DialogDescription>
+          </div>
         </DialogHeader>
 
-        <div className="space-y-4 my-4">
+        <div className="flex-1 overflow-y-auto bg-white/45 px-6 py-6 backdrop-blur">
           {isLoading && (
             <div className="flex items-center justify-center py-8">
               <Loader2 className="h-8 w-8 animate-spin mr-2" />
@@ -335,7 +352,7 @@ export default function ParseResultsManager({
           )}
 
           {!isLoading && error && (
-            <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4">
+            <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4 mb-4">
               <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
             </div>
           )}
@@ -343,10 +360,10 @@ export default function ParseResultsManager({
           {!isLoading && parseResult && (
             <>
               {/* 状态信息 */}
-              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-4">
+              <div className="bg-white/70 rounded-lg p-4 mb-4 border border-white/40">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center space-x-2">
-                    <span className="text-sm font-medium">解析状态:</span>
+                    <span className="text-sm font-medium text-slate-700">解析状态:</span>
                     <span className={`px-2 py-1 rounded text-xs font-medium ${
                       parseResult.status === 'completed' ? 'bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200' :
                       parseResult.status === 'failed' ? 'bg-red-100 text-red-800 dark:bg-red-900 dark:text-red-200' :
@@ -362,7 +379,7 @@ export default function ParseResultsManager({
                   </div>
                    
                   {parseResult.status === 'completed' && (
-                    <div className="text-sm text-gray-600 dark:text-gray-400">
+                    <div className="text-sm text-slate-600">
                       已选择 {selectedBlockIds.size} / {parseResult.parsedBlocks?.length || 0} 个段落
                     </div>
                   )}
@@ -379,11 +396,12 @@ export default function ParseResultsManager({
               {parseResult.status === 'completed' && (parseResult.parsedBlocks?.length || 0) > 0 && (
                 <>
                   {/* 选择控制 */}
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 mb-4">
                     <Button
                       variant="outline"
                       size="sm"
                       onClick={selectAll}
+                      className={glowButtonGhost}
                     >
                       <Check className="h-4 w-4 mr-1" />
                       全选
@@ -392,6 +410,7 @@ export default function ParseResultsManager({
                       variant="outline"
                       size="sm"
                       onClick={deselectAll}
+                      className={glowButtonGhost}
                     >
                       <X className="h-4 w-4 mr-1" />
                       全不选
@@ -399,42 +418,44 @@ export default function ParseResultsManager({
                   </div>
 
                   {/* Blocks预览 */}
-                  <div className="space-y-3">
-                    {parseResult.parsedBlocks?.map((block, index) => {
-                      const isSelected = selectedBlockIds.has(block.id);
-                      
-                      return (
-                        <div
-                          key={block.id}
-                          className={`relative rounded-lg border-2 p-4 transition-all cursor-pointer ${
-                            isSelected
-                              ? 'border-blue-500 bg-blue-50'
-                              : 'border-gray-200 bg-white hover:border-gray-300'
-                          }`}
-                          onClick={() => toggleBlock(block.id)}
-                        >
-                          <div className="absolute top-2 right-2 z-10">
-                            {isSelected ? (
-                              <CheckCircle className="h-6 w-6 text-blue-600" />
-                            ) : (
-                              <XCircle className="h-6 w-6 text-gray-300" />
-                            )}
+                  <div style={{ transform: 'scale(0.8)', transformOrigin: 'top left' }}>
+                    <div className="space-y-3" style={{ minWidth: '125%' }}>
+                      {parseResult.parsedBlocks?.map((block, index) => {
+                        const isSelected = selectedBlockIds.has(block.id);
+                        
+                        return (
+                          <div
+                            key={block.id}
+                            className={`relative rounded-lg border-2 p-4 transition-all cursor-pointer ${
+                              isSelected
+                                ? 'border-blue-500 bg-blue-50'
+                                : 'border-gray-200 bg-white hover:border-gray-300'
+                            }`}
+                            onClick={(e) => toggleBlock(block.id, e)}
+                          >
+                            <div className="absolute top-2 right-2 z-10">
+                              {isSelected ? (
+                                <CheckCircle className="h-6 w-6 text-blue-600" />
+                              ) : (
+                                <XCircle className="h-6 w-6 text-gray-300" />
+                              )}
+                            </div>
+                             
+                            <div className="absolute top-2 left-2 text-xs font-semibold text-gray-500">
+                              #{index + 1}
+                            </div>
+                             
+                            <div className="mt-6">
+                              <BlockRenderer
+                                block={block}
+                                lang="both"
+                                isActive={false}
+                              />
+                            </div>
                           </div>
-                           
-                          <div className="absolute top-2 left-2 text-xs font-semibold text-gray-500">
-                            #{index + 1}
-                          </div>
-                           
-                          <div className="mt-6">
-                            <BlockRenderer
-                              block={block}
-                              lang="both"
-                              isActive={false}
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
                 </>
               )}
@@ -442,47 +463,40 @@ export default function ParseResultsManager({
           )}
         </div>
 
-        {/* 错误信息 */}
-        {error && (
-          <div className="rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 p-4">
-            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
-          </div>
-        )}
-
-        {/* 操作按钮 */}
-        <DialogFooter>
-          <div className="flex gap-2">
-            <Button
-              variant="outline"
-              onClick={handleDiscard}
-              disabled={isDiscarding || isLoading}
-            >
-              {isDiscarding && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-              丢弃
-            </Button>
-             
-            {parseResult?.status === 'completed' && (parseResult.parsedBlocks?.length || 0) > 0 && (
-              <>
-                <Button
-                  variant="outline"
-                  onClick={handleSaveAll}
-                  disabled={isSavingAll || isLoading}
-                >
-                  {isSavingAll && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  <Save className="h-4 w-4 mr-2" />
-                  保存全部
-                </Button>
-                 
-                <Button
-                  onClick={handleConfirm}
-                  disabled={isConfirming || isLoading || selectedBlockIds.size === 0}
-                >
-                  {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                  确认保留 ({selectedBlockIds.size})
-                </Button>
-              </>
-            )}
-          </div>
+        <DialogFooter className="flex items-center justify-end gap-3 border-t border-white/40 bg-white/45 px-6 py-5 flex-shrink-0">
+          <Button
+            variant="outline"
+            onClick={handleDiscard}
+            disabled={isDiscarding || isLoading}
+            className={glowButtonGhost}
+          >
+            {isDiscarding && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+            丢弃
+          </Button>
+           
+          {parseResult?.status === 'completed' && (parseResult.parsedBlocks?.length || 0) > 0 && (
+            <>
+              <Button
+                variant="outline"
+                onClick={handleSaveAll}
+                disabled={isSavingAll || isLoading}
+                className={glowButtonGhost}
+              >
+                {isSavingAll && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                <Save className="h-4 w-4 mr-2" />
+                保存全部
+              </Button>
+                
+              <Button
+                onClick={handleConfirm}
+                disabled={isConfirming || isLoading || selectedBlockIds.size === 0}
+                className={cn(glowButtonFilled, 'min-w-[110px]')}
+              >
+                {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                确认保留 ({selectedBlockIds.size})
+              </Button>
+            </>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>

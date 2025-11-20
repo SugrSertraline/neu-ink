@@ -8,6 +8,7 @@ import {
   ChevronDown,
   Eye,
   EyeOff,
+  Paperclip,
 } from 'lucide-react';
 import { ViewerSource } from '@/types/paper/viewer';
 
@@ -60,6 +61,7 @@ interface PaperHeaderProps {
   onSearchNavigate?: (direction: 'next' | 'prev') => void;
   actions?: PaperHeaderActions;
   viewerSource?: ViewerSource;
+  onOpenAttachments?: () => void;
 }
 
 export default function PaperHeader({
@@ -72,6 +74,7 @@ export default function PaperHeader({
   onSearchNavigate,
   actions,
   viewerSource,
+  onOpenAttachments,
 }: PaperHeaderProps) {
   const renderActionButton = (
     shouldRender: boolean | undefined,
@@ -170,6 +173,18 @@ export default function PaperHeader({
                 actions.onToggleVisibility,
               )}
             </>
+          )}
+          
+          {onOpenAttachments && (
+            <button
+              type="button"
+              onClick={onOpenAttachments}
+              className="inline-flex items-center gap-1 rounded-full border border-white/40 bg-white/40 px-4 py-1.5 text-sm text-slate-800 shadow-[0_10px_28px_rgba(15,23,42,0.16)] backdrop-blur-xl transition hover:bg-white/65 hover:shadow-[0_16px_40px_rgba(15,23,42,0.18)] disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700/40 dark:bg-slate-800/40 dark:text-slate-100 dark:hover:bg-slate-700/55"
+              title="管理附件"
+            >
+              <Paperclip className="h-4 w-4" />
+              附件
+            </button>
           )}
 
           <div className="inline-flex rounded-full border border-white/40 bg-white/30 p-1 shadow-[0_14px_32px_rgba(15,23,42,0.18)] backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-800/40">

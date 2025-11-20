@@ -11,8 +11,6 @@ export type PersonalNoteItem = {
 export const toTimestamp = (value: unknown): number => {
   if (!value) return Date.now();
   if (typeof value === 'number') return value;
-<<<<<<< HEAD
-=======
   
   // 处理 ISO 8601 格式的时间字符串（后端返回的 UTC 时间）
   if (typeof value === 'string') {
@@ -32,7 +30,6 @@ export const toTimestamp = (value: unknown): number => {
   }
   
   // 最后尝试使用 Date 构造函数
->>>>>>> origin/main
   const ts = new Date(value as string).getTime();
   return Number.isNaN(ts) ? Date.now() : ts;
 };

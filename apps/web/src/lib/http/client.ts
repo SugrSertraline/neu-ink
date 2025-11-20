@@ -103,11 +103,7 @@ export class ApiClient {
     return headers;
   }
 
-<<<<<<< HEAD
-  private async doFetch(url: string, init: RequestInit & { timeout?: number } = {}) {
-=======
   private async doFetch(url: string, init: RequestInit & { timeout?: number } = {}, isRetry: boolean = false): Promise<ApiResponse<any>> {
->>>>>>> origin/main
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), init.timeout ?? this.defaultTimeoutMs);
 
@@ -134,16 +130,6 @@ export class ApiClient {
         throw new ApiError('Invalid JSON response', { status: res.status, url, payload: text as any });
       }
 
-<<<<<<< HEAD
-      if (!res.ok) {
-        const message = data?.message || `HTTP ${res.status}`;
-        console.error('[DEBUG] API请求失败:', {
-          status: res.status,
-          url,
-          message,
-          payload: data
-        });
-=======
       // 处理401错误，尝试刷新token（如果不是重试请求）
       if (!res.ok && res.status === 401 && !isRetry) {
         // 检查是否是登录接口的请求
@@ -190,46 +176,17 @@ export class ApiClient {
         }
         
         // API请求失败调试信息已移除
->>>>>>> origin/main
         
         // 对于401错误，添加特殊标记以便后续处理
         const errorOptions = { status: res.status, url, payload: data };
         if (res.status === 401) {
           (errorOptions as any).isAuthError = true;
-<<<<<<< HEAD
-=======
           (errorOptions as any).authReset = true;
->>>>>>> origin/main
         }
         
         throw new ApiError(message, errorOptions);
       }
 
-<<<<<<< HEAD
-      console.log('[DEBUG] API响应数据:', {
-        status: res.status,
-        url,
-        data
-      });
-
-      // 检查数据结构，如果已经是业务响应格式（{code: 0, message: "...", data: {...}}）
-      // 则包装成标准的 ApiResponse 格式
-      if (data && typeof data === 'object' && 'code' in data && 'message' in data && 'data' in data) {
-        // 这是业务响应格式，需要包装成 ApiResponse 格式
-        return {
-          code: res.status as any,
-          message: data.message || 'Success',
-          data: data.data  // 只提取业务响应的 data 字段
-        } as ApiResponse<any>;
-      } else {
-        // 如果不是业务响应格式，直接包装成 ApiResponse 格式
-        return {
-          code: res.status as any,
-          message: 'Success',
-          data: data
-        } as ApiResponse<any>;
-      }
-=======
       // API响应数据调试信息已移除
 
       // 直接返回原始数据，让 normalize.ts 处理业务响应格式
@@ -238,7 +195,6 @@ export class ApiClient {
         message: data.message || 'Success',
         data: data
       } as ApiResponse<any>;
->>>>>>> origin/main
     } catch (err: any) {
       if (err?.name === 'AbortError') {
         throw new ApiError('Request timeout', { status: 0, url });
@@ -296,11 +252,6 @@ export class ApiClient {
       mode: 'cors',
     });
 
-<<<<<<< HEAD
-    console.log('[DEBUG] 上传响应数据:', data);
-    return data as ApiResponse<T>;
-  }
-=======
     return data as ApiResponse<T>;
   }
 
@@ -479,7 +430,6 @@ export class ApiClient {
       }
     };
   }
->>>>>>> origin/main
 }
 
 // 单例客户端

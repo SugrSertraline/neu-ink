@@ -98,10 +98,7 @@ export function usePaperSections(
     userPaperId: string | null,
     isPersonalOwner: boolean,
     sectionData: {
-<<<<<<< HEAD
-=======
       id?: string; // 添加可选的ID字段，用于前端生成的临时ID
->>>>>>> origin/main
       title: { en: string; zh: string };
       content?: any[];
     },
@@ -255,15 +252,6 @@ export function usePaperSections(
         title: nextTitle
       };
       
-<<<<<<< HEAD
-      // 添加调试日志
-      console.log('更新章节标题 - sectionId:', sectionId);
-      console.log('更新章节标题 - updateData:', updateData);
-      console.log('更新章节标题 - paperId:', paperId);
-      console.log('更新章节标题 - userPaperId:', userPaperId);
-      console.log('更新章节标题 - isPersonalOwner:', isPersonalOwner);
-=======
->>>>>>> origin/main
       
       const result = await handleSectionUpdateWithAPI(
         sectionId,
@@ -292,10 +280,6 @@ export function usePaperSections(
         // 如果API返回了更新后的论文数据，可以在这里处理
         if (result.data && result.data.paper) {
           // 可以在这里更新本地状态，但通常不需要，因为我们已经更新了UI
-<<<<<<< HEAD
-          console.log('章节标题更新成功，返回的数据:', result.data);
-=======
->>>>>>> origin/main
         }
       }
     } catch (error) {
@@ -329,8 +313,6 @@ export function usePaperSections(
       // 显示加载状态
       toast.loading('正在添加章节...', { id: 'add-section' });
       
-<<<<<<< HEAD
-=======
       // 计算正确的插入位置
       let calculatedPosition = -1; // 默认插入到末尾
       
@@ -354,7 +336,6 @@ export function usePaperSections(
         }
       }
       
->>>>>>> origin/main
       // 本地更新UI
       updateSections(sections => {
         let touched = false;
@@ -405,10 +386,7 @@ export function usePaperSections(
 
       // 调用API
       const sectionData = {
-<<<<<<< HEAD
-=======
         id: newSection.id, // 发送前端生成的临时ID
->>>>>>> origin/main
         title: {
           en: newSection.title || '',
           zh: newSection.titleZh || ''
@@ -423,11 +401,7 @@ export function usePaperSections(
         sectionData,
         {
           parentSectionId: parentSectionId || undefined,
-<<<<<<< HEAD
-          position: position === 'above' ? 0 : -1
-=======
           position: calculatedPosition
->>>>>>> origin/main
         }
       );
 
@@ -444,10 +418,6 @@ export function usePaperSections(
         const resultData = result.data as any;
         if (resultData && resultData.addedSectionId) {
           const addedSectionId = resultData.addedSectionId;
-<<<<<<< HEAD
-          console.log('更新临时section ID:', newSection, addedSectionId);
-=======
->>>>>>> origin/main
           
           // 找到最新添加的临时section并更新其ID
           updateSections(sections => {
@@ -456,30 +426,17 @@ export function usePaperSections(
             // 首先检查是否已经存在这个ID，如果有则跳过更新
             const idAlreadyExists = sections.some(section => section.id === addedSectionId);
             if (idAlreadyExists) {
-<<<<<<< HEAD
-              console.log('ID已存在，跳过更新:', addedSectionId);
-=======
->>>>>>> origin/main
               return { sections, touched: false };
             }
             
             // 找到需要更新的section
             const updatedSections = sections.map(section => {
-<<<<<<< HEAD
-              // 如果section没有真实ID或者是临时ID格式，匹配最新创建的section
-              if (!section.id || section.id.startsWith('section_')) {
-                // 匹配最近创建的section（使用标题和内容匹配）
-                if (section.title === (newSection.title || '') && section.titleZh === (newSection.titleZh || '')) {
-                  touched = true;
-                  console.log('更新section ID:', section.id, '->', addedSectionId);
-=======
               // 由于现在前后端都使用UUID格式，我们无法通过前缀区分临时ID
               // 如果section没有ID，则匹配最新创建的section
               if (!section.id) {
                 // 匹配最近创建的section（使用标题和内容匹配）
                 if (section.title === (newSection.title || '') && section.titleZh === (newSection.titleZh || '')) {
                   touched = true;
->>>>>>> origin/main
                   return {
                     ...section,
                     id: addedSectionId
@@ -494,21 +451,13 @@ export function usePaperSections(
               const lastIndex = updatedSections.length - 1;
               if (lastIndex >= 0) {
                 const lastSection = updatedSections[lastIndex];
-<<<<<<< HEAD
-                if (!lastSection.id || lastSection.id.startsWith('section_')) {
-=======
                 // 由于现在前后端都使用UUID格式，我们无法通过前缀区分临时ID
                 if (!lastSection.id) {
->>>>>>> origin/main
                   updatedSections[lastIndex] = {
                     ...lastSection,
                     id: addedSectionId
                   };
                   touched = true;
-<<<<<<< HEAD
-                  console.log('强制更新最后一个section ID:', addedSectionId);
-=======
->>>>>>> origin/main
                 }
               }
             }
@@ -519,11 +468,7 @@ export function usePaperSections(
         toast.success('章节添加成功', { id: 'add-section' });
       }
     },
-<<<<<<< HEAD
-    [updateSections, handleSectionAddWithAPI]
-=======
     [updateSections, handleSectionAddWithAPI, setEditableDraft]
->>>>>>> origin/main
   );
 
   const handleSectionMove = useCallback(
@@ -729,19 +674,10 @@ export function usePaperSections(
             });
             
             if (result.bizCode === 0) {
-<<<<<<< HEAD
-              console.log('添加段落API响应(个人):', result);
-              console.log('响应数据(个人):', result.data);
-=======
->>>>>>> origin/main
               
               // 如果返回了blockId，更新本地状态中的临时ID
               const blockId = result.data?.blockId || result.data?.addedBlock?.id;
               if (blockId && newBlockId) {
-<<<<<<< HEAD
-                console.log('更新本地block ID(个人):', newBlockId, '->', blockId);
-=======
->>>>>>> origin/main
                 updateSectionTree(sectionId, section => {
                   const nextContent = (section.content ?? []).map(block =>
                     block.id === newBlockId ? { ...block, id: blockId } : block
@@ -858,19 +794,10 @@ export function usePaperSections(
             });
             
             if (result.bizCode === 0) {
-<<<<<<< HEAD
-              console.log('添加段落API响应(管理员):', result);
-              console.log('响应数据(管理员):', result.data);
-=======
->>>>>>> origin/main
               
               // 如果返回了blockId，更新本地状态中的临时ID
               const blockId = result.data?.blockId || result.data?.addedBlock?.id;
               if (blockId && newBlockId) {
-<<<<<<< HEAD
-                console.log('更新本地block ID(管理员):', newBlockId, '->', blockId);
-=======
->>>>>>> origin/main
                 updateSectionTree(sectionId, section => {
                   const nextContent = (section.content ?? []).map(block =>
                     block.id === newBlockId ? { ...block, id: blockId } : block
@@ -916,11 +843,7 @@ export function usePaperSections(
     isPersonalOwner: boolean,
     afterBlockId?: string
   ) => {
-<<<<<<< HEAD
-    let loadingBlockId: string | null = null;
-=======
     let tempBlockId: string | null = null;
->>>>>>> origin/main
     
     try {
       // 调用API创建加载块并开始异步解析
@@ -931,14 +854,9 @@ export function usePaperSections(
           afterBlockId
         });
         
-<<<<<<< HEAD
-        if (result.bizCode === 0) {
-          loadingBlockId = result.data.loadingBlockId;
-=======
         if (result.bizCode === 0 && result.data) {
           // 后端返回 tempBlockId
           tempBlockId = result.data.tempBlockId ?? null;
->>>>>>> origin/main
           
           // 立即在本地状态中添加loading block，这样用户可以立即看到
           updateSectionTree(sectionId, section => {
@@ -954,24 +872,6 @@ export function usePaperSections(
               }
             }
            
-<<<<<<< HEAD
-            // 创建loading block
-            const loadingBlock: BlockContent = {
-              id: loadingBlockId!,
-              type: 'loading',
-              status: 'pending',
-              message: '正在准备解析文本...',
-              progress: 0,
-              originalText: text,
-              sectionId: sectionId,
-              afterBlockId: afterBlockId,
-              createdAt: new Date().toISOString()
-            };
-           
-            // 插入loading block
-            const newBlocks = [...currentBlocks];
-            newBlocks.splice(insertIndex, 0, loadingBlock);
-=======
             // 创建parsing block
             const parsingBlock: BlockContent = {
               id: tempBlockId!,
@@ -984,7 +884,6 @@ export function usePaperSections(
             // 插入parsing block
             const newBlocks = [...currentBlocks];
             newBlocks.splice(insertIndex, 0, parsingBlock);
->>>>>>> origin/main
            
             return {
               ...section,
@@ -996,12 +895,6 @@ export function usePaperSections(
           toast.loading('正在解析文本内容...', { id: 'parse-text' });
           
           // 开始轮询检查解析状态，使用指数退避策略
-<<<<<<< HEAD
-          let pollInterval = 2000; // 初始2秒
-          const maxPollInterval = 30000; // 最大30秒
-          let pollCount = 0;
-          
-=======
           let pollInterval = 8000; // 初始8秒
           const maxPollInterval = 30000; // 最大30秒
           let pollCount = 0;
@@ -1010,7 +903,6 @@ export function usePaperSections(
           let completionTimeoutId: NodeJS.Timeout | null = null;
           let isCompleted = false;
           
->>>>>>> origin/main
           const checkStatus = async () => {
             // 只在页面可见时检查状态
             if (document.hidden) {
@@ -1018,14 +910,8 @@ export function usePaperSections(
               return;
             }
            
-<<<<<<< HEAD
-            // 确保 loadingBlockId 不为 null
-            if (!loadingBlockId) {
-              console.error('loadingBlockId 为 null，停止轮询');
-=======
             // 确保 tempBlockId 不为 null
             if (!tempBlockId) {
->>>>>>> origin/main
               return;
             }
            
@@ -1033,86 +919,33 @@ export function usePaperSections(
               const statusResult = await userPaperService.checkBlockParsingStatus(
                 userPaperId,
                 sectionId,
-<<<<<<< HEAD
-                loadingBlockId
-=======
                 tempBlockId
->>>>>>> origin/main
               );
               
               if (statusResult.bizCode === 0) {
                 const { status, addedBlocks, error, progress, message } = statusResult.data;
                 
-<<<<<<< HEAD
-                // 更新loading block的状态和进度
-=======
                 // 更新parsing block的状态和进度
->>>>>>> origin/main
                 if (status === 'processing' || status === 'pending') {
                   updateSectionTree(sectionId, section => {
                     const currentBlocks = section.content || [];
                     const updatedBlocks = currentBlocks.map(block => {
-<<<<<<< HEAD
-                      if (block.id === loadingBlockId && block.type === 'loading') {
-                        return {
-                          ...block,
-                          status,
-                          message: message || (status === 'processing' ? '正在解析文本...' : '等待中...'),
-                          progress: progress || 0
-=======
                       if (block.id === tempBlockId && block.type === 'parsing') {
                         return {
                           ...block,
                           stage: status === 'processing' ? 'structuring' : 'structuring',
                           message: message || (status === 'processing' ? '正在解析文本...' : '等待中...')
->>>>>>> origin/main
                         } as BlockContent;
                       }
                       return block;
                     });
-<<<<<<< HEAD
-                    
-=======
                    
->>>>>>> origin/main
                     return {
                       ...section,
                       content: updatedBlocks
                     };
                   });
                 } else if (status === 'completed') {
-<<<<<<< HEAD
-                  // 解析完成，移除加载块，添加解析后的blocks
-                  updateSectionTree(sectionId, section => {
-                    const currentBlocks = section.content || [];
-                    let insertIndex = currentBlocks.length; // 默认在末尾
-                   
-                    if (afterBlockId) {
-                      for (let i = 0; i < currentBlocks.length; i++) {
-                        if (currentBlocks[i].id === afterBlockId) {
-                          insertIndex = i + 1;
-                          break;
-                        }
-                      }
-                    }
-                   
-                    // 移除加载块
-                    const filteredBlocks = currentBlocks.filter(block => block.id !== loadingBlockId);
-                   
-                    // 添加解析后的blocks
-                    const newBlocks = [...filteredBlocks];
-                    if (addedBlocks && addedBlocks.length > 0) {
-                      newBlocks.splice(insertIndex, 0, ...addedBlocks);
-                    }
-                   
-                    return {
-                      ...section,
-                      content: newBlocks
-                    };
-                  });
-                   
-                  toast.success(`成功解析并添加了${addedBlocks?.length || 0}个段落`, { id: 'parse-text' });
-=======
                   // 防抖处理：清除之前的完成处理定时器
                   if (completionTimeoutId) {
                     clearTimeout(completionTimeoutId);
@@ -1152,7 +985,6 @@ export function usePaperSections(
                     toast.success('解析完成，请确认解析结果', { id: 'parse-text' });
                   }, 300); // 300ms延迟，确保这是最后一个完成请求
                   
->>>>>>> origin/main
                   // 解析完成，清除轮询
                   return;
                 } else if (status === 'failed') {
@@ -1160,20 +992,11 @@ export function usePaperSections(
                   updateSectionTree(sectionId, section => {
                     const currentBlocks = section.content || [];
                     const updatedBlocks = currentBlocks.map(block => {
-<<<<<<< HEAD
-                      if (block.id === loadingBlockId && block.type === 'loading') {
-                        return {
-                          ...block,
-                          status: 'failed',
-                          message: error || '解析失败',
-                          progress: 0
-=======
                       if (block.id === tempBlockId && block.type === 'parsing') {
                         return {
                           ...block,
                           stage: 'failed',
                           message: error || '解析失败'
->>>>>>> origin/main
                         } as BlockContent;
                       }
                       return block;
@@ -1195,20 +1018,12 @@ export function usePaperSections(
                 // 如果状态是 'parsing'，继续轮询
               }
             } catch (error) {
-<<<<<<< HEAD
-              console.error('检查解析状态时出错:', error);
-=======
->>>>>>> origin/main
               // 不清除轮询，继续尝试
             }
            
             // 增加轮询间隔（指数退避）
             pollCount++;
-<<<<<<< HEAD
-            if (pollCount > 3) { // 前3次保持2秒间隔
-=======
             if (pollCount > 3) { // 前3次保持8秒间隔
->>>>>>> origin/main
               pollInterval = Math.min(pollInterval * 1.5, maxPollInterval);
             }
            
@@ -1219,11 +1034,7 @@ export function usePaperSections(
           // 开始轮询
           setTimeout(checkStatus, pollInterval);
           
-<<<<<<< HEAD
-          return { success: true, loadingBlockId };
-=======
           return { success: true, tempBlockId };
->>>>>>> origin/main
         } else {
           toast.error('创建解析任务失败', {
             id: 'parse-text',
@@ -1238,18 +1049,11 @@ export function usePaperSections(
           afterBlockId
         });
         
-<<<<<<< HEAD
-        if (result.bizCode === 0) {
-          loadingBlockId = result.data.loadingBlockId;
-          
-          // 立即在本地状态中添加loading block，这样用户可以立即看到
-=======
         if (result.bizCode === 0 && result.data) {
           // 后端返回 tempBlockId
           tempBlockId = result.data.tempBlockId ?? null;
           
           // 立即在本地状态中添加parsing block，这样用户可以立即看到
->>>>>>> origin/main
           updateSectionTree(sectionId, section => {
             const currentBlocks = section.content || [];
             let insertIndex = currentBlocks.length; // 默认在末尾
@@ -1263,24 +1067,6 @@ export function usePaperSections(
               }
             }
            
-<<<<<<< HEAD
-            // 创建loading block
-            const loadingBlock: BlockContent = {
-              id: loadingBlockId!,
-              type: 'loading',
-              status: 'pending',
-              message: '正在准备解析文本...',
-              progress: 0,
-              originalText: text,
-              sectionId: sectionId,
-              afterBlockId: afterBlockId,
-              createdAt: new Date().toISOString()
-            };
-           
-            // 插入loading block
-            const newBlocks = [...currentBlocks];
-            newBlocks.splice(insertIndex, 0, loadingBlock);
-=======
             // 创建parsing block
             const parsingBlock: BlockContent = {
               id: tempBlockId!,
@@ -1293,7 +1079,6 @@ export function usePaperSections(
             // 插入parsing block
             const newBlocks = [...currentBlocks];
             newBlocks.splice(insertIndex, 0, parsingBlock);
->>>>>>> origin/main
            
             return {
               ...section,
@@ -1305,12 +1090,6 @@ export function usePaperSections(
           toast.loading('正在解析文本内容...', { id: 'parse-text' });
           
           // 开始轮询检查解析状态，使用指数退避策略
-<<<<<<< HEAD
-          let pollInterval = 2000; // 初始2秒
-          const maxPollInterval = 30000; // 最大30秒
-          let pollCount = 0;
-          
-=======
           let pollInterval = 8000; // 初始8秒
           const maxPollInterval = 30000; // 最大30秒
           let pollCount = 0;
@@ -1319,7 +1098,6 @@ export function usePaperSections(
           let completionTimeoutId: NodeJS.Timeout | null = null;
           let isCompleted = false;
           
->>>>>>> origin/main
           const checkStatus = async () => {
             // 只在页面可见时检查状态
             if (document.hidden) {
@@ -1327,14 +1105,8 @@ export function usePaperSections(
               return;
             }
            
-<<<<<<< HEAD
-            // 确保 loadingBlockId 不为 null
-            if (!loadingBlockId) {
-              console.error('loadingBlockId 为 null，停止轮询');
-=======
             // 确保 tempBlockId 不为 null
             if (!tempBlockId) {
->>>>>>> origin/main
               return;
             }
            
@@ -1342,86 +1114,33 @@ export function usePaperSections(
               const statusResult = await adminPaperService.checkBlockParsingStatus(
                 paperId,
                 sectionId,
-<<<<<<< HEAD
-                loadingBlockId
-=======
                 tempBlockId
->>>>>>> origin/main
               );
               
               if (statusResult.bizCode === 0) {
                 const { status, addedBlocks, error, progress, message } = statusResult.data;
                 
-<<<<<<< HEAD
-                // 更新loading block的状态和进度
-=======
                 // 更新parsing block的状态和进度
->>>>>>> origin/main
                 if (status === 'processing' || status === 'pending') {
                   updateSectionTree(sectionId, section => {
                     const currentBlocks = section.content || [];
                     const updatedBlocks = currentBlocks.map(block => {
-<<<<<<< HEAD
-                      if (block.id === loadingBlockId && block.type === 'loading') {
-                        return {
-                          ...block,
-                          status,
-                          message: message || (status === 'processing' ? '正在解析文本...' : '等待中...'),
-                          progress: progress || 0
-=======
                       if (block.id === tempBlockId && block.type === 'parsing') {
                         return {
                           ...block,
                           stage: status === 'processing' ? 'structuring' : 'structuring',
                           message: message || (status === 'processing' ? '正在解析文本...' : '等待中...')
->>>>>>> origin/main
                         } as BlockContent;
                       }
                       return block;
                     });
-<<<<<<< HEAD
-                    
-=======
                    
->>>>>>> origin/main
                     return {
                       ...section,
                       content: updatedBlocks
                     };
                   });
                 } else if (status === 'completed') {
-<<<<<<< HEAD
-                  // 解析完成，移除加载块，添加解析后的blocks
-                  updateSectionTree(sectionId, section => {
-                    const currentBlocks = section.content || [];
-                    let insertIndex = currentBlocks.length; // 默认在末尾
-                   
-                    if (afterBlockId) {
-                      for (let i = 0; i < currentBlocks.length; i++) {
-                        if (currentBlocks[i].id === afterBlockId) {
-                          insertIndex = i + 1;
-                          break;
-                        }
-                      }
-                    }
-                   
-                    // 移除加载块
-                    const filteredBlocks = currentBlocks.filter(block => block.id !== loadingBlockId);
-                   
-                    // 添加解析后的blocks
-                    const newBlocks = [...filteredBlocks];
-                    if (addedBlocks && addedBlocks.length > 0) {
-                      newBlocks.splice(insertIndex, 0, ...addedBlocks);
-                    }
-                   
-                    return {
-                      ...section,
-                      content: newBlocks
-                    };
-                  });
-                   
-                  toast.success(`成功解析并添加了${addedBlocks?.length || 0}个段落`, { id: 'parse-text' });
-=======
                   // 防抖处理：清除之前的完成处理定时器
                   if (completionTimeoutId) {
                     clearTimeout(completionTimeoutId);
@@ -1461,7 +1180,6 @@ export function usePaperSections(
                     toast.success('解析完成，请确认解析结果', { id: 'parse-text' });
                   }, 300); // 300ms延迟，确保这是最后一个完成请求
                   
->>>>>>> origin/main
                   // 解析完成，清除轮询
                   return;
                 } else if (status === 'failed') {
@@ -1469,20 +1187,11 @@ export function usePaperSections(
                   updateSectionTree(sectionId, section => {
                     const currentBlocks = section.content || [];
                     const updatedBlocks = currentBlocks.map(block => {
-<<<<<<< HEAD
-                      if (block.id === loadingBlockId && block.type === 'loading') {
-                        return {
-                          ...block,
-                          status: 'failed',
-                          message: error || '解析失败',
-                          progress: 0
-=======
                       if (block.id === tempBlockId && block.type === 'parsing') {
                         return {
                           ...block,
                           stage: 'failed',
                           message: error || '解析失败'
->>>>>>> origin/main
                         } as BlockContent;
                       }
                       return block;
@@ -1504,20 +1213,12 @@ export function usePaperSections(
                 // 如果状态是 'parsing'，继续轮询
               }
             } catch (error) {
-<<<<<<< HEAD
-              console.error('检查解析状态时出错:', error);
-=======
->>>>>>> origin/main
               // 不清除轮询，继续尝试
             }
            
             // 增加轮询间隔（指数退避）
             pollCount++;
-<<<<<<< HEAD
-            if (pollCount > 3) { // 前3次保持2秒间隔
-=======
             if (pollCount > 3) { // 前3次保持8秒间隔
->>>>>>> origin/main
               pollInterval = Math.min(pollInterval * 1.5, maxPollInterval);
             }
            
@@ -1528,11 +1229,7 @@ export function usePaperSections(
           // 开始轮询
           setTimeout(checkStatus, pollInterval);
           
-<<<<<<< HEAD
-          return { success: true, loadingBlockId };
-=======
           return { success: true, tempBlockId };
->>>>>>> origin/main
         } else {
           toast.error('创建解析任务失败', {
             id: 'parse-text',

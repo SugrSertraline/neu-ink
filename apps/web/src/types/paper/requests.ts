@@ -127,9 +127,6 @@ export interface CreatePaperFromMetadataRequest {
 
 // —— 请求：更新个人论文 ——
 export interface UpdateUserPaperRequest {
-<<<<<<< HEAD
-  paperData?: Partial<UserPaper['paperData']>;
-=======
   // 支持扁平化结构，可以直接传递论文内容字段
   metadata?: Partial<UserPaper['metadata']>;
   abstract?: Partial<UserPaper['abstract']>;
@@ -148,7 +145,6 @@ export interface UpdateUserPaperRequest {
   };
   
   // 其他 UserPaper 字段
->>>>>>> origin/main
   customTags?: string[];
   readingStatus?: 'unread' | 'reading' | 'finished';
   priority?: 'high' | 'medium' | 'low';
@@ -166,26 +162,17 @@ export interface UpdateReadingProgressRequest {
 
 // —— 请求：创建笔记 ——
 export interface CreateNoteRequest {
-<<<<<<< HEAD
-  userPaperId: string;
-  blockId: string;
-  content: Note['content'];
-=======
   id: string;  // 前端生成的UUID
   userPaperId: string;
   blockId: string;
   content: Note['content'];
   plainText?: string;
->>>>>>> origin/main
 }
 
 // —— 请求：更新笔记 ——
 export interface UpdateNoteRequest {
   content: Note['content'];
-<<<<<<< HEAD
-=======
   plainText?: string;
->>>>>>> origin/main
 }
 
 // —— 响应：删除结果 ——
@@ -199,18 +186,11 @@ export interface AddBlockFromTextToSectionRequest {
   text?: string;  // 可选：如果是恢复会话，则不需要text
   afterBlockId?: string;  // 可选：指定在哪个block后插入
   sessionId?: string;  // 可选：会话ID，用于恢复会话
-<<<<<<< HEAD
-=======
   forcePost?: boolean;  // 可选：强制使用POST方法，用于处理URL过长的情况
->>>>>>> origin/main
 }
 
 // —— 响应：添加block结果（从文本解析）——
 export interface AddBlockFromTextToSectionResult {
-<<<<<<< HEAD
-  loadingBlockId: string;
-  sectionId: string;
-=======
   tempBlockId?: string;  // 临时进度block的ID
   sectionId: string;
   message?: string;
@@ -230,7 +210,6 @@ export interface CheckBlockParsingStatusResult {
   // 新增:新解析流程的字段
   parseId?: string;
   tempBlockId?: string;
->>>>>>> origin/main
 }
 
 // —— 请求：直接向section添加block ——
@@ -350,9 +329,6 @@ export interface AddReferencesToPaperResult {
       message: string;
     }>;
   };
-<<<<<<< HEAD
-}
-=======
 }
 
 // —— 解析结果相关类型 ——
@@ -392,4 +368,13 @@ export interface SaveAllParseResultResult {
   paper: Paper | UserPaper;
   parseId: string;
 }
->>>>>>> origin/main
+
+// —— 请求：更新论文附件 ——
+export interface UpdatePaperAttachmentsRequest {
+  attachments: import('./models').PaperAttachments;
+}
+
+// —— 响应：更新论文附件结果 ——
+export interface UpdatePaperAttachmentsResult {
+  paper: Paper | UserPaper;
+}

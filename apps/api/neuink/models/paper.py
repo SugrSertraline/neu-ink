@@ -88,20 +88,13 @@ class PaperModel:
         sort_order: int,
         search: Optional[str],
         filters: Optional[Dict[str, Any]],
-<<<<<<< HEAD
-=======
         user_id: Optional[str] = None,
->>>>>>> origin/main
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
         查询公开论文列表，仅返回概要信息（metadata 等）
         """
         filters = filters.copy() if filters else {}
-<<<<<<< HEAD
-        base_query = self._build_public_filters(filters)
-=======
         base_query = self._build_public_filters(filters, user_id)
->>>>>>> origin/main
         projection = self._public_summary_projection(include_score=bool(search))
 
         if search:
@@ -131,10 +124,6 @@ class PaperModel:
         """
         查询公开论文详情
         """
-<<<<<<< HEAD
-        query = {"id": paper_id, "isPublic": True}
-        return self.collection.find_one(query, self._full_document_projection())
-=======
         print(f"[DEBUG] 查找公开论文: paperId={paper_id}")
         query = {"id": paper_id, "isPublic": True}
         paper = self.collection.find_one(query, self._full_document_projection())
@@ -176,7 +165,6 @@ class PaperModel:
         # 将排序后的sections数据添加到paper中
         paper["sections"] = ordered_sections
         return paper
->>>>>>> origin/main
 
     def find_admin_papers(
         self,
@@ -328,10 +316,6 @@ class PaperModel:
     # ------------------------------------------------------------------
     # 内部辅助方法
     # ------------------------------------------------------------------
-<<<<<<< HEAD
-    def _build_public_filters(self, filters: Dict[str, Any]) -> Dict[str, Any]:
-        query: Dict[str, Any] = {"isPublic": True}
-=======
     def _build_public_filters(self, filters: Dict[str, Any], user_id: Optional[str] = None) -> Dict[str, Any]:
         query: Dict[str, Any] = {"isPublic": True}
         
@@ -339,26 +323,18 @@ class PaperModel:
         if user_id:
             query["createdBy"] = user_id
             
->>>>>>> origin/main
         query.update(self._build_metadata_filters(filters))
         return query
 
     def _build_admin_filters(self, user_id: str, filters: Dict[str, Any]) -> Dict[str, Any]:
-<<<<<<< HEAD
+        # 管理员可以看到所有论文（公开和私有的）
         query: Dict[str, Any] = {}
-=======
-        # 管理员默认只能看到公开的论文
-        query: Dict[str, Any] = {"isPublic": True}
->>>>>>> origin/main
 
         created_by = filters.pop("createdBy", None)
         if created_by:
             query["createdBy"] = created_by
 
-<<<<<<< HEAD
-=======
         # 如果明确指定了isPublic过滤条件，则使用指定的值
->>>>>>> origin/main
         is_public = filters.pop("isPublic", None)
         if is_public is not None:
             query["isPublic"] = is_public
@@ -458,12 +434,8 @@ class PaperModel:
         return projection
 
     def find_admin_paper_by_id(self, paper_id: str) -> Optional[Dict[str, Any]]:
-<<<<<<< HEAD
-        """管理员获取论文详情；不限制公开状态"""
-        return self.collection.find_one({"id": paper_id}, self._full_document_projection())
-=======
-        """管理员获取论文详情；只能查看公开的论文"""
-        paper = self.collection.find_one({"id": paper_id, "isPublic": True}, self._full_document_projection())
+        """管理员获取论文详情；可以查看所有论文（公开和私有的）"""
+        paper = self.collection.find_one({"id": paper_id}, self._full_document_projection())
         if not paper:
             return None
         
@@ -496,7 +468,6 @@ class PaperModel:
         # 将排序后的sections数据添加到paper中
         paper["sections"] = ordered_sections
         return paper
->>>>>>> origin/main
 
     def find_paper_with_sections(self, paper_id: str) -> Optional[Dict[str, Any]]:
         """
@@ -507,14 +478,6 @@ class PaperModel:
         if not paper:
             return None
         
-<<<<<<< HEAD
-        # 获取sections数据
-        section_model = get_section_model()
-        sections = section_model.find_by_paper_id(paper_id)
-        
-        # 将sections数据添加到paper中
-        paper["sections"] = sections
-=======
         # 获取sections数据，按照sectionIds的顺序
         section_model = get_section_model()
         try:
@@ -543,7 +506,6 @@ class PaperModel:
         
         # 将排序后的sections数据添加到paper中
         paper["sections"] = ordered_sections
->>>>>>> origin/main
         return paper
 
     def add_section_id(self, paper_id: str, section_id: str) -> bool:
@@ -585,9 +547,6 @@ class PaperModel:
                 }
             }
         )
-<<<<<<< HEAD
-        return result.modified_count > 0
-=======
         return result.modified_count > 0
 
     def add_section_id_at_position(self, paper_id: str, section_id: str, position: int) -> bool:
@@ -623,4 +582,3 @@ class PaperModel:
         
         # 更新论文的sectionIds
         return self.update_section_ids(paper_id, section_ids)
->>>>>>> origin/main
