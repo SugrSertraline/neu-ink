@@ -31,7 +31,12 @@ class NoteModel:
         """
         创建新笔记
         """
+<<<<<<< HEAD
         note_id = generate_id()
+=======
+        # 优先使用前端提供的ID，如果没有则生成新ID
+        note_id = note_data.get("id") or generate_id()
+>>>>>>> origin/main
         current_time = get_current_time()
 
         note = {
@@ -44,13 +49,27 @@ class NoteModel:
             "updatedAt": current_time,
         }
 
+<<<<<<< HEAD
+=======
+        # 如果提供了 plainText 字段，也保存到数据库
+        if "plainText" in note_data:
+            note["plainText"] = note_data["plainText"]
+
+>>>>>>> origin/main
         self.collection.insert_one(note)
         return note
 
     def find_by_id(self, note_id: str) -> Optional[Dict[str, Any]]:
         """
         根据ID查找笔记
+<<<<<<< HEAD
         """
+=======
+        只使用前端生成的UUID格式的id字段
+        """
+        # 只使用"id"字段查找（前端生成的UUID）
+        # 明确排除 _id 字段，防止它覆盖前端传入的 id
+>>>>>>> origin/main
         return self.collection.find_one({"id": note_id}, {"_id": 0})
 
     def find_by_user_paper(
@@ -140,21 +159,48 @@ class NoteModel:
         
         return notes, total
 
+<<<<<<< HEAD
     def update(self, note_id: str, update_data: Dict[str, Any]) -> bool:
         """
         更新笔记
         """
         update_data["updatedAt"] = get_current_time()
+=======
+    def update(self, note_id: str, update_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        更新笔记，返回更新后的笔记数据
+        只使用前端生成的UUID格式的id字段
+        """
+        update_data["updatedAt"] = get_current_time()
+        
+        # 只使用"id"字段更新（前端生成的UUID）
+>>>>>>> origin/main
         result = self.collection.update_one(
             {"id": note_id},
             {"$set": update_data}
         )
+<<<<<<< HEAD
         return result.modified_count > 0
+=======
+        
+        # 如果更新成功，返回更新后的笔记数据
+        if result.modified_count > 0:
+            return self.find_by_id(note_id)
+        
+        # 如果没有修改任何内容，可能是数据相同，仍然返回当前笔记数据
+        return self.find_by_id(note_id)
+>>>>>>> origin/main
 
     def delete(self, note_id: str) -> bool:
         """
         删除笔记
+<<<<<<< HEAD
         """
+=======
+        只使用前端生成的UUID格式的id字段
+        """
+        # 只使用"id"字段删除（前端生成的UUID）
+>>>>>>> origin/main
         result = self.collection.delete_one({"id": note_id})
         return result.deleted_count > 0
 

@@ -25,17 +25,37 @@ export default function LoginPage() {
     setError('');
 
     try {
+<<<<<<< HEAD
       const res = await login(username, password); // LoginResult: { ok, message? }
+=======
+      const res = await login(username, password); // LoginResult: { ok, message?, businessCode? }
+>>>>>>> origin/main
 
       if (res.ok) {
         toast.success('登录成功', { description: '欢迎回来！' });
         // 使用 router.replace 避免历史回退到登录页；如需强刷可改成 window.location.href='/'
         router.replace('/');
       } else {
+<<<<<<< HEAD
         const msg = (res.message && String(res.message).trim()) || '用户名或密码错误';
         setError(msg);
         // 对于400等错误，normalize.ts已经处理了toast，这里不再重复显示
         // 只设置内联错误信息供LoginForm显示
+=======
+        // 使用从后端返回的具体错误信息
+        const msg = (res.message && String(res.message).trim()) || '用户名或密码错误';
+        setError(msg);
+        
+        // 根据业务错误码显示不同的提示
+        if (res.businessCode === 1001) { // LOGIN_FAILED
+          // 只设置内联错误信息供LoginForm显示，不显示toast
+        } else if (res.businessCode === 1005) { // USER_NOT_FOUND
+          toast.error('用户不存在', { description: '请检查用户名是否正确' });
+        } else {
+          // 其他错误显示通用toast
+          toast.error('登录失败', { description: msg });
+        }
+>>>>>>> origin/main
       }
     } catch (err) {
       const msg = '登录失败，请稍后重试';

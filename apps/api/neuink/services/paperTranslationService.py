@@ -22,6 +22,7 @@ class PaperTranslationService:
         """
         自动检查并补全论文的翻译
         此方法在用户查看论文时自动调用，对用户透明
+<<<<<<< HEAD
         """
         try:
             # 检查并补全翻译
@@ -45,6 +46,36 @@ class PaperTranslationService:
             # 翻译过程中出错不影响论文的正常访问，只记录日志
             print(f"自动翻译检查失败: {e}")
             return paper
+=======
+        已禁用 - 直接返回原始论文数据
+        """
+        # 已禁用自动翻译检查功能
+        return paper
+        
+        # 原始代码已注释
+        # try:
+        #     # 检查并补全翻译
+        #     updated_paper, _ = self._check_and_translate_paper(paper, get_llm_utils())
+        #
+        #     if updated_paper and "id" in paper:
+        #         # 更新论文到数据库
+        #         update_data = {
+        #             "metadata": updated_paper.get("metadata", {}),
+        #             "abstract": updated_paper.get("abstract", {}),
+        #             "sections": updated_paper.get("sections", [])
+        #         }
+        #         self.paper_model.update(paper["id"], update_data)
+        #         # 重新获取最新数据
+        #         updated_paper = self.paper_model.find_by_id(paper["id"])
+        #         return updated_paper
+        #
+        #     return paper
+        #
+        # except Exception as e:
+        #     # 翻译过程中出错不影响论文的正常访问，只记录日志
+        #     print(f"自动翻译检查失败: {e}")
+        #     return paper
+>>>>>>> origin/main
 
     def check_and_complete_translation(self, paper_id: str) -> Dict[str, Any]:
         """

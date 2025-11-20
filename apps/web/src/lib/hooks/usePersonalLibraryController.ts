@@ -40,8 +40,13 @@ const PERSONAL_PARSE_STATUS: ParseStatus = {
 };
 
 function mapUserPaperToListItem(userPaper: UserPaper): PersonalLibraryItem {
+<<<<<<< HEAD
   // 适配新的API返回结构，只从paperData.metadata获取基本信息
   const metadata: PaperMetadata = userPaper.paperData?.metadata ?? {
+=======
+  // 适配新的扁平化结构，直接从UserPaper获取metadata
+  const metadata: PaperMetadata = userPaper.metadata ?? {
+>>>>>>> origin/main
     title: '未命名论文',
     authors: [],
     tags: [],
@@ -87,17 +92,29 @@ function mapUserPaperToListItem(userPaper: UserPaper): PersonalLibraryItem {
 }
 
 function normalizeUserPaperToPaper(userPaper: UserPaper): Paper {
+<<<<<<< HEAD
   const data = userPaper.paperData ?? {};
+=======
+>>>>>>> origin/main
   return {
     id: userPaper.id,
     isPublic: Boolean(userPaper.sourcePaperId),
     createdBy: userPaper.userId,
+<<<<<<< HEAD
     metadata: data.metadata ?? { title: '未命名论文', authors: [], tags: [] },
     abstract: data.abstract,
     keywords: data.keywords ?? [],
     sections: data.sections ?? [],
     references: data.references ?? [],
     attachments: data.attachments ?? {},
+=======
+    metadata: userPaper.metadata ?? { title: '未命名论文', authors: [], tags: [] },
+    abstract: userPaper.abstract,
+    keywords: userPaper.keywords ?? [],
+    sections: userPaper.sections ?? [],
+    references: userPaper.references ?? [],
+    attachments: userPaper.attachments ?? {},
+>>>>>>> origin/main
     parseStatus: PERSONAL_PARSE_STATUS,
     createdAt: userPaper.addedAt,
     updatedAt: userPaper.updatedAt,
@@ -246,8 +263,12 @@ export function usePersonalLibraryController() {
           }
   
           const cachedEntry = paperCache.get(routePaperId);
+<<<<<<< HEAD
           let userPaperDetail: UserPaper | null =
             cachedEntry && 'paperData' in cachedEntry ? (cachedEntry as UserPaper) : null;
+=======
+          let userPaperDetail: UserPaper | null = cachedEntry as UserPaper | null;
+>>>>>>> origin/main
   
           if (!userPaperDetail) {
             const res = await userPaperService.getUserPaperDetail(routePaperId);

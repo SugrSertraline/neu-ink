@@ -11,6 +11,28 @@ export type PersonalNoteItem = {
 export const toTimestamp = (value: unknown): number => {
   if (!value) return Date.now();
   if (typeof value === 'number') return value;
+<<<<<<< HEAD
+=======
+  
+  // 处理 ISO 8601 格式的时间字符串（后端返回的 UTC 时间）
+  if (typeof value === 'string') {
+    // 如果是 ISO 8601 格式（如 "2025-11-17T11:20:42.784667"）
+    if (value.includes('T') && value.includes('-')) {
+      const date = new Date(value);
+      if (!Number.isNaN(date.getTime())) {
+        return date.getTime();
+      }
+    }
+    
+    // 尝试直接解析为时间戳
+    const parsed = parseInt(value, 10);
+    if (!Number.isNaN(parsed)) {
+      return parsed;
+    }
+  }
+  
+  // 最后尝试使用 Date 构造函数
+>>>>>>> origin/main
   const ts = new Date(value as string).getTime();
   return Number.isNaN(ts) ? Date.now() : ts;
 };

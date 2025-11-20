@@ -1,27 +1,45 @@
 // src/components/paper/editor/InlineTextParserEditor.tsx
 'use client';
 
+<<<<<<< HEAD
 import React, { useState, useEffect, useRef } from 'react';
 import type { BlockContent, LoadingBlock } from '@/types/paper';
 import { Loader2, X, Check, RefreshCw } from 'lucide-react';
 import { useEditingState } from '@/stores/useEditingState';
 import { userPaperService, adminPaperService } from '@/lib/services/paper';
 import ParseProgressBlock from '@/components/paper/ParseProgressBlock';
+=======
+import React, { useState, useEffect } from 'react';
+import { Loader2, X, Check } from 'lucide-react';
+import { useEditingState } from '@/stores/useEditingState';
+>>>>>>> origin/main
 
 interface InlineTextParserEditorProps {
   sectionId: string;
   sectionTitle: string;
   context?: 'section' | 'block';
   blockId?: string;
+<<<<<<< HEAD
   onParseText: (text: string, afterBlockId?: string, isStreaming?: boolean) => Promise<{
+=======
+  onParseText: (
+    text: string,
+    afterBlockId?: string,
+  ) => Promise<{
+>>>>>>> origin/main
     success: boolean;
     error?: string;
   }>;
   onCancel: () => void;
   paperId: string;
   userPaperId?: string | null;
+<<<<<<< HEAD
   onParseComplete?: (blocks: any[], paperData?: any) => void; // 新增回调函数
   onProgressUpdate?: (progressData: { message: string; progress: number; sessionId?: string }) => void; // 进度更新回调
+=======
+  onParseComplete?: (blocks: any[], paperData?: any) => void;
+  onProgressUpdate?: (progressData: { message: string; progress: number; sessionId?: string }) => void;
+>>>>>>> origin/main
 }
 
 export default function InlineTextParserEditor({
@@ -34,6 +52,7 @@ export default function InlineTextParserEditor({
   paperId,
   userPaperId,
   onParseComplete,
+<<<<<<< HEAD
   onProgressUpdate,
 }: InlineTextParserEditorProps) {
   const [text, setText] = useState('');
@@ -48,11 +67,19 @@ export default function InlineTextParserEditor({
   const { setHasUnsavedChanges } = useEditingState();
   const eventSourceRef = useRef<EventSource | null>(null);
   const hasTempProgressBlockRef = useRef(false);
+=======
+}: InlineTextParserEditorProps) {
+  const [text, setText] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const { setHasUnsavedChanges } = useEditingState();
+>>>>>>> origin/main
 
   useEffect(() => {
     setHasUnsavedChanges(text.trim().length > 0);
   }, [text, setHasUnsavedChanges]);
 
+<<<<<<< HEAD
   // 组件挂载时检查是否有未完成的解析会话
   useEffect(() => {
     const checkActiveSessions = async () => {
@@ -135,12 +162,15 @@ export default function InlineTextParserEditor({
   };
 
 
+=======
+>>>>>>> origin/main
   const handleSubmit = async () => {
     if (!text.trim()) {
       setError('请输入要解析的文本内容');
       return;
     }
 
+<<<<<<< HEAD
     setIsLoading(true);
     setError(null);
     setStreamProgress(null);
@@ -388,10 +418,41 @@ export default function InlineTextParserEditor({
       setError(err instanceof Error ? err.message : '解析失败，请重试');
       setIsLoading(false);
       setStreamProgress(null);
+=======
+    try {
+      setIsLoading(true);
+      setError(null);
+
+      const afterBlockId = context === 'block' ? blockId : undefined;
+
+      // 统一交给父组件提供的 onParseText 处理
+      const result = await onParseText(text.trim(), afterBlockId);
+
+      if (result.success) {
+        // 清空文本并关闭编辑器
+        setText('');
+        setError(null);
+        setHasUnsavedChanges(false);
+
+        // 调用完成回调 - 传递空数组,因为实际blocks会通过轮询获取
+        if (onParseComplete) {
+          onParseComplete([], null);
+        }
+        
+      } else {
+        setError(result.error || '解析失败,请重试');
+      }
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : String(err);
+      setError(errorMessage);
+    } finally {
+      setIsLoading(false);
+>>>>>>> origin/main
     }
   };
 
   const handleCancel = () => {
+<<<<<<< HEAD
     // 关闭EventSource（如果还未关闭）
     if (eventSourceRef.current) {
       try {
@@ -405,10 +466,13 @@ export default function InlineTextParserEditor({
     // ★ 取消解析时，同样需要清除已插入进度块的标记
     setInsertedProgressBlock(false);
 
+=======
+>>>>>>> origin/main
     if (!isLoading) {
       setText('');
       setError(null);
       setHasUnsavedChanges(false);
+<<<<<<< HEAD
       setStreamProgress(null);
       setHasActiveSession(false);
       setActiveSessionId(null);
@@ -701,6 +765,9 @@ export default function InlineTextParserEditor({
     } catch (err) {
       console.error('删除会话失败:', err);
       setError('删除会话失败，请重试');
+=======
+      onCancel();
+>>>>>>> origin/main
     }
   };
 
@@ -719,6 +786,7 @@ export default function InlineTextParserEditor({
 
   const contextInfo = getContextInfo();
 
+<<<<<<< HEAD
   // 如果有流式进度，显示进度条组件
   if (streamProgress && !insertedProgressBlock) {
     return (
@@ -794,6 +862,8 @@ export default function InlineTextParserEditor({
  if (streamProgress && insertedProgressBlock) {
     return null;
   }
+=======
+>>>>>>> origin/main
   return (
     <div className="mt-4 rounded-lg border-2 border-blue-500 bg-blue-50/50 p-6 shadow-lg">
       <div className="flex items-center gap-3 mb-4">
@@ -867,7 +937,11 @@ export default function InlineTextParserEditor({
               {isLoading ? (
                 <>
                   <Loader2 className="h-4 w-4 animate-spin" />
+<<<<<<< HEAD
                   解析中...
+=======
+                  提交中...
+>>>>>>> origin/main
                 </>
               ) : (
                 <>
@@ -881,4 +955,8 @@ export default function InlineTextParserEditor({
       </div>
     </div>
   );
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/main

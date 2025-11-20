@@ -7,6 +7,10 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
+<<<<<<< HEAD
+=======
+import { userPaperService } from '@/lib/services/paper';
+>>>>>>> origin/main
 import {
   FileText,
   Globe,
@@ -138,7 +142,12 @@ export default function AbstractAndKeywordsEditorDialog({
     setIsAutoSaving(true);
     setAutoSaveError(null);
     try {
+<<<<<<< HEAD
       // await userPaperService.updateUserPaper(userPaperId, { paperData: verdict.result });
+=======
+      const { abstract, keywords } = verdict.result;
+      await userPaperService.updateUserPaper(userPaperId, { abstract, keywords });
+>>>>>>> origin/main
       setLastAutoSaveTime(new Date());
     } catch (e: any) {
       setAutoSaveError(e?.message || '自动保存失败');

@@ -127,7 +127,28 @@ export interface CreatePaperFromMetadataRequest {
 
 // —— 请求：更新个人论文 ——
 export interface UpdateUserPaperRequest {
+<<<<<<< HEAD
   paperData?: Partial<UserPaper['paperData']>;
+=======
+  // 支持扁平化结构，可以直接传递论文内容字段
+  metadata?: Partial<UserPaper['metadata']>;
+  abstract?: Partial<UserPaper['abstract']>;
+  keywords?: Partial<UserPaper['keywords']>;
+  sections?: Partial<UserPaper['sections']>;
+  references?: Partial<UserPaper['references']>;
+  attachments?: Partial<UserPaper['attachments']>;
+  
+  // 兼容旧的 paperData 结构（用于向后兼容）
+  paperData?: {
+    metadata?: any;
+    abstract?: any;
+    keywords?: any;
+    references?: any;
+    attachments?: any;
+  };
+  
+  // 其他 UserPaper 字段
+>>>>>>> origin/main
   customTags?: string[];
   readingStatus?: 'unread' | 'reading' | 'finished';
   priority?: 'high' | 'medium' | 'low';
@@ -145,14 +166,26 @@ export interface UpdateReadingProgressRequest {
 
 // —— 请求：创建笔记 ——
 export interface CreateNoteRequest {
+<<<<<<< HEAD
   userPaperId: string;
   blockId: string;
   content: Note['content'];
+=======
+  id: string;  // 前端生成的UUID
+  userPaperId: string;
+  blockId: string;
+  content: Note['content'];
+  plainText?: string;
+>>>>>>> origin/main
 }
 
 // —— 请求：更新笔记 ——
 export interface UpdateNoteRequest {
   content: Note['content'];
+<<<<<<< HEAD
+=======
+  plainText?: string;
+>>>>>>> origin/main
 }
 
 // —— 响应：删除结果 ——
@@ -166,12 +199,38 @@ export interface AddBlockFromTextToSectionRequest {
   text?: string;  // 可选：如果是恢复会话，则不需要text
   afterBlockId?: string;  // 可选：指定在哪个block后插入
   sessionId?: string;  // 可选：会话ID，用于恢复会话
+<<<<<<< HEAD
+=======
+  forcePost?: boolean;  // 可选：强制使用POST方法，用于处理URL过长的情况
+>>>>>>> origin/main
 }
 
 // —— 响应：添加block结果（从文本解析）——
 export interface AddBlockFromTextToSectionResult {
+<<<<<<< HEAD
   loadingBlockId: string;
   sectionId: string;
+=======
+  tempBlockId?: string;  // 临时进度block的ID
+  sectionId: string;
+  message?: string;
+}
+
+// —— 响应：查询loading block解析状态 ——
+export interface CheckBlockParsingStatusResult {
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'pending_confirmation';
+  progress: number;
+  message: string;
+  error?: string;
+  addedBlocks?: import('./content').BlockContent[];
+  parsedBlocks?: import('./content').BlockContent[];
+  // 注意：当 addedBlocks 存在时，paper 字段不会返回，避免数据冗余
+  // 只有在解析失败或进行中时才可能返回 paper 字段
+  paper?: Paper;
+  // 新增:新解析流程的字段
+  parseId?: string;
+  tempBlockId?: string;
+>>>>>>> origin/main
 }
 
 // —— 请求：直接向section添加block ——
@@ -291,4 +350,46 @@ export interface AddReferencesToPaperResult {
       message: string;
     }>;
   };
+<<<<<<< HEAD
 }
+=======
+}
+
+// —— 解析结果相关类型 ——
+export interface ParseResult {
+  parseId: string;
+  status: 'pending' | 'processing' | 'completed' | 'failed' | 'consumed';
+  text: string;
+  parsedBlocks: import('./content').BlockContent[];
+  createdAt: string;
+  updatedAt: string;
+  error?: string;
+  tempBlockId?: string;
+}
+
+// —— 请求：确认解析结果 ——
+export interface ConfirmParseResultRequest {
+  selectedBlockIds: string[];
+  removeOthers: boolean;
+}
+
+// —— 响应：确认解析结果 ——
+export interface ConfirmParseResultResult {
+  selectedBlocks: import('./content').BlockContent[];
+  paper: Paper | UserPaper;
+  parseId: string;
+}
+
+// —— 响应：丢弃解析结果 ——
+export interface DiscardParseResultResult {
+  parseId: string;
+  message: string;
+}
+
+// —— 响应：保存所有解析结果 ——
+export interface SaveAllParseResultResult {
+  savedBlocks: import('./content').BlockContent[];
+  paper: Paper | UserPaper;
+  parseId: string;
+}
+>>>>>>> origin/main

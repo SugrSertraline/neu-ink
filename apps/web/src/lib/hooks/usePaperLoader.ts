@@ -10,7 +10,11 @@ import {
 } from '../services/paper';
 import { PaperAttachments } from '@/types/paper/models';
 
+<<<<<<< HEAD
 type UserPaperMeta = Omit<UserPaper, 'paperData'>;
+=======
+type UserPaperMeta = UserPaper;
+>>>>>>> origin/main
 
 const DEFAULT_PARSE_STATUS: ParseStatus = {
   status: 'completed',
@@ -26,6 +30,7 @@ function pickSourcePaperId(userPaper: UserPaper): string | null {
   return userPaper.sourcePaperId;
 }
 
+<<<<<<< HEAD
 function pickParseStatus(paperData: UserPaper['paperData']): ParseStatus {
   const rawStatus = (paperData as unknown as Record<string, unknown>).parseStatus;
   if (
@@ -35,25 +40,44 @@ function pickParseStatus(paperData: UserPaper['paperData']): ParseStatus {
   ) {
     return rawStatus as ParseStatus;
   }
+=======
+function pickParseStatus(userPaper: UserPaper): ParseStatus {
+  // 对于个人论文，使用默认解析状态
+>>>>>>> origin/main
   return DEFAULT_PARSE_STATUS;
 }
 
 function normalizeUserPaper(userPaper: UserPaper): { paper: Paper; meta: UserPaperMeta } {
+<<<<<<< HEAD
   const { paperData, ...meta } = userPaper;
   const sourcePaperId = pickSourcePaperId(userPaper);
   const parseStatus = pickParseStatus(paperData);
+=======
+  const { sections, ...meta } = userPaper;
+  const sourcePaperId = pickSourcePaperId(userPaper);
+  const parseStatus = pickParseStatus(userPaper);
+>>>>>>> origin/main
 
   return {
     paper: {
       id: sourcePaperId ?? meta.id,
       isPublic: Boolean(sourcePaperId),
       createdBy: meta.userId,
+<<<<<<< HEAD
       metadata: paperData.metadata,
       abstract: paperData.abstract,
       keywords: paperData.keywords ?? [],
       sections: paperData.sections,
       references: paperData.references,
       attachments: ensureAttachments(paperData.attachments),
+=======
+      metadata: userPaper.metadata,
+      abstract: userPaper.abstract,
+      keywords: userPaper.keywords ?? [],
+      sections: sections || [],  // 直接使用根级别的 sections，如果为空则使用空数组
+      references: userPaper.references,
+      attachments: ensureAttachments(userPaper.attachments),
+>>>>>>> origin/main
       parseStatus,
       createdAt: meta.addedAt,
       updatedAt: meta.updatedAt,

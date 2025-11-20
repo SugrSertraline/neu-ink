@@ -6,11 +6,19 @@ import json
 import logging
 from datetime import datetime
 from flask import Blueprint, request, g
+<<<<<<< HEAD
+=======
+from contextlib import nullcontext
+>>>>>>> origin/main
 
 from ..services.userPaperService import get_user_paper_service
 from ..services.paperContentService import PaperContentService
 from ..services.paperTranslationService import PaperTranslationService
 from ..models.paper import PaperModel
+<<<<<<< HEAD
+=======
+from ..models.section import get_section_model
+>>>>>>> origin/main
 from ..utils.auth import login_required
 from ..utils.common import (
     success_response,
@@ -131,6 +139,11 @@ def add_public_paper_to_library():
         if not paper_id:
             return bad_request_response("paperId 不能为空")
 
+<<<<<<< HEAD
+=======
+        logger.info(f"尝试添加论文到个人库: userId={g.current_user['user_id']}, paperId={paper_id}")
+        
+>>>>>>> origin/main
         service = get_user_paper_service()
         result = service.add_public_paper(
             user_id=g.current_user["user_id"],
@@ -141,9 +154,21 @@ def add_public_paper_to_library():
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
         
+<<<<<<< HEAD
         return bad_request_response(result["message"])
     
     except Exception as exc:
+=======
+        # 对于论文已存在的情况，返回200状态码但在响应体中包含业务错误码
+        if result["code"] == BusinessCode.INVALID_PARAMS and "该论文已在您的个人库中" in result["message"]:
+            return success_response(result["data"], result["message"], BusinessCode.INVALID_PARAMS)
+        
+        logger.error(f"添加论文失败: {result['message']}, code={result['code']}")
+        return bad_request_response(result["message"])
+    
+    except Exception as exc:
+        logger.error(f"添加论文异常: {exc}", exc_info=True)
+>>>>>>> origin/main
         return internal_error_response(f"服务器错误: {exc}")
         return internal_error_response(f"服务器错误: {exc}")
 
@@ -319,12 +344,22 @@ def add_section_to_user_paper(entry_id):
         if not paper_data:
             return bad_request_response("论文数据不存在")
         
+<<<<<<< HEAD
         # 获取实际的paper_id（可能是引用的公共论文，也可能是用户自己的论文）
         paper_id = paper_data.get("id")
+=======
+        # 使用用户论文的ID作为paper_id
+        # 注意：个人论文库中的sections通过UserPaper.sectionIds关联到UserPaper.id
+        paper_id = user_paper.get("id")
+>>>>>>> origin/main
         if not paper_id:
             return bad_request_response("无效的论文ID")
         
         # 使用paperContentService添加section（移除subsection支持）
+<<<<<<< HEAD
+=======
+        # 对于个人论文库中的论文，用户应该有权限修改，无论原始论文的创建者是谁
+>>>>>>> origin/main
         paper_model = PaperModel()
         content_service = PaperContentService(paper_model)
         result = content_service.add_section(
@@ -333,6 +368,7 @@ def add_section_to_user_paper(entry_id):
             user_id=g.current_user["user_id"],
             is_admin=False,
             parent_section_id=None,
+<<<<<<< HEAD
             position=position
         )
         
@@ -343,6 +379,21 @@ def add_section_to_user_paper(entry_id):
                 entry_id=entry_id,
                 user_id=g.current_user["user_id"],
                 update_data={"paperData": updated_paper}
+=======
+            position=position,
+            # 添加参数，表示这是个人论文库中的操作
+            is_user_paper=True
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            # 如果成功，需要更新用户论文库中的sectionIds
+            updated_paper = result["data"]["paper"]
+            section_ids = [section.get("id") for section in updated_paper.get("sections", [])]
+            update_result = service.update_user_paper(
+                entry_id=entry_id,
+                user_id=g.current_user["user_id"],
+                update_data={"sectionIds": section_ids}
+>>>>>>> origin/main
             )
             
             if update_result["code"] == BusinessCode.SUCCESS:
@@ -399,7 +450,11 @@ def update_user_paper(entry_id):
     更新个人论文库条目
     
     可更新的字段:
+<<<<<<< HEAD
     - paperData: 论文内容（完整副本可修改）
+=======
+    - sectionIds: 章节ID列表
+>>>>>>> origin/main
     - customTags: 自定义标签
     - readingStatus: 阅读状态
     - priority: 优先级
@@ -409,10 +464,14 @@ def update_user_paper(entry_id):
         "customTags": ["已读", "重要"],
         "readingStatus": "finished",
         "priority": "high",
+<<<<<<< HEAD
         "paperData": {
             "metadata": {...},
             "sections": [...]
         }
+=======
+        "sectionIds": ["section_id_1", "section_id_2", ...]
+>>>>>>> origin/main
     }
     """
     try:
@@ -473,7 +532,12 @@ def update_reading_progress(entry_id):
         )
 
         if result["code"] == BusinessCode.SUCCESS:
+<<<<<<< HEAD
             return success_response(result["data"], result["message"])
+=======
+            # 只返回更新成功的信息，不返回完整的论文数据
+            return success_response({"success": True}, result["message"])
+>>>>>>> origin/main
         
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])
@@ -558,6 +622,50 @@ def get_user_statistics():
         return internal_error_response(f"服务器错误: {exc}")
 
 
+<<<<<<< HEAD
+=======
+@bp.route("/check-in-library", methods=["GET"])
+@login_required
+def check_paper_in_library():
+    """
+    检查论文是否已在个人论文库中
+    
+    查询参数:
+    - paperId: 公共论文ID
+    
+    返回:
+    {
+        "inLibrary": true/false,
+        "userPaperId": "用户论文ID（如果在库中）"
+    }
+    """
+    try:
+        paper_id = request.args.get("paperId")
+        if not paper_id:
+            return bad_request_response("paperId 不能为空")
+        
+        service = get_user_paper_service()
+        existing = service.user_paper_model.find_by_user_and_source(
+            user_id=g.current_user["user_id"],
+            source_paper_id=paper_id
+        )
+        
+        if existing:
+            return success_response({
+                "inLibrary": True,
+                "userPaperId": existing.get("id")
+            }, "论文已在个人库中")
+        else:
+            return success_response({
+                "inLibrary": False,
+                "userPaperId": None
+            }, "论文不在个人库中")
+    
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+>>>>>>> origin/main
 @bp.route("/<entry_id>/sections/<section_id>/add-block", methods=["POST"])
 @login_required
 def add_block_to_user_paper_section(entry_id, section_id):
@@ -616,8 +724,13 @@ def add_block_to_user_paper_section(entry_id, section_id):
         if not paper_data:
             return bad_request_response("论文数据不存在")
         
+<<<<<<< HEAD
         # 获取实际的paper_id（可能是引用的公共论文，也可能是用户自己的论文）
         paper_id = paper_data.get("id")
+=======
+        # 使用用户论文的ID作为paper_id
+        paper_id = user_paper.get("id")
+>>>>>>> origin/main
         if not paper_id:
             return bad_request_response("无效的论文ID")
         
@@ -630,7 +743,13 @@ def add_block_to_user_paper_section(entry_id, section_id):
             block_data=block_data,
             user_id=g.current_user["user_id"],
             is_admin=False,
+<<<<<<< HEAD
             after_block_id=after_block_id
+=======
+            after_block_id=after_block_id,
+            # 添加参数，表示这是个人论文库中的操作
+            is_user_paper=True
+>>>>>>> origin/main
         )
         
         if result["code"] == BusinessCode.SUCCESS:
@@ -639,6 +758,7 @@ def add_block_to_user_paper_section(entry_id, section_id):
             if "blockId" not in response_data and "addedBlock" in response_data:
                 response_data["blockId"] = response_data["addedBlock"]["id"]
             
+<<<<<<< HEAD
             # 如果成功，需要更新用户论文库中的paperData
             updated_paper = response_data["paper"]
             update_result = service.update_user_paper(
@@ -651,6 +771,25 @@ def add_block_to_user_paper_section(entry_id, section_id):
                 return success_response(response_data, result["message"])
             else:
                 return internal_error_response("更新用户论文库失败")
+=======
+            # 如果成功，需要更新用户论文库中的sectionIds
+            updated_paper = response_data.get("paper")  # 使用get方法避免KeyError
+            if updated_paper:  # 只有当paper数据存在时才更新
+                section_ids = [section.get("id") for section in updated_paper.get("sections", [])]
+                update_result = service.update_user_paper(
+                    entry_id=entry_id,
+                    user_id=g.current_user["user_id"],
+                    update_data={"sectionIds": section_ids}
+                )
+               
+                if update_result["code"] == BusinessCode.SUCCESS:
+                    return success_response(response_data, result["message"])
+                else:
+                    return internal_error_response("更新用户论文库失败")
+            else:
+                # 如果没有paper数据，直接返回成功响应
+                return success_response(response_data, result["message"])
+>>>>>>> origin/main
         
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])
@@ -710,8 +849,13 @@ def add_block_from_text_to_user_paper_section(entry_id, section_id):
         if not paper_data:
             return bad_request_response("论文数据不存在")
         
+<<<<<<< HEAD
         # 获取实际的paper_id（可能是引用的公共论文，也可能是用户自己的论文）
         paper_id = paper_data.get("id")
+=======
+        # 使用用户论文的ID作为paper_id
+        paper_id = user_paper.get("id")
+>>>>>>> origin/main
         if not paper_id:
             return bad_request_response("无效的论文ID")
         
@@ -724,6 +868,7 @@ def add_block_from_text_to_user_paper_section(entry_id, section_id):
             text=text,
             user_id=g.current_user["user_id"],
             is_admin=False,
+<<<<<<< HEAD
             after_block_id=after_block_id
         )
         
@@ -740,6 +885,31 @@ def add_block_from_text_to_user_paper_section(entry_id, section_id):
                 return success_response(result["data"], result["message"])
             else:
                 return internal_error_response("更新用户论文库失败")
+=======
+            after_block_id=after_block_id,
+            # 添加参数，表示这是个人论文库中的操作
+            is_user_paper=True
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            # 如果成功，需要更新用户论文库中的sectionIds
+            updated_paper = result["data"].get("paper")  # 使用get方法避免KeyError
+            if updated_paper:  # 只有当paper数据存在时才更新
+                section_ids = [section.get("id") for section in updated_paper.get("sections", [])]
+                update_result = service.update_user_paper(
+                    entry_id=entry_id,
+                    user_id=g.current_user["user_id"],
+                    update_data={"sectionIds": section_ids}
+                )
+               
+                if update_result["code"] == BusinessCode.SUCCESS:
+                    return success_response(result["data"], result["message"])
+                else:
+                    return internal_error_response("更新用户论文库失败")
+            else:
+                # 如果没有paper数据，直接返回成功响应
+                return success_response(result["data"], result["message"])
+>>>>>>> origin/main
         
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])
@@ -749,6 +919,198 @@ def add_block_from_text_to_user_paper_section(entry_id, section_id):
         
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
+<<<<<<< HEAD
+=======
+
+
+@bp.route("/<entry_id>/sections/<section_id>/blocks/<block_id>/parsing-status", methods=["GET"])
+@login_required
+def get_user_block_parsing_status(entry_id, section_id, block_id):
+    """
+    用户查询个人论文库中指定section的解析block进度状态
+
+    返回结构同 CheckBlockParsingStatusResult。
+    """
+    try:
+        if not block_id or block_id == "null":
+            return bad_request_response("blockId 无效")
+
+        # 获取用户论文详情，确认权限
+        service = get_user_paper_service()
+        user_paper_result = service.get_user_paper_detail(
+            user_paper_id=entry_id,
+            user_id=g.current_user["user_id"],
+        )
+
+        if user_paper_result["code"] != BusinessCode.SUCCESS:
+            if user_paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+                return bad_request_response(user_paper_result["message"])
+            if user_paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+                return bad_request_response(user_paper_result["message"])
+            return internal_error_response(user_paper_result["message"])
+
+        # 使用用户论文ID作为paper_id，因为sections是通过paperId关联到用户论文的
+        paper_id = entry_id
+        
+        # 获取section模型并查找指定的section
+        section_model = get_section_model()
+        section = section_model.find_by_id(section_id)
+        
+        if not section:
+            return bad_request_response("指定的section不存在")
+            
+        # 验证section属于该用户论文
+        if section.get("paperId") != paper_id:
+            return bad_request_response("指定的section不属于该论文")
+
+        content = section.get("content", []) or []
+        target_block = None
+        for b in content:
+            if b.get("id") == block_id:
+                target_block = b
+                break
+
+        if target_block and target_block.get("type") == "parsing":
+            stage = target_block.get("stage", "structuring")
+            message = target_block.get("message", "正在解析文本...")
+            parse_id = target_block.get("parseId")  # 获取parseId
+
+            # 如果有parseId，尝试从ParseBlocks表获取解析状态
+            if parse_id:
+                from ..models.parseBlocks import get_parse_blocks_model
+                parse_model = get_parse_blocks_model()
+                parse_record = parse_model.find_by_id(parse_id)
+                
+                if parse_record:
+                    parse_status = parse_record.get("status", "pending")
+                    
+                    if parse_status == "processing":
+                        data = {
+                            "status": "processing",
+                            "progress": 50,
+                            "message": "正在解析文本...",
+                            "paper": None,
+                            "error": None,
+                            "addedBlocks": None,
+                            "parseId": parse_id
+                        }
+                        return success_response(data, "解析进行中")
+                    
+                    elif parse_status == "completed":
+                        # 解析完成，从ParseBlocks表获取解析结果
+                        parsed_blocks = parse_record.get("blocks", [])
+                        data = {
+                            "status": "completed",
+                            "progress": 100,
+                            "message": f"解析完成，生成了{len(parsed_blocks)}个段落",
+                            "paper": None,
+                            "error": None,
+                            "addedBlocks": parsed_blocks,
+                            "parseId": parse_id
+                        }
+                        return success_response(data, f"解析完成，生成了{len(parsed_blocks)}个段落")
+                    
+                    elif parse_status == "failed":
+                        error_message = parse_record.get("error", "解析失败")
+                        data = {
+                            "status": "failed",
+                            "progress": 0,
+                            "message": error_message,
+                            "paper": None,
+                            "error": error_message,
+                            "addedBlocks": None,
+                            "parseId": parse_id
+                        }
+                        return success_response(data, "解析失败")
+
+            # 兼容旧逻辑：如果没有parseId或ParseBlocks表中没有记录，使用原来的逻辑
+            if stage in ("structuring", "translating"):
+                status = "processing"
+                progress = 50  # 简化为固定进度值
+                data = {
+                    "status": status,
+                    "progress": progress,
+                    "message": message,
+                    "paper": None,  # 不返回整个论文数据
+                    "error": None,
+                    "addedBlocks": None,
+                }
+                return success_response(data, "解析进行中")
+
+            if stage == "completed":
+                # 解析完成,从临时block获取解析生成的block IDs
+                parsed_block_ids = target_block.get("parsedBlockIds", [])
+                
+                # 重新获取section以获取最新内容
+                updated_section = section_model.find_by_id(section_id)
+                added_blocks = []
+                if updated_section:
+                    content = updated_section.get("content", [])
+                    # 根据parsedBlockIds获取真正新添加的blocks
+                    added_blocks = [block for block in content if block.get("id") in parsed_block_ids]
+                
+                data = {
+                    "status": "completed",
+                    "progress": 100,
+                    "message": f"解析完成,成功添加了{len(added_blocks)}个段落",
+                    "paper": None,  # 不返回整个论文数据
+                    "error": None,
+                    "addedBlocks": added_blocks,
+                }
+                return success_response(data, f"解析完成,成功添加了{len(added_blocks)}个段落")
+
+            if stage == "failed":
+                data = {
+                    "status": "failed",
+                    "progress": 0,
+                    "message": message,
+                    "paper": None,  # 不返回整个论文数据
+                    "error": message,
+                    "addedBlocks": None,
+                }
+                return success_response(data, "解析失败")
+
+        # 否则视为解析已完成：临时block已被替换为真正内容
+        # 尝试从内存缓存中获取解析结果
+        try:
+            from ..services.paperContentService import get_parsed_blocks_from_cache
+            cache_data = get_parsed_blocks_from_cache(block_id)
+            if cache_data:
+                # 从缓存中获取解析结果
+                parsed_block_ids = cache_data.get("parsedBlockIds", [])
+                added_blocks = []
+                
+                # 重新获取section以获取最新内容
+                updated_section = section_model.find_by_id(section_id)
+                if updated_section:
+                    content = updated_section.get("content", [])
+                    # 根据parsedBlockIds获取真正新添加的blocks
+                    added_blocks = [block for block in content if block.get("id") in parsed_block_ids]
+                
+                data = {
+                    "status": "completed",
+                    "progress": 100,
+                    "message": f"解析完成,成功添加了{len(added_blocks)}个段落",
+                    "paper": None,  # 不返回整个论文数据
+                    "error": None,
+                    "addedBlocks": added_blocks,
+                }
+                return success_response(data, f"解析完成,成功添加了{len(added_blocks)}个段落")
+        except Exception as e:
+            logger.warning(f"从缓存获取解析结果失败: {e}")
+        
+        # 如果缓存中没有，返回空列表，前端需要通过其他方式获取最新内容
+        data = {
+            "status": "completed",
+            "progress": 100,
+            "message": "解析完成",
+            "paper": None,  # 不返回整个论文数据
+            "error": None,
+            "addedBlocks": []
+        }
+        return success_response(data, "解析完成")
+    except Exception as exc:
+>>>>>>> origin/main
         return internal_error_response(f"服务器错误: {exc}")
 
 
@@ -803,8 +1165,13 @@ def update_section_in_user_paper(entry_id, section_id):
         if not paper_data:
             return bad_request_response("论文数据不存在")
         
+<<<<<<< HEAD
         # 获取实际的paper_id
         paper_id = paper_data.get("id")
+=======
+        # 使用用户论文的ID作为paper_id
+        paper_id = user_paper.get("id")
+>>>>>>> origin/main
         if not paper_id:
             return bad_request_response("无效的论文ID")
         
@@ -821,12 +1188,19 @@ def update_section_in_user_paper(entry_id, section_id):
             section_id=section_id,
             update_data=data,
             user_id=g.current_user["user_id"],
+<<<<<<< HEAD
             is_admin=False
+=======
+            is_admin=False,
+            # 添加参数，表示这是个人论文库中的操作
+            is_user_paper=True
+>>>>>>> origin/main
         )
         
         logger.info(f"章节更新结果: {result}")
         
         if result["code"] == BusinessCode.SUCCESS:
+<<<<<<< HEAD
             # 如果成功，需要更新用户论文库中的paperData
             updated_paper = result["data"]["paper"]
             update_result = service.update_user_paper(
@@ -839,6 +1213,25 @@ def update_section_in_user_paper(entry_id, section_id):
                 return success_response(result["data"], result["message"])
             else:
                 return internal_error_response("更新用户论文库失败")
+=======
+            # 如果成功，需要更新用户论文库中的sectionIds
+            updated_paper = result["data"].get("paper")  # 使用get方法避免KeyError
+            if updated_paper:  # 只有当paper数据存在时才更新
+                section_ids = [section.get("id") for section in updated_paper.get("sections", [])]
+                update_result = service.update_user_paper(
+                    entry_id=entry_id,
+                    user_id=g.current_user["user_id"],
+                    update_data={"sectionIds": section_ids}
+                )
+               
+                if update_result["code"] == BusinessCode.SUCCESS:
+                    return success_response(result["data"], result["message"])
+                else:
+                    return internal_error_response("更新用户论文库失败")
+            else:
+                # 如果没有paper数据，直接返回成功响应
+                return success_response(result["data"], result["message"])
+>>>>>>> origin/main
         
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])
@@ -885,8 +1278,13 @@ def delete_section_in_user_paper(entry_id, section_id):
         if not paper_data:
             return bad_request_response("论文数据不存在")
         
+<<<<<<< HEAD
         # 获取实际的paper_id
         paper_id = paper_data.get("id")
+=======
+        # 使用用户论文的ID作为paper_id
+        paper_id = user_paper.get("id")
+>>>>>>> origin/main
         if not paper_id:
             return bad_request_response("无效的论文ID")
         
@@ -897,6 +1295,7 @@ def delete_section_in_user_paper(entry_id, section_id):
             paper_id=paper_id,
             section_id=section_id,
             user_id=g.current_user["user_id"],
+<<<<<<< HEAD
             is_admin=False
         )
         
@@ -912,6 +1311,31 @@ def delete_section_in_user_paper(entry_id, section_id):
                 return success_response(result["data"], result["message"])
             else:
                 return internal_error_response("更新用户论文库失败")
+=======
+            is_admin=False,
+            # 添加参数，表示这是个人论文库中的操作
+            is_user_paper=True
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            # 如果成功，需要更新用户论文库中的sectionIds
+            updated_paper = result["data"].get("paper")  # 修改为使用"paper"字段
+            if updated_paper:  # 只有当paper数据存在时才更新
+                section_ids = [section.get("id") for section in updated_paper.get("sections", [])]
+                update_result = service.update_user_paper(
+                    entry_id=entry_id,
+                    user_id=g.current_user["user_id"],
+                    update_data={"sectionIds": section_ids}
+                )
+               
+                if update_result["code"] == BusinessCode.SUCCESS:
+                    return success_response(result["data"], result["message"])
+                else:
+                    return internal_error_response("更新用户论文库失败")
+            else:
+                # 如果没有paper数据，直接返回成功响应
+                return success_response(result["data"], result["message"])
+>>>>>>> origin/main
         
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])
@@ -969,8 +1393,13 @@ def update_block_in_user_paper(entry_id, section_id, block_id):
         if not paper_data:
             return bad_request_response("论文数据不存在")
         
+<<<<<<< HEAD
         # 获取实际的paper_id
         paper_id = paper_data.get("id")
+=======
+        # 使用用户论文的ID作为paper_id
+        paper_id = user_paper.get("id")
+>>>>>>> origin/main
         if not paper_id:
             return bad_request_response("无效的论文ID")
         
@@ -983,6 +1412,7 @@ def update_block_in_user_paper(entry_id, section_id, block_id):
             block_id=block_id,
             update_data=data,
             user_id=g.current_user["user_id"],
+<<<<<<< HEAD
             is_admin=False
         )
         
@@ -999,6 +1429,31 @@ def update_block_in_user_paper(entry_id, section_id, block_id):
                 return success_response(result["data"], result["message"])
             else:
                 return internal_error_response("更新用户论文库失败")
+=======
+            is_admin=False,
+            # 添加参数，表示这是个人论文库中的操作
+            is_user_paper=True
+        )
+        
+        if result["code"] == BusinessCode.SUCCESS:
+            # 如果成功，需要更新用户论文库中的sectionIds
+            updated_paper = result["data"].get("paper")  # 使用get方法避免KeyError
+            if updated_paper:  # 只有当paper数据存在时才更新
+                section_ids = [section.get("id") for section in updated_paper.get("sections", [])]
+                update_result = service.update_user_paper(
+                    entry_id=entry_id,
+                    user_id=g.current_user["user_id"],
+                    update_data={"sectionIds": section_ids}
+                )
+               
+                if update_result["code"] == BusinessCode.SUCCESS:
+                    return success_response(result["data"], result["message"])
+                else:
+                    return internal_error_response("更新用户论文库失败")
+            else:
+                # 如果没有paper数据，直接返回成功响应
+                return success_response(result["data"], result["message"])
+>>>>>>> origin/main
         
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])
@@ -1045,8 +1500,13 @@ def delete_block_in_user_paper(entry_id, section_id, block_id):
         if not paper_data:
             return bad_request_response("论文数据不存在")
         
+<<<<<<< HEAD
         # 获取实际的paper_id
         paper_id = paper_data.get("id")
+=======
+        # 使用用户论文的ID作为paper_id
+        paper_id = user_paper.get("id")
+>>>>>>> origin/main
         if not paper_id:
             return bad_request_response("无效的论文ID")
         
@@ -1058,7 +1518,13 @@ def delete_block_in_user_paper(entry_id, section_id, block_id):
             section_id=section_id,
             block_id=block_id,
             user_id=g.current_user["user_id"],
+<<<<<<< HEAD
             is_admin=False
+=======
+            is_admin=False,
+            # 添加参数，表示这是个人论文库中的操作
+            is_user_paper=True
+>>>>>>> origin/main
         )
         
         if result["code"] == BusinessCode.SUCCESS:
@@ -1072,10 +1538,19 @@ def delete_block_in_user_paper(entry_id, section_id, block_id):
             )
             
             if paper_result["code"] == BusinessCode.SUCCESS:
+<<<<<<< HEAD
                 update_result = service.update_user_paper(
                     entry_id=entry_id,
                     user_id=g.current_user["user_id"],
                     update_data={"paperData": paper_result["data"]}
+=======
+                # 更新sectionIds而不是paperData
+                section_ids = [section.get("id") for section in paper_result["data"].get("sections", [])]
+                update_result = service.update_user_paper(
+                    entry_id=entry_id,
+                    user_id=g.current_user["user_id"],
+                    update_data={"sectionIds": section_ids}
+>>>>>>> origin/main
                 )
                 
                 if update_result["code"] == BusinessCode.SUCCESS:
@@ -1083,7 +1558,12 @@ def delete_block_in_user_paper(entry_id, section_id, block_id):
                 else:
                     return internal_error_response("更新用户论文库失败")
             else:
+<<<<<<< HEAD
                 return internal_error_response("获取更新后论文数据失败")
+=======
+                # 如果获取论文数据失败，仍然返回删除成功的结果
+                return success_response(result["data"], result["message"])
+>>>>>>> origin/main
         
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])
@@ -1153,8 +1633,13 @@ def add_block_directly_to_user_paper_section(entry_id, section_id):
         if not paper_data:
             return bad_request_response("论文数据不存在")
         
+<<<<<<< HEAD
         # 获取实际的paper_id（可能是引用的公共论文，也可能是用户自己的论文）
         paper_id = paper_data.get("id")
+=======
+        # 使用用户论文的ID作为paper_id
+        paper_id = user_paper.get("id")
+>>>>>>> origin/main
         if not paper_id:
             return bad_request_response("无效的论文ID")
         
@@ -1167,7 +1652,13 @@ def add_block_directly_to_user_paper_section(entry_id, section_id):
             block_data=block_data,
             user_id=g.current_user["user_id"],
             is_admin=False,
+<<<<<<< HEAD
             after_block_id=after_block_id
+=======
+            after_block_id=after_block_id,
+            # 添加参数，表示这是个人论文库中的操作
+            is_user_paper=True
+>>>>>>> origin/main
         )
         
         if result["code"] == BusinessCode.SUCCESS:
@@ -1176,6 +1667,7 @@ def add_block_directly_to_user_paper_section(entry_id, section_id):
             if "blockId" not in response_data and "addedBlock" in response_data:
                 response_data["blockId"] = response_data["addedBlock"]["id"]
             
+<<<<<<< HEAD
             # 如果成功，需要更新用户论文库中的paperData
             updated_paper = response_data["paper"]
             update_result = service.update_user_paper(
@@ -1188,6 +1680,25 @@ def add_block_directly_to_user_paper_section(entry_id, section_id):
                 return success_response(response_data, result["message"])
             else:
                 return internal_error_response("更新用户论文库失败")
+=======
+            # 如果成功，需要更新用户论文库中的sectionIds
+            updated_paper = response_data.get("paper")  # 使用get方法避免KeyError
+            if updated_paper:  # 只有当paper数据存在时才更新
+                section_ids = [section.get("id") for section in updated_paper.get("sections", [])]
+                update_result = service.update_user_paper(
+                    entry_id=entry_id,
+                    user_id=g.current_user["user_id"],
+                    update_data={"sectionIds": section_ids}
+                )
+               
+                if update_result["code"] == BusinessCode.SUCCESS:
+                    return success_response(response_data, result["message"])
+                else:
+                    return internal_error_response("更新用户论文库失败")
+            else:
+                # 如果没有paper数据，直接返回成功响应
+                return success_response(response_data, result["message"])
+>>>>>>> origin/main
         
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])
@@ -1340,7 +1851,14 @@ def test_parse_text():
         
         # 执行解析
         print("🚀 开始执行解析...")
+<<<<<<< HEAD
         parsed_blocks = llm_utils.parse_text_to_blocks(text, section_context)
+=======
+        # 直接复用 PaperContentService 中的解析逻辑，保持与正式业务一致
+        paper_model = PaperModel()
+        content_service = PaperContentService(paper_model)
+        parsed_blocks = content_service._parse_text_to_blocks_with_llm(text, section_context)
+>>>>>>> origin/main
         print(f"✅ 解析完成，共生成 {len(parsed_blocks)} 个blocks")
         
         # 打印blocks的详细信息
@@ -1418,6 +1936,7 @@ def parse_references_for_user_paper(entry_id):
         if not paper_data:
             return bad_request_response("论文数据不存在")
         
+<<<<<<< HEAD
         # 获取实际的paper_id（可能是引用的公共论文，也可能是用户自己的论文）
         paper_id = paper_data.get("id")
         if not paper_id:
@@ -1427,6 +1946,17 @@ def parse_references_for_user_paper(entry_id):
         paper_model = PaperModel()
         content_service = PaperContentService(paper_model)
         parse_result = content_service.parse_references(text)
+=======
+        # 使用用户论文的ID作为paper_id
+        paper_id = user_paper.get("id")
+        if not paper_id:
+            return bad_request_response("无效的论文ID")
+        
+        # 使用paperReferenceService解析参考文献
+        from ..services.paperReferenceService import get_paper_reference_service
+        reference_service = get_paper_reference_service()
+        parse_result = reference_service.parse_reference_text(text)
+>>>>>>> origin/main
         
         # 即使解析失败，也继续处理，因为解析结果中包含了错误信息
         # 这样前端可以显示部分解析成功的结果和错误信息
@@ -1438,6 +1968,7 @@ def parse_references_for_user_paper(entry_id):
             return bad_request_response("未能从文本中解析出有效的参考文献")
         
         # 将解析后的参考文献添加到论文中
+<<<<<<< HEAD
         add_result = content_service.add_references_to_paper(
             paper_id=paper_id,
             references=parsed_references,
@@ -1456,6 +1987,35 @@ def parse_references_for_user_paper(entry_id):
            
             if update_result["code"] == BusinessCode.SUCCESS:
                 # 在响应中包含解析结果（包括错误信息）
+=======
+        add_result = reference_service.add_references_to_paper(paper_id, parsed_references)
+        
+        if add_result["code"] == BusinessCode.SUCCESS:
+            # 如果成功，需要更新用户论文库中的paperData
+            updated_paper = add_result["data"].get("paper")  # 使用get方法避免KeyError
+            if updated_paper:  # 只有当paper数据存在时才更新
+                # 更新sectionIds而不是paperData
+                section_ids = [section.get("id") for section in updated_paper.get("sections", [])]
+                update_result = service.update_user_paper(
+                    entry_id=entry_id,
+                    user_id=g.current_user["user_id"],
+                    update_data={"sectionIds": section_ids}
+                )
+               
+                if update_result["code"] == BusinessCode.SUCCESS:
+                    # 在响应中包含解析结果（包括错误信息）
+                    response_data = add_result["data"].copy()
+                    response_data["parseResult"] = {
+                        "references": parse_data["references"],
+                        "count": parse_data["count"],
+                        "errors": parse_data["errors"]
+                    }
+                    return success_response(response_data, add_result["message"])
+                else:
+                    return internal_error_response("更新用户论文库失败")
+            else:
+                # 如果没有paper数据，直接返回成功响应
+>>>>>>> origin/main
                 response_data = add_result["data"].copy()
                 response_data["parseResult"] = {
                     "references": parse_data["references"],
@@ -1463,8 +2023,11 @@ def parse_references_for_user_paper(entry_id):
                     "errors": parse_data["errors"]
                 }
                 return success_response(response_data, add_result["message"])
+<<<<<<< HEAD
             else:
                 return internal_error_response("更新用户论文库失败")
+=======
+>>>>>>> origin/main
         else:
             return bad_request_response(add_result["message"])
             
@@ -1476,6 +2039,7 @@ def parse_references_for_user_paper(entry_id):
 @login_required
 def add_block_from_text_to_user_paper_section_stream(entry_id, section_id):
     """
+<<<<<<< HEAD
     用户向个人论文库中指定论文的指定section中流式添加block（使用大模型解析文本）
     
     GET 请求参数示例:
@@ -1575,6 +2139,29 @@ def add_block_from_text_to_user_paper_section_stream(entry_id, section_id):
     
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
+=======
+    （已废弃）用户个人论文流式添加 block 接口。
+
+    流式解析功能已关闭，请改用非流式接口：
+    POST /api/v1/user/papers/<entry_id>/sections/<section_id>/add-block-from-text
+    """
+    from flask import jsonify
+
+    return (
+        jsonify(
+            {
+                "code": BusinessCode.BAD_REQUEST,
+                "message": "流式解析接口已关闭，请使用 add-block-from-text 接口",
+                "data": {
+                    "entryId": entry_id,
+                    "sectionId": section_id,
+                    "streamSupported": False,
+                },
+            }
+        ),
+        400,
+    )
+>>>>>>> origin/main
 
 
 
@@ -1625,8 +2212,13 @@ def get_parsing_sessions(entry_id, section_id):
         if not paper_data:
             return bad_request_response("论文数据不存在")
         
+<<<<<<< HEAD
         # 获取实际的paper_id
         paper_id = paper_data.get("id")
+=======
+        # 使用用户论文的ID作为paper_id
+        paper_id = user_paper.get("id")
+>>>>>>> origin/main
         if not paper_id:
             return bad_request_response("无效的论文ID")
         
@@ -1702,8 +2294,13 @@ def get_parsing_session(entry_id, section_id, session_id):
         if not paper_data:
             return bad_request_response("论文数据不存在")
         
+<<<<<<< HEAD
         # 获取实际的paper_id
         paper_id = paper_data.get("id")
+=======
+        # 使用用户论文的ID作为paper_id
+        paper_id = user_paper.get("id")
+>>>>>>> origin/main
         if not paper_id:
             return bad_request_response("无效的论文ID")
         
@@ -1774,8 +2371,13 @@ def delete_parsing_session(entry_id, section_id, session_id):
         if not paper_data:
             return bad_request_response("论文数据不存在")
         
+<<<<<<< HEAD
         # 获取实际的paper_id
         paper_id = paper_data.get("id")
+=======
+        # 使用用户论文的ID作为paper_id
+        paper_id = user_paper.get("id")
+>>>>>>> origin/main
         if not paper_id:
             return bad_request_response("无效的论文ID")
         
@@ -1822,11 +2424,20 @@ def delete_parsing_session(entry_id, section_id, session_id):
                         section["content"] = content
                         break
                 
+<<<<<<< HEAD
                 # 更新用户论文库
                 service.update_user_paper(
                     entry_id=entry_id,
                     user_id=g.current_user["user_id"],
                     update_data={"paperData": updated_paper_data}
+=======
+                # 更新用户论文库的sectionIds
+                section_ids = [section.get("id") for section in updated_paper_data.get("sections", [])]
+                service.update_user_paper(
+                    entry_id=entry_id,
+                    user_id=g.current_user["user_id"],
+                    update_data={"sectionIds": section_ids}
+>>>>>>> origin/main
                 )
             except:
                 pass  # 如果更新失败，忽略错误，继续删除会话
@@ -1837,4 +2448,8 @@ def delete_parsing_session(entry_id, section_id, session_id):
         return success_response(None, "成功删除解析会话")
     
     except Exception as exc:
+<<<<<<< HEAD
         return internal_error_response(f"服务器错误: {exc}")
+=======
+        return internal_error_response(f"服务器错误: {exc}")
+>>>>>>> origin/main

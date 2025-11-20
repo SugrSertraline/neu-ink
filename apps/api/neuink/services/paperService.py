@@ -14,6 +14,10 @@ from ..utils.background_tasks import get_task_manager
 from ..models.parsingSession import get_parsing_session_model
 from .paperContentService import PaperContentService
 from .paperTranslationService import PaperTranslationService
+<<<<<<< HEAD
+=======
+from .paperMetadataService import get_paper_metadata_service
+>>>>>>> origin/main
 
 # 初始化logger
 logger = logging.getLogger(__name__)
@@ -38,6 +42,10 @@ class PaperService:
         sort_order: str = "desc",
         search: Optional[str] = None,
         filters: Optional[Dict[str, Any]] = None,
+<<<<<<< HEAD
+=======
+        user_id: Optional[str] = None,
+>>>>>>> origin/main
     ) -> Dict[str, Any]:
         try:
             skip = self._calc_skip(page, page_size)
@@ -51,6 +59,10 @@ class PaperService:
                 sort_order=sort_direction,
                 search=search,
                 filters=filters,
+<<<<<<< HEAD
+=======
+                user_id=user_id,
+>>>>>>> origin/main
             )
 
             payload = [self._build_public_summary(paper) for paper in papers]
@@ -75,8 +87,13 @@ class PaperService:
             # 获取sections数据
             paper = self._load_sections_for_paper(paper)
             
+<<<<<<< HEAD
             # 自动检查并补全翻译
             paper = self._auto_check_and_complete_translation(paper)
+=======
+            # 自动检查并补全翻译 - 已禁用
+            # paper = self._auto_check_and_complete_translation(paper)
+>>>>>>> origin/main
             
             return self._wrap_success("获取论文成功", paper)
         except Exception as exc:  # pylint: disable=broad-except
@@ -143,8 +160,13 @@ class PaperService:
         # 获取sections数据
         paper = self._load_sections_for_paper(paper)
         
+<<<<<<< HEAD
         # 自动检查并补全翻译
         paper = self._auto_check_and_complete_translation(paper)
+=======
+        # 自动检查并补全翻译 - 已禁用
+        # paper = self._auto_check_and_complete_translation(paper)
+>>>>>>> origin/main
         
         return self._wrap_success("获取论文成功", paper)
 
@@ -186,6 +208,7 @@ class PaperService:
         从文本创建论文，通过大模型解析 metadata、abstract 和 keywords
         """
         try:
+<<<<<<< HEAD
             # 检查输入文本
             if not text or not text.strip():
                 return self._wrap_error("文本内容不能为空")
@@ -245,6 +268,11 @@ class PaperService:
 
             # 创建论文
             return self.create_paper(paper_data, creator_id)
+=======
+            # 使用元数据提取服务创建论文
+            metadata_service = get_paper_metadata_service()
+            return metadata_service.create_paper_from_text(text, creator_id, is_public)
+>>>>>>> origin/main
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"从文本创建论文失败: {exc}")
 
@@ -261,6 +289,7 @@ class PaperService:
             创建结果
         """
         try:
+<<<<<<< HEAD
             # 验证必填字段
             if not metadata or not metadata.get("title"):
                 return self._wrap_error("元数据不完整，标题不能为空")
@@ -307,6 +336,11 @@ class PaperService:
 
             # 创建论文
             return self.create_paper(paper_data, creator_id)
+=======
+            # 使用元数据提取服务创建论文
+            metadata_service = get_paper_metadata_service()
+            return metadata_service.create_paper_from_metadata(metadata, creator_id, is_public)
+>>>>>>> origin/main
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"从元数据创建论文失败: {exc}")
 
@@ -333,8 +367,13 @@ class PaperService:
         # 获取sections数据
         paper = self._load_sections_for_paper(paper)
 
+<<<<<<< HEAD
         # 自动检查并补全翻译
         paper = self._auto_check_and_complete_translation(paper)
+=======
+        # 自动检查并补全翻译 - 已禁用
+        # paper = self._auto_check_and_complete_translation(paper)
+>>>>>>> origin/main
 
         return self._wrap_success("获取论文成功", paper)
 
@@ -349,6 +388,13 @@ class PaperService:
         if not paper:
             return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
 
+<<<<<<< HEAD
+=======
+        # 管理员只能修改公开的论文
+        if is_admin and not paper["isPublic"]:
+            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "管理员只能修改公开的论文")
+        
+>>>>>>> origin/main
         if not is_admin and paper["createdBy"] != user_id:
             return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
@@ -371,6 +417,13 @@ class PaperService:
         if not paper:
             return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
 
+<<<<<<< HEAD
+=======
+        # 管理员只能删除公开的论文
+        if is_admin and not paper["isPublic"]:
+            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "管理员只能删除公开的论文")
+        
+>>>>>>> origin/main
         if not is_admin and paper["createdBy"] != user_id:
             return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权删除此论文")
 
@@ -400,6 +453,14 @@ class PaperService:
             if not paper:
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
             
+<<<<<<< HEAD
+=======
+            # 管理员只能修改公开论文的可见状态
+            # 如果论文当前是私有的，管理员无权将其设为公开或修改其状态
+            if not paper.get("isPublic", False):
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "管理员只能修改公开论文的可见状态")
+            
+>>>>>>> origin/main
             # 记录修改前的状态
             previous_visibility = paper.get("isPublic", False)
             
@@ -462,6 +523,7 @@ class PaperService:
         """从文本添加block"""
         return self.content_service.add_block_from_text(*args, **kwargs)
 
+<<<<<<< HEAD
     def parse_references(self, *args, **kwargs):
         """解析参考文献"""
         return self.content_service.parse_references(*args, **kwargs)
@@ -469,6 +531,55 @@ class PaperService:
     def add_references_to_paper(self, *args, **kwargs):
         """添加参考文献到论文"""
         return self.content_service.add_references_to_paper(*args, **kwargs)
+=======
+    def parse_references(self, paper_id: str, text: str) -> Dict[str, Any]:
+        """解析参考文献"""
+        try:
+            # 使用参考文献服务解析文本
+            from .paperReferenceService import get_paper_reference_service
+            reference_service = get_paper_reference_service()
+            parsed_references = reference_service.parse_reference_text(text)
+            
+            if not parsed_references:
+                return self._wrap_error("参考文献解析失败，请检查文本格式")
+
+            # 添加到论文
+            result = reference_service.add_references_to_paper(paper_id, parsed_references)
+            if result["success"]:
+                return {
+                    "success": True,
+                    "message": f"成功解析并添加 {len(parsed_references)} 条参考文献",
+                    "data": {
+                        "references": parsed_references,
+                        "paper": result["data"]
+                    }
+                }
+            else:
+                return result
+
+        except Exception as exc:  # pylint: disable=broad-except
+            return self._wrap_error(f"解析参考文献失败: {exc}")
+
+    def add_references_to_paper(self, paper_id: str, references: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """添加参考文献到论文"""
+        try:
+            # 使用参考文献服务添加到论文
+            from .paperReferenceService import get_paper_reference_service
+            reference_service = get_paper_reference_service()
+            result = reference_service.add_references_to_paper(paper_id, references)
+            
+            if result["success"]:
+                return {
+                    "success": True,
+                    "message": f"成功添加 {len(references)} 条参考文献",
+                    "data": result["data"]
+                }
+            else:
+                return result
+
+        except Exception as exc:  # pylint: disable=broad-except
+            return self._wrap_error(f"添加参考文献失败: {exc}")
+>>>>>>> origin/main
 
     # ------------------------------------------------------------------
     # 流式传输方法
@@ -482,7 +593,12 @@ class PaperService:
         is_admin: bool = False,
         after_block_id: Optional[str] = None,
         session_id: Optional[str] = None,
+<<<<<<< HEAD
         user_paper_id: Optional[str] = None
+=======
+        user_paper_id: Optional[str] = None,
+        is_user_paper: bool = False
+>>>>>>> origin/main
     ) -> Generator[str, None, None]:
         """
         通用的流式添加block方法，支持管理员和个人论文
@@ -551,6 +667,14 @@ class PaperService:
                 yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': '论文不存在', 'error': '论文不存在', 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
                 return
             
+<<<<<<< HEAD
+=======
+            # 管理员只能操作公开的论文
+            if is_admin and not paper.get("isPublic", False):
+                yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': '管理员只能操作公开的论文', 'error': '管理员只能操作公开的论文', 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
+                return
+            
+>>>>>>> origin/main
             # 验证section存在
             from ..models.section import get_section_model
             section_model = get_section_model()
@@ -630,6 +754,12 @@ class PaperService:
             
             # 只有在需要时才提交后台任务
             if should_create_new_task:
+<<<<<<< HEAD
+=======
+                # 保存用户ID到实例变量，供后台任务使用
+                self._current_user_id = user_id
+                
+>>>>>>> origin/main
                 # 再次确认任务不存在（双重检查，确保幂等性）
                 existing_task = task_manager.get_task(session_id)
                 if existing_task and existing_task.status.value in ["pending", "running"]:
@@ -638,6 +768,7 @@ class PaperService:
                     # 定义后台解析任务
                     def background_parsing_task():
                         """后台解析任务"""
+<<<<<<< HEAD
                         try:
                             llm_utils = get_llm_utils()
                             
@@ -745,6 +876,134 @@ class PaperService:
                                 self._update_progress_block_in_paper(paper_id, section_id, progress_block_id, progress_block)
                             except:
                                 pass
+=======
+                        # 创建应用上下文，避免"Working outside of application context"错误
+                        try:
+                            from flask import current_app
+                            app_context = current_app.app_context()
+                        except (RuntimeError, ImportError):
+                            # 如果无法获取应用上下文（例如在非请求环境中），创建一个新的应用实例
+                            from neuink import create_app
+                            app = create_app()
+                            app_context = app.app_context()
+                        
+                        with app_context:
+                            # 设置用户ID到应用上下文中，避免g.current_user访问错误
+                            try:
+                                from flask import g
+                                g.current_user = {"user_id": user_id}
+                            except:
+                                pass
+                            try:
+                                llm_utils = get_llm_utils()
+                                # 保存用户ID到LLM工具实例
+                                llm_utils._current_user_id = user_id
+                                
+                                # 获取section上下文
+                                section_title = target_section.get("title", "") or target_section.get("titleZh", "")
+                                section_context = f"章节: {section_title}"
+                                
+                                # 获取任务对象以便更新进度
+                                task = task_manager.get_task(session_id)
+                                
+                                # 旧的流式解析逻辑已废弃，这里不再调用 LLM 流式接口
+                                for chunk in []:
+                                    if chunk.get("type") == "error":
+                                        # 更新会话状态为错误
+                                        session_model.fail_session(session_id, chunk.get("message", "解析失败"))
+                                        
+                                        # 更新progress block为错误状态
+                                        progress_block = {
+                                            "id": progress_block_id,
+                                            "type": "loading",
+                                            "status": "failed",
+                                            "message": chunk.get("message", "解析失败"),
+                                            "progress": 0,
+                                            "sessionId": session_id
+                                        }
+                                        
+                                        # 更新论文中的progress block
+                                        self._update_progress_block_in_paper(paper_id, section_id, progress_block_id, progress_block, is_user_paper)
+                                        break
+                                    
+                                    elif chunk.get("type") == "glm_stream":
+                                        # GLM流式数据，记录日志但不做特殊处理
+                                        # 这些数据会在前端的流式响应中处理
+                                        glm_chunk_count = getattr(task, 'glm_chunk_count', 0) + 1 if task else 1
+                                        if task:
+                                            task.glm_chunk_count = glm_chunk_count
+                                        
+                                        # 每50个chunk记录一次日志，减少日志频率
+                                        if glm_chunk_count % 50 == 1:
+                                            logger.info(f"🔄 GLM流式数据 - sessionId: {session_id}, content: {chunk.get('content', '')[:50]}...")
+                                        continue
+                                    
+                                    elif chunk.get("type") == "progress":
+                                        # 控制进度日志频率，每10%才记录一次
+                                        current_progress = chunk.get('progress', 0)
+                                        if not hasattr(task, 'last_progress_log'):
+                                            task.last_progress_log = 0
+                                        
+                                        if current_progress - task.last_progress_log >= 10 or current_progress >= 90:
+                                            logger.info(f"解析进度更新 - sessionId: {session_id}, progress: {current_progress}%")
+                                            task.last_progress_log = current_progress
+                                        
+                                        # 更新会话进度
+                                        session_model.update_progress(
+                                            session_id=session_id,
+                                            status="processing",
+                                            progress=current_progress,
+                                            message=chunk.get("message", "处理中...")
+                                        )
+                                        
+                                        # 更新任务进度
+                                        if task:
+                                            task.update_progress(current_progress, chunk.get("message", "处理中..."))
+                                        
+                                        # 更新progress block
+                                        progress_block = {
+                                            "id": progress_block_id,
+                                            "type": "loading",
+                                            "status": chunk.get("stage", "processing"),
+                                            "message": chunk.get("message", "处理中..."),
+                                            "progress": current_progress,
+                                            "sessionId": session_id
+                                        }
+                                        
+                                        # 更新论文中的progress block
+                                        self._update_progress_block_in_paper(paper_id, section_id, progress_block_id, progress_block, is_user_paper)
+                                    
+                                    elif chunk.get("type") == "complete":
+                                        # 解析完成，移除progress block并添加解析后的blocks
+                                        parsed_blocks = chunk.get("blocks", [])
+                                        
+                                        # 更新section：移除progress block，添加解析后的blocks
+                                        self._complete_parsing_in_paper(
+                                            paper_id, section_id, progress_block_id,
+                                            insert_index, parsed_blocks, session_model, session_id, is_user_paper
+                                        )
+                                        break
+                                
+                            except Exception as e:
+                                # 更新会话状态为错误
+                                session_model.fail_session(session_id, f"流式解析失败: {str(e)}")
+                                
+                                # 更新progress block为错误状态
+                                progress_block = {
+                                    "id": progress_block_id,
+                                    "type": "loading",
+                                    "status": "failed",
+                                    "message": f"流式解析失败: {str(e)}",
+                                    "progress": 0,
+                                    "sessionId": session_id
+                                }
+                                
+                                # 更新论文中的progress block
+                                try:
+                                    self._update_progress_block_in_paper(paper_id, section_id, progress_block_id, progress_block, is_user_paper)
+                                except:
+                                    pass
+>>>>>>> origin/main
                     
                     # 提交后台任务
                     try:
@@ -759,6 +1018,7 @@ class PaperService:
             
             # 使用Server-Sent Events (SSE)进行流式响应
             def generate():
+<<<<<<< HEAD
                 try:
                     # 获取任务对象
                     task = task_manager.get_task(session_id)
@@ -826,6 +1086,97 @@ class PaperService:
                     yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': f'流式响应失败: {str(e)}', 'error': f'流式响应失败: {str(e)}', 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
                     # 发送结束事件
                     yield "event: end\ndata: {}\n\n"
+=======
+                # 创建应用上下文，避免"Working outside of application context"错误
+                from flask import current_app
+                with current_app.app_context():
+                    try:
+                        # 立即发送连接确认消息
+                        yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'connected', 'progress': 0, 'message': '连接已建立，准备开始解析...', 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
+                        
+                        # 获取任务对象
+                        task = task_manager.get_task(session_id)
+                        if not task:
+                            yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': '任务不存在', 'error': '任务不存在', 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
+                            return
+                        
+                        # 获取section上下文
+                        section_title = target_section.get("title", "") or target_section.get("titleZh", "")
+                        section_context = f"章节: {section_title}"
+                        
+                        # 直接从LLM获取流式数据，同时传递到前端
+                        last_progress_log = 0  # 用于控制进度日志频率
+                        glm_chunk_count = 0  # 用于控制GLM流式数据日志频率
+                        
+                        # 获取LLM工具实例（兼容保留，但不再调用流式方法）
+                        llm_utils = get_llm_utils()
+                        llm_utils._current_user_id = user_id
+                        
+                        # 旧的流式解析逻辑已废弃，这里不再调用 LLM 流式接口
+                        for chunk in []:
+                            if chunk.get("type") == "glm_stream":
+                                glm_chunk_count += 1
+                                
+                                # 每50个chunk记录一次日志，减少日志频率
+                                if glm_chunk_count % 50 == 1:
+                                    logger.info(f"🔄 GLM流式数据 - sessionId: {session_id}, content: {chunk.get('content', '')[:50]}...")
+                                
+                                # 直接传递GLM的流式数据到前端，确保格式正确
+                                glm_data = {
+                                    "type": "glm_stream",
+                                    "content": chunk.get("content", ""),
+                                    "model": chunk.get("model", ""),
+                                    "usage": chunk.get("usage", {}),
+                                    "sessionId": session_id
+                                }
+                                yield f"data: {json.dumps(glm_data, ensure_ascii=False)}\n\n"
+                            elif chunk.get("type") == "progress":
+                                # 控制进度日志频率，每10%才记录一次
+                                current_progress = chunk.get('progress', 0)
+                                if current_progress - last_progress_log >= 10 or current_progress >= 90:
+                                    logger.info(f"解析进度更新 - sessionId: {session_id}, progress: {current_progress}%")
+                                    last_progress_log = current_progress
+                                
+                                # 同时也发送进度更新
+                                yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'processing', 'progress': current_progress, 'message': chunk.get('message', '处理中...'), 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
+                            elif chunk.get("type") == "complete":
+                                # 解析完成
+                                completed_blocks = chunk.get("blocks", [])
+                                logger.info(f"解析完成 - sessionId: {session_id}, blocks数量: {len(completed_blocks)}")
+                                yield f"data: {json.dumps({'type': 'complete', 'blocks': completed_blocks, 'message': '解析完成', 'sessionId': session_id}, ensure_ascii=False)}\n\n"
+                                # 发送结束事件
+                                yield "event: end\ndata: {}\n\n"
+                                # 发送[DONE]标记，确保前端能正确识别结束
+                                yield "data: [DONE]\n\n"
+                                break
+                            elif chunk.get("type") == "stream_end":
+                                # 处理LLM工具类发送的结束信号
+                                logger.info(f"收到流式结束信号 - sessionId: {session_id}")
+                                # 发送结束事件
+                                yield "event: end\ndata: {}\n\n"
+                                # 发送[DONE]标记，确保前端能正确识别结束
+                                yield "data: [DONE]\n\n"
+                                break
+                            elif chunk.get("type") == "error":
+                                # 错误处理
+                                logger.error(f"解析错误 - sessionId: {session_id}, error: {chunk.get('message', '解析失败')}")
+                                yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': chunk.get('message', '解析失败'), 'error': chunk.get('message', '解析失败'), 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
+                                # 发送结束事件
+                                yield "event: end\ndata: {}\n\n"
+                                # 发送[DONE]标记，确保前端能正确识别结束
+                                yield "data: [DONE]\n\n"
+                                break
+                        
+                        return
+                    
+                    except Exception as e:
+                        logger.error(f"流式响应异常: {str(e)}")
+                        yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': f'流式响应失败: {str(e)}', 'error': f'流式响应失败: {str(e)}', 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
+                        # 发送结束事件
+                        yield "event: end\ndata: {}\n\n"
+                        # 发送[DONE]标记，确保前端能正确识别结束
+                        yield "data: [DONE]\n\n"
+>>>>>>> origin/main
             
             # 返回生成器
             for chunk in generate():
@@ -834,6 +1185,7 @@ class PaperService:
         except Exception as exc:
             yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': f'服务器错误: {exc}', 'error': f'服务器错误: {exc}', 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
 
+<<<<<<< HEAD
     def _update_progress_block_in_paper(self, paper_id: str, section_id: str, progress_block_id: str, progress_block: Dict[str, Any]):
         """更新论文中进度块的辅助函数"""
         from ..models.section import get_section_model
@@ -892,6 +1244,104 @@ class PaperService:
         else:
             # 更新失败，标记会话失败
             session_model.fail_session(session_id, "更新章节数据失败")
+=======
+    def _update_progress_block_in_paper(self, paper_id: str, section_id: str, progress_block_id: str, progress_block: Dict[str, Any], is_user_paper: bool = False):
+        """更新论文中进度块的辅助函数"""
+        # 创建应用上下文，避免"Working outside of application context"错误
+        try:
+            from flask import current_app
+            app_context = current_app.app_context()
+        except (RuntimeError, ImportError):
+            # 如果无法获取应用上下文（例如在非请求环境中），创建一个新的应用实例
+            from neuink import create_app
+            app = create_app()
+            app_context = app.app_context()
+        
+        with app_context:
+            # 设置用户ID到应用上下文中，避免g.current_user访问错误
+            try:
+                from flask import g
+                # 尝试从外部获取user_id，如果无法获取则使用默认值
+                if hasattr(self, '_current_user_id'):
+                    g.current_user = {"user_id": self._current_user_id}
+            except:
+                pass
+            from ..models.section import get_section_model
+            section_model = get_section_model()
+            
+            section = section_model.find_by_id(section_id)
+            if not section:
+                return
+            
+            # 验证section属于该论文
+            if section.get("paperId") != paper_id:
+                return
+            
+            content = section.get("content", [])
+            for i, block in enumerate(content):
+                if block.get("id") == progress_block_id:
+                    content[i] = progress_block
+                    break
+            
+            section_model.update_direct(section_id, {"$set": {"content": content}})
+
+    def _complete_parsing_in_paper(self, paper_id: str, section_id: str, progress_block_id: str, insert_index: int, parsed_blocks: List[Dict[str, Any]], session_model, session_id: str, is_user_paper: bool = False):
+        """完成论文解析的辅助函数"""
+        # 创建应用上下文，避免"Working outside of application context"错误
+        try:
+            from flask import current_app
+            app_context = current_app.app_context()
+        except (RuntimeError, ImportError):
+            # 如果无法获取应用上下文（例如在非请求环境中），创建一个新的应用实例
+            from neuink import create_app
+            app = create_app()
+            app_context = app.app_context()
+        
+        with app_context:
+            # 设置用户ID到应用上下文中，避免g.current_user访问错误
+            try:
+                from flask import g
+                # 尝试从外部获取user_id，如果无法获取则使用默认值
+                if hasattr(self, '_current_user_id'):
+                    g.current_user = {"user_id": self._current_user_id}
+            except:
+                pass
+            from ..models.section import get_section_model
+            section_model = get_section_model()
+            
+            # 更新section：移除progress block，添加解析后的blocks
+            section = section_model.find_by_id(section_id)
+            if not section:
+                return
+            
+            # 验证section属于该论文
+            if section.get("paperId") != paper_id:
+                return
+            
+            content = section.get("content", [])
+            # 移除progress block
+            content = [block for block in content if block.get("id") != progress_block_id]
+            # 添加解析后的blocks
+            content[insert_index:insert_index] = parsed_blocks
+            
+            # 更新section
+            updated_section = section_model.update_direct(section_id, {"$set": {"content": content}})
+            
+            # 验证更新是否成功
+            if updated_section:
+                # 确认更新成功，获取最新的论文数据
+                verify_paper = self.paper_model.find_paper_with_sections(paper_id)
+                
+                if verify_paper:
+                    # 使用验证后的最新数据完成会话
+                    session_model.complete_session(session_id, parsed_blocks, verify_paper)
+                else:
+                    # 获取最新数据失败，但仍使用当前数据完成会话
+                    session_model.complete_session(session_id, parsed_blocks, verify_paper)
+            else:
+                # 更新失败，标记会话失败
+                session_model.fail_session(session_id, "更新章节数据失败")
+>>>>>>> origin/main
 
     # ------------------------------------------------------------------
     # 翻译操作代理方法

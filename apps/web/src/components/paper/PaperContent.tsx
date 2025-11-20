@@ -1,7 +1,11 @@
 // src/components/paper/PaperContent.tsx
 'use client';
 
+<<<<<<< HEAD
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+=======
+import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+>>>>>>> origin/main
 import type {
   Section,
   InlineContent,
@@ -15,6 +19,11 @@ import type {
 import BlockRenderer from './BlockRenderer';
 import BlockEditor from './editor/BlockEditor';
 import InlineTextParserEditor from './editor/InlineTextParserEditor';
+<<<<<<< HEAD
+=======
+import ParsedBlocksConfirmDialog from './ParsedBlocksConfirmDialog';
+import ParseResultsManager from './ParseResultsManager';
+>>>>>>> origin/main
 import {
   SectionContextMenu,
   BlockContextMenu,
@@ -25,9 +34,22 @@ import { useEditingState } from '@/stores/useEditingState';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { calculateAllNumbers } from './utils/autoNumbering';
 import { toast } from 'sonner';
+<<<<<<< HEAD
 
 type Lang = 'en' | 'both';
 
+=======
+import { userPaperService, adminPaperService } from '@/lib/services/paper';
+
+type Lang = 'en' | 'both';
+
+type StreamProgressData = {
+  message: string;
+  progress: number;
+  sessionId?: string;
+};
+
+>>>>>>> origin/main
 interface PaperContentProps {
   sections: Section[];
   references?: Reference[];
@@ -65,7 +87,11 @@ interface PaperContentProps {
     blocks?: BlockContent[];
     error?: string;
   }>;
+<<<<<<< HEAD
   onParseTextComplete?: (sectionId: string, blocks: BlockContent[], afterBlockId?: string) => void; // 新增回调函数
+=======
+  onParseTextComplete?: (sectionId: string, blocks: BlockContent[], afterBlockId?: string, paperData?: any) => void; // 新增回调函数
+>>>>>>> origin/main
   onStartTextParse?: (sectionId: string) => void;
   onSaveToServer?: () => Promise<void>;
   /** ParseProgressModal 需要的回调 */
@@ -275,11 +301,35 @@ export default function PaperContent({
     [],
   );
 
+<<<<<<< HEAD
   useEffect(() => {
     const q = searchQuery.trim().toLowerCase();
     if (!q) {
       setSearchResults([]);
       setCurrentSearchIndex(0);
+=======
+  // 使用ref保存上次的搜索结果,避免空数组引起的无限循环
+  const lastSearchResultsRef = useRef<string[]>([]);
+  const lastSearchQueryRef = useRef<string>('');
+
+  useEffect(() => {
+    const q = searchQuery.trim().toLowerCase();
+    
+    // 如果查询没变,直接返回
+    if (q === lastSearchQueryRef.current) {
+      return;
+    }
+    
+    lastSearchQueryRef.current = q;
+    
+    if (!q) {
+      // 只有当之前有结果时才清空
+      if (lastSearchResultsRef.current.length > 0) {
+        lastSearchResultsRef.current = [];
+        setSearchResults([]);
+        setCurrentSearchIndex(0);
+      }
+>>>>>>> origin/main
       return;
     }
 
@@ -291,9 +341,23 @@ export default function PaperContent({
       });
     });
 
+<<<<<<< HEAD
     setSearchResults(results);
     setCurrentSearchIndex(0);
   }, [searchQuery, sections, traverseSections, setSearchResults, setCurrentSearchIndex]);
+=======
+    // 只有结果真正变化时才更新
+    const resultsChanged =
+      results.length !== lastSearchResultsRef.current.length ||
+      results.some((id, i) => id !== lastSearchResultsRef.current[i]);
+    
+    if (resultsChanged) {
+      lastSearchResultsRef.current = results;
+      setSearchResults(results);
+      setCurrentSearchIndex(0);
+    }
+  }, [searchQuery, contentWithNumbers.sections, traverseSections]);
+>>>>>>> origin/main
 
   const generateSectionNumber = (path: number[]): string => path.join('.');
 
@@ -306,6 +370,7 @@ export default function PaperContent({
   const [textParseBlockId, setTextParseBlockId] = useState<string | null>(null);
   
   // ★ 新增：管理流式解析进度数据
+<<<<<<< HEAD
   const [streamProgressData, setStreamProgressData] = useState<Record<string, {
     message: string;
     progress: number;
@@ -319,6 +384,21 @@ export default function PaperContent({
     sessionId?: string;
   }) => {
     console.log('PaperContent: 更新进度数据', { sectionId, progressData });
+=======
+  const [streamProgressData, setStreamProgressData] = useState<Record<string, StreamProgressData>>({});
+  
+  // ★ 新增：管理解析确认对话框
+  const [confirmDialogOpen, setConfirmDialogOpen] = useState(false);
+  const [pendingConfirmation, setPendingConfirmation] = useState<{
+    blockId: string;
+    sectionId: string;
+    parsedBlocks: BlockContent[];
+    sessionId?: string;
+  } | null>(null);
+
+  // ★ 新增：处理流式进度更新
+  const handleStreamProgressUpdate = useCallback((sectionId: string, progressData: StreamProgressData) => {
+>>>>>>> origin/main
     setStreamProgressData(prev => ({
       ...prev,
       [sectionId]: progressData
@@ -334,6 +414,7 @@ export default function PaperContent({
 
   const handleSectionRenameConfirm = useCallback(
     (sectionId: string, title: { en: string; zh: string }) => {
+<<<<<<< HEAD
       // 添加调试日志
       console.log('章节重命名确认 - sectionId:', sectionId);
       console.log('章节重命名确认 - title:', title);
@@ -341,6 +422,8 @@ export default function PaperContent({
       console.log('章节重命名确认 - userPaperId:', userPaperId);
       console.log('章节重命名确认 - isPersonalOwner:', isPersonalOwner);
       
+=======
+>>>>>>> origin/main
       // 直接使用后端期望的格式
       onSectionTitleUpdate?.(sectionId, title, paperId, userPaperId, isPersonalOwner, onSaveToServer);
       setRenamingSectionId(null);
@@ -430,27 +513,40 @@ export default function PaperContent({
     afterBlockId?: string,
     paperData?: any
   ) => {
+<<<<<<< HEAD
     console.log('handleStreamParseComplete called:', { sectionId, blocks: blocks?.length, afterBlockId, paperData });
     
+=======
+>>>>>>> origin/main
     // ★ 关键修复：区分临时进度块和最终结果
     const isTempProgressBlock = blocks?.length === 1 && (blocks[0] as any).type === 'loading';
     
     if (isTempProgressBlock) {
       // 临时进度块：只插入进度块，不关闭编辑器
+<<<<<<< HEAD
       console.log('插入临时进度块');
+=======
+>>>>>>> origin/main
       onParseTextComplete?.(sectionId, blocks, afterBlockId);
       return; // ★ 重要：临时进度块时直接返回，不关闭编辑器
     }
     
     // 最终结果blocks：删除临时进度块，插入实际blocks，然后关闭编辑器
     if (onParseTextComplete && blocks?.length && (blocks[0] as any).type !== 'loading') {
+<<<<<<< HEAD
       console.log('传递解析后的blocks给父组件:', blocks);
       onParseTextComplete(sectionId, blocks, afterBlockId);
+=======
+      onParseTextComplete(sectionId, blocks, afterBlockId, paperData);
+>>>>>>> origin/main
     }
    
     // 如果收到了完整的paperData，可以用于更新整个paper数据
     if (paperData && paperData.sections) {
+<<<<<<< HEAD
       console.log('收到完整的paper数据:', paperData);
+=======
+>>>>>>> origin/main
       // 这里可以根据需要触发paper数据的更新
       // 例如调用某个更新paper的函数
     }
@@ -459,6 +555,7 @@ export default function PaperContent({
     handleParseTextComplete();
   }, [onParseTextComplete, handleParseTextComplete]);
 
+<<<<<<< HEAD
   // 处理ParseProgressBlock的onCompleted回调
   const handleParseProgressComplete = useCallback((result: any) => {
     console.log('handleParseProgressComplete called:', result);
@@ -466,6 +563,223 @@ export default function PaperContent({
     // 处理重新开始的请求
     if (result.status === 'restart') {
       console.log('处理重新开始解析请求:', result);
+=======
+  // 处理解析完成后的预览和确认
+  const handleParsePreview = useCallback((data: {
+    type: 'preview' | 'cancel';
+    blockId: string;
+    parsedBlocks?: BlockContent[];
+    sessionId?: string;
+    parseId?: string;
+  }) => {
+    if (data.type === 'cancel') {
+      // 用户取消,删除 parsing block
+      if (onBlockDelete) {
+        onBlockDelete(data.blockId);
+      }
+      return;
+    }
+    
+    // 如果有parsedBlocks，直接添加到section中（来自ParseResultsManager的确认）
+    if (data.parsedBlocks && data.parsedBlocks.length > 0) {
+      // 找到对应的 section - 通过 parseId 或 blockId 查找
+      const targetSection = sections.find(s =>
+        s.content?.some(b => {
+          // 检查是否是 parsing block 且有对应的 parseId
+          if (b.type === 'parsing' && data.parseId && b.parseId === data.parseId) {
+            return true;
+          }
+          // 或者直接匹配 blockId（兼容旧逻辑）
+          return b.id === data.blockId;
+        })
+      );
+      
+      if (targetSection) {
+        // 直接添加blocks到section中，不显示确认对话框
+        updateSections?.((sections: Section[]) => {
+          let touched = false;
+          
+          const updatedSections = sections.map((section: Section) => {
+            if (section.id !== targetSection.id) return section;
+           
+            touched = true;
+            let currentBlocks = section.content || [];
+           
+            // 查找并删除 parsing block - 使用 parseId 或 blockId
+            currentBlocks = currentBlocks.filter((block: BlockContent) => {
+              // 如果是 parsing block 且有对应的 parseId，删除它
+              if (block.type === 'parsing' && data.parseId && block.parseId === data.parseId) {
+                return false;
+              }
+              // 或者直接匹配 blockId（兼容旧逻辑）
+              if (block.id === data.blockId) {
+                return false;
+              }
+              return true;
+            });
+           
+            // 添加新的blocks
+            const newBlocks = [...currentBlocks, ...data.parsedBlocks!];
+           
+            return {
+              ...section,
+              content: newBlocks
+            };
+          });
+          
+          return { sections: touched ? updatedSections : sections, touched };
+        });
+        
+        toast.success(`成功添加了 ${data.parsedBlocks.length} 个段落`);
+        
+        // 保存到服务器
+        if (onSaveToServer) {
+          onSaveToServer();
+        }
+      } else {
+        // 如果找不到对应的section，提示用户
+        toast.error('找不到对应的解析块，请刷新页面后重试');
+      }
+      return;
+    }
+    
+    // 如果没有parsedBlocks但有sessionId或parseId，打开解析结果管理器
+    if (!data.parsedBlocks && (data.sessionId || data.parseId)) {
+      // 找到对应的 parsing block
+      const targetSection = sections.find(s =>
+        s.content?.some(b => b.id === data.blockId)
+      );
+      
+      if (targetSection) {
+        const parsingBlock = targetSection.content?.find(b => b.id === data.blockId);
+        
+        if (parsingBlock && parsingBlock.type === 'parsing') {
+          // 更新 parsing block，显示 ParseResultsManager
+          updateSections?.((sections: Section[]) => {
+            let touched = false;
+            
+            const updatedSections = sections.map((section: Section) => {
+              if (section.id !== targetSection.id) return section;
+              
+              touched = true;
+              const currentBlocks = [...(section.content || [])];
+              const blockIndex = currentBlocks.findIndex(b => b.id === data.blockId);
+              
+              if (blockIndex >= 0) {
+                // 更新 parsing block，添加 parseId 和 sessionId
+                currentBlocks[blockIndex] = {
+                  ...currentBlocks[blockIndex],
+                  parseId: data.parseId,
+                  sessionId: data.sessionId,
+                } as BlockContent;
+              }
+              
+              return {
+                ...section,
+                content: currentBlocks
+              };
+            });
+            
+            return { sections: touched ? updatedSections : sections, touched };
+          });
+        }
+      }
+      return;
+    }
+    
+    // 打开确认对话框（原始流程）
+    if (data.parsedBlocks) {
+      // 找到对应的 section
+      const targetSection = sections.find(s =>
+        s.content?.some(b => b.id === data.blockId)
+      );
+      
+      if (targetSection) {
+        setPendingConfirmation({
+          blockId: data.blockId,
+          sectionId: targetSection.id,
+          parsedBlocks: data.parsedBlocks,
+          sessionId: data.sessionId,
+        });
+        setConfirmDialogOpen(true);
+      }
+    }
+  }, [sections, onBlockDelete, updateSections, onSaveToServer]);
+  
+  // 处理用户确认选择的blocks
+  const handleConfirmParsedBlocks = useCallback(async (selectedBlockIds: string[]) => {
+    if (!pendingConfirmation) return;
+    
+    const { blockId, sectionId, parsedBlocks, sessionId } = pendingConfirmation;
+    
+    // 过滤出用户选择的blocks
+    const selectedBlocks = parsedBlocks.filter(b => selectedBlockIds.includes(b.id));
+    
+    if (selectedBlocks.length === 0) {
+      toast.error('请至少选择一个段落');
+      return;
+    }
+    
+    try {
+      // 调用后端API更新section
+      // 删除 parsing block,添加选中的 blocks
+      updateSections?.((sections: Section[]) => {
+        let touched = false;
+        
+        const updatedSections = sections.map((section: Section) => {
+          if (section.id !== sectionId) return section;
+          
+          touched = true;
+          let currentBlocks = section.content || [];
+          
+          // 删除 parsing block
+          currentBlocks = currentBlocks.filter((block: BlockContent) => block.id !== blockId);
+          
+          // 添加选中的blocks
+          const newBlocks = [...currentBlocks, ...selectedBlocks];
+          
+          return {
+            ...section,
+            content: newBlocks
+          };
+        });
+        
+        return { sections: touched ? updatedSections : sections, touched };
+      });
+      
+      // 关闭对话框
+      setConfirmDialogOpen(false);
+      setPendingConfirmation(null);
+      
+      toast.success(`成功添加了 ${selectedBlocks.length} 个段落`);
+      
+      // 保存到服务器
+      if (onSaveToServer) {
+        await onSaveToServer();
+      }
+    } catch (error) {
+      toast.error('保存失败,请重试');
+      console.error('保存解析结果失败:', error);
+    }
+  }, [pendingConfirmation, updateSections, onSaveToServer]);
+  
+  // 处理取消确认
+  const handleCancelConfirmation = useCallback(() => {
+    if (pendingConfirmation) {
+      // 删除 parsing block
+      if (onBlockDelete) {
+        onBlockDelete(pendingConfirmation.blockId);
+      }
+    }
+    setConfirmDialogOpen(false);
+    setPendingConfirmation(null);
+  }, [pendingConfirmation, onBlockDelete]);
+
+  // 处理ParseProgressBlock的onCompleted回调
+  const handleParseProgressComplete = useCallback((result: any) => {
+    // 处理重新开始的请求
+    if (result.status === 'restart') {
+>>>>>>> origin/main
       // 删除对应的loading block
       if (onBlockDelete) {
         onBlockDelete(result.blockId);
@@ -473,6 +787,7 @@ export default function PaperContent({
       return;
     }
     
+<<<<<<< HEAD
     // 处理解析完成的情况
     if (result.status === 'completed' && result.blocks && result.blocks.length > 0) {
       console.log('ParseProgressBlock: 解析完成，更新blocks', result.blocks);
@@ -514,11 +829,123 @@ export default function PaperContent({
       
       // 显示成功消息
       toast.success(`成功解析并添加了${result.blocks.length}个段落`);
+=======
+    // 处理解析完成的情况 - 现在使用ParseResultsManager
+    if (result.status === 'completed') {
+      // 检查是否有parseId，如果有则使用新的解析流程
+      if (result.parseId) {
+        // 不再显示toast和自动打开对话框
+        
+        // 更新parsing block为已完成状态，包含parseId
+        updateSections?.((sections: Section[]) => {
+          let touched = false;
+          
+          const updatedSections = sections.map((section: Section) => {
+            const parsingBlockIndex = section.content?.findIndex((block: BlockContent) =>
+              block.id === result.blockId || (block.type === 'parsing' && block.id === result.tempBlockId)
+            );
+            
+            if (parsingBlockIndex !== undefined && parsingBlockIndex >= 0) {
+              touched = true;
+              const currentBlocks = [...(section.content || [])];
+              const parsingBlock = currentBlocks[parsingBlockIndex];
+              
+              // 确保这是一个 parsing block
+              if (parsingBlock.type === 'parsing') {
+                // 更新 parsing block 为已完成状态，包含parseId
+                const updatedBlock: BlockContent = {
+                  ...parsingBlock,
+                  stage: 'completed' as const,
+                  message: '解析完成，请查看结果并选择要保存的内容',
+                  parseId: result.parseId,
+                  tempBlockId: result.tempBlockId,
+                };
+                
+                currentBlocks[parsingBlockIndex] = updatedBlock;
+              }
+              
+              return {
+                ...section,
+                content: currentBlocks
+              };
+            }
+            
+            return section;
+          });
+          
+          return { sections: touched ? updatedSections : sections, touched };
+        });
+        
+        return;
+      }
+      
+      // 旧的处理逻辑：检查是否有解析结果（addedBlocks 或 blocks），如果有则走确认流程
+      const parsedBlocks = result.addedBlocks || result.blocks;
+      
+      if (parsedBlocks && parsedBlocks.length > 0) {
+        updateSections?.((sections: Section[]) => {
+          let touched = false;
+          
+          const updatedSections = sections.map((section: Section) => {
+            const parsingBlockIndex = section.content?.findIndex((block: BlockContent) =>
+              block.id === result.blockId
+            );
+            
+            if (parsingBlockIndex !== undefined && parsingBlockIndex >= 0) {
+              touched = true;
+              const currentBlocks = [...(section.content || [])];
+              const parsingBlock = currentBlocks[parsingBlockIndex];
+              
+              // 确保这是一个 parsing block
+              if (parsingBlock.type === 'parsing') {
+                // 更新 parsing block 为待确认状态
+                const updatedBlock: BlockContent = {
+                  ...parsingBlock,
+                  stage: 'pending_confirmation' as const,
+                  message: '解析完成,请确认',
+                  parsedBlocks: parsedBlocks,
+                  sessionId: result.sessionId,
+                };
+                
+                currentBlocks[parsingBlockIndex] = updatedBlock;
+              }
+              
+              return {
+                ...section,
+                content: currentBlocks
+              };
+            }
+            
+            return section;
+          });
+          
+          return { sections: touched ? updatedSections : sections, touched };
+        });
+        
+        return;
+      }
+      
+      // 只有在没有解析结果但有完整 paper 数据时才直接更新
+      if (result.paper && result.paper.sections) {
+        // 调用父组件的 onParseTextComplete，传递完整的 paper 数据
+        if (onParseTextComplete) {
+          onParseTextComplete(result.sectionId, result.blocks || [], undefined, result.paper);
+        }
+        
+        // 显示成功消息
+        toast.success('解析完成，论文内容已更新');
+        return;
+      }
+>>>>>>> origin/main
     }
     
     // 其他完成状态的处理
     onParseComplete?.(result);
+<<<<<<< HEAD
   }, [onParseComplete, onBlockDelete, updateSections]);
+=======
+  }, [onParseComplete, onBlockDelete, updateSections, onParseTextComplete]);
+>>>>>>> origin/main
 
   const renderedTree = useMemo(() => {
     // 辅助函数：从 contentWithNumbers 中找到对应 ID 的章节
@@ -550,7 +977,11 @@ export default function PaperContent({
         <section
           key={numberedSection.id}
           id={numberedSection.id}
+<<<<<<< HEAD
           className="relative overflow-hidden rounded-2xl border border-white/45 bg-linear-to-tr from-white/30 via-white/15 to-white/35 p-6 shadow-[0_30px_60px_rgba(15,23,42,0.18)] backdrop-blur-[18px] transition-all duration-300 hover:shadow-[0_40px_80px_rgba(15,23,42,0.25)] dark:border-white/10 dark:from-slate-900/60 dark:via-slate-900/45 dark:to-slate-900/55 space-y-4"
+=======
+          className="relative overflow-hidden rounded-2xl border border-white/45 bg-linear-to-tr from-white/30 via-white/15 to-white/35 p-6 shadow-[0_30px_60px_rgba(15,23,42,0.18)] backdrop-blur-[18px] transition-all duration-300 dark:border-white/10 dark:from-slate-900/60 dark:via-slate-900/45 dark:to-slate-900/55 space-y-4"
+>>>>>>> origin/main
           style={{ marginLeft: sectionMargin }}
         >
           <SectionContextMenu
@@ -629,8 +1060,11 @@ export default function PaperContent({
               lang={lang}
               onCancel={() => setRenamingSectionId(null)}
               onConfirm={(title) => {
+<<<<<<< HEAD
                 console.log('章节重命名确认 - sectionId:', numberedSection.id);
                 console.log('章节重命名确认 - title:', title);
+=======
+>>>>>>> origin/main
                 handleSectionRenameConfirm(numberedSection.id, title);
               }}
             />
@@ -675,6 +1109,10 @@ export default function PaperContent({
                   paperId={paperId}
                   sectionId={numberedSection.id}
                   onParseComplete={handleParseProgressComplete}
+<<<<<<< HEAD
+=======
+                  onParsePreview={handleParsePreview}
+>>>>>>> origin/main
                   userPaperId={userPaperId}
                   // ★ 新增：传递进度数据给loading block
                   streamProgressData={streamProgressData}
@@ -749,8 +1187,17 @@ export default function PaperContent({
                       onCancel={handleParseTextComplete}
                       paperId={paperId || ''}
                       userPaperId={userPaperId}
+<<<<<<< HEAD
                       onParseComplete={(blocks, paperData) => handleStreamParseComplete(numberedSection.id, blocks, block.id, paperData)}
                       onProgressUpdate={(progressData) => handleStreamProgressUpdate(numberedSection.id, progressData)}
+=======
+                      onParseComplete={(blocks, paperData) =>
+                        handleStreamParseComplete(numberedSection.id, blocks, block.id, paperData)
+                      }
+                      onProgressUpdate={(progressData: StreamProgressData) =>
+                        handleStreamProgressUpdate(numberedSection.id, progressData)
+                      }
+>>>>>>> origin/main
                     />
                   </React.Fragment>
                 );
@@ -832,8 +1279,17 @@ export default function PaperContent({
               onCancel={handleParseTextComplete}
               paperId={paperId || ''}
               userPaperId={userPaperId}
+<<<<<<< HEAD
               onParseComplete={(blocks, paperData) => handleStreamParseComplete(numberedSection.id, blocks, undefined, paperData)}
               onProgressUpdate={(progressData) => handleStreamProgressUpdate(numberedSection.id, progressData)}
+=======
+              onParseComplete={(blocks, paperData) =>
+                handleStreamParseComplete(numberedSection.id, blocks, undefined, paperData)
+              }
+              onProgressUpdate={(progressData: StreamProgressData) =>
+                handleStreamProgressUpdate(numberedSection.id, progressData)
+              }
+>>>>>>> origin/main
             />
           )}
 
@@ -892,13 +1348,21 @@ export default function PaperContent({
 
   const emptyState = canEditContent && onSectionInsert ? (
     <RootSectionContextMenu onAddSection={() => onSectionInsert(null, 'below', null)}>
+<<<<<<< HEAD
       <div className="relative overflow-hidden rounded-2xl border border-white/45 bg-linear-to-tr from-white/30 via-white/15 to-white/35 p-10 shadow-[0_30px_60px_rgba(15,23,42,0.18)] backdrop-blur-[18px] transition-all duration-300 hover:shadow-[0_40px_80px_rgba(15,23,42,0.25)] text-center dark:border-white/10 dark:from-slate-900/60 dark:via-slate-900/45 dark:to-slate-900/55">
+=======
+      <div className="relative overflow-hidden rounded-2xl border border-white/45 bg-linear-to-tr from-white/30 via-white/15 to-white/35 p-10 shadow-[0_30px_60px_rgba(15,23,42,0.18)] backdrop-blur-[18px] transition-all duration-300 text-center dark:border-white/10 dark:from-slate-900/60 dark:via-slate-900/45 dark:to-slate-900/55">
+>>>>>>> origin/main
         <p className="text-lg font-semibold text-gray-700 dark:text-gray-200">论文暂无内容</p>
         <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">右键此区域以添加第一章。</p>
       </div>
     </RootSectionContextMenu>
   ) : (
+<<<<<<< HEAD
     <div className="relative overflow-hidden rounded-2xl border border-white/45 bg-linear-to-tr from-white/30 via-white/15 to-white/35 p-10 shadow-[0_30px_60px_rgba(15,23,42,0.18)] backdrop-blur-[18px] transition-all duration-300 hover:shadow-[0_40px_80px_rgba(15,23,42,0.25)] text-center dark:border-white/10 dark:from-slate-900/60 dark:via-slate-900/45 dark:to-slate-900/55">
+=======
+    <div className="relative overflow-hidden rounded-2xl border border-white/45 bg-linear-to-tr from-white/30 via-white/15 to-white/35 p-10 shadow-[0_30px_60px_rgba(15,23,42,0.18)] backdrop-blur-[18px] transition-all duration-300 text-center dark:border-white/10 dark:from-slate-900/60 dark:via-slate-900/45 dark:to-slate-900/55">
+>>>>>>> origin/main
       <p className="text-lg font-semibold text-gray-700 dark:text-gray-200">论文暂无内容</p>
       <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">请联系管理员添加内容。</p>
     </div>
@@ -908,6 +1372,18 @@ export default function PaperContent({
     <>
       <div className="space-y-8">{contentWithNumbers.sections.length ? renderedTree : emptyState}</div>
       <ConfirmDialog />
+<<<<<<< HEAD
+=======
+      {pendingConfirmation && (
+        <ParsedBlocksConfirmDialog
+          open={confirmDialogOpen}
+          onOpenChange={setConfirmDialogOpen}
+          blocks={pendingConfirmation.parsedBlocks}
+          onConfirm={handleConfirmParsedBlocks}
+          onCancel={handleCancelConfirmation}
+        />
+      )}
+>>>>>>> origin/main
     </>
   );
 }

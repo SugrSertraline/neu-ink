@@ -265,6 +265,12 @@ export default function PersonalLibraryPage() {
                       >
                         <div className="min-w-0 flex-1">
                           <h3 className="truncate text-sm font-medium text-slate-900">{paper.title}</h3>
+<<<<<<< HEAD
+=======
+                          {paper.titleZh && (
+                            <h4 className="truncate text-xs font-medium text-slate-700/80 dark:text-slate-300/90">{paper.titleZh}</h4>
+                          )}
+>>>>>>> origin/main
                           <p className="truncate text-xs text-slate-600">
                             {authorNames} · {paper.year ?? '未知年份'}
                           </p>

@@ -144,6 +144,10 @@ export function usePublicLibraryController() {
   const [error, setError] = useState<string | null>(null);
   const [totalCount, setTotalCount] = useState(0);
   const [availableYears, setAvailableYears] = useState<number[]>([]);
+<<<<<<< HEAD
+=======
+  const [papersInLibrary, setPapersInLibrary] = useState<Set<string>>(new Set());
+>>>>>>> origin/main
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
@@ -274,6 +278,43 @@ export function usePublicLibraryController() {
     void loadPapers();
   }, [loadPapers]);
 
+<<<<<<< HEAD
+=======
+  // 检查论文是否在个人库中
+  const checkPapersInLibrary = useCallback(async () => {
+    if (!isAuthenticated || papers.length === 0) return;
+    
+    try {
+      const inLibrarySet = new Set<string>();
+      
+      // 批量检查所有论文是否在个人库中
+      const checkPromises = papers.map(async (paper) => {
+        try {
+          const result = await userPaperService.checkPaperInLibrary(paper.id);
+          if (result.data?.inLibrary) {
+            inLibrarySet.add(paper.id);
+          }
+        } catch (error) {
+          // 忽略单个论文的检查错误
+          console.warn(`检查论文 ${paper.id} 是否在个人库中失败:`, error);
+        }
+      });
+      
+      await Promise.all(checkPromises);
+      setPapersInLibrary(inLibrarySet);
+    } catch (error) {
+      console.error('批量检查论文是否在个人库中失败:', error);
+    }
+  }, [isAuthenticated, papers, userPaperService]);
+
+  // 当论文列表加载完成且用户已登录时，检查论文是否在个人库中
+  useEffect(() => {
+    if (!loading && isAuthenticated && papers.length > 0) {
+      void checkPapersInLibrary();
+    }
+  }, [loading, isAuthenticated, papers, checkPapersInLibrary]);
+
+>>>>>>> origin/main
   const requestLogin = useCallback(() => setShowLoginHint(true), []);
   const dismissLoginHint = useCallback(() => setShowLoginHint(false), []);
 
@@ -401,6 +442,11 @@ export function usePublicLibraryController() {
 
         if (isSuccess(result)) {
           toast.success('已成功添加到个人论文库');
+<<<<<<< HEAD
+=======
+          // 更新papersInLibrary状态
+          setPapersInLibrary(prev => new Set([...prev, paperId]));
+>>>>>>> origin/main
         } else {
           toast.error(result.bizMessage || result.topMessage || '添加失败');
         }
@@ -461,6 +507,10 @@ export function usePublicLibraryController() {
     error,
     totalCount,
     availableYears,
+<<<<<<< HEAD
+=======
+    papersInLibrary,
+>>>>>>> origin/main
 
     // 分页
     currentPage,

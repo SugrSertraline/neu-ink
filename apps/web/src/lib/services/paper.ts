@@ -3,6 +3,10 @@
 import {
   AddBlockFromTextToSectionRequest,
   AddBlockFromTextToSectionResult,
+<<<<<<< HEAD
+=======
+  CheckBlockParsingStatusResult,
+>>>>>>> origin/main
   AddBlockToSectionRequest,
   AddBlockToSectionResult,
   AddToLibraryRequest,
@@ -35,11 +39,21 @@ import {
   ParseReferencesRequest,
   ParseReferencesResult,
   AddReferencesToPaperRequest,
+<<<<<<< HEAD
   AddReferencesToPaperResult
+=======
+  AddReferencesToPaperResult,
+  ParseResult,
+  ConfirmParseResultRequest,
+  ConfirmParseResultResult,
+  DiscardParseResultResult,
+  SaveAllParseResultResult
+>>>>>>> origin/main
 } from '@/types/paper/index';
 import { apiClient, callAndNormalize } from '../http';
 import type { UnifiedResult } from '@/types/api';
 
+<<<<<<< HEAD
 // —— 流式传输工具函数 —— //
 function createAuthenticatedEventSource(url: string, params: URLSearchParams): EventSource {
   // 获取token并添加到URL参数中
@@ -319,6 +333,8 @@ function createAuthenticatedEventSourceWithPost(url: string, params: Record<stri
   return customEventSource;
 }
 
+=======
+>>>>>>> origin/main
 
 // —— 参数拼接工具 —— //
 function buildSearchParams(params: Record<string, any>): string {
@@ -486,6 +502,7 @@ export const userPaperService = {
   },
 
   /**
+<<<<<<< HEAD
    * 向个人论文的指定section从文本解析添加block（流式传输）
    */
   addBlockFromTextToSectionStream(
@@ -520,11 +537,17 @@ export const userPaperService = {
   },
 
   /**
+=======
+>>>>>>> origin/main
    * 向个人论文添加新章节（已移除subsection支持）
    */
   addSection(
     userPaperId: string,
     sectionData: {
+<<<<<<< HEAD
+=======
+      id?: string; // 添加可选的ID字段，用于前端生成的临时ID
+>>>>>>> origin/main
       title: { en: string; zh: string };
       content?: any[];
     },
@@ -611,6 +634,7 @@ export const userPaperService = {
     userPaperId: string,
     sectionId: string,
     blockId: string
+<<<<<<< HEAD
   ): Promise<UnifiedResult<{
     status: 'pending' | 'processing' | 'completed' | 'failed';
     progress: number;
@@ -627,11 +651,16 @@ export const userPaperService = {
       error?: string;
       addedBlocks?: import('@/types/paper/content').BlockContent[];
     }>(
+=======
+  ): Promise<UnifiedResult<CheckBlockParsingStatusResult>> {
+    return callAndNormalize<CheckBlockParsingStatusResult>(
+>>>>>>> origin/main
       apiClient.get(`/user/papers/${userPaperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
     );
   },
 
   /**
+<<<<<<< HEAD
    * 获取指定section的所有解析会话
    */
   getParsingSessions(
@@ -658,10 +687,20 @@ export const userPaperService = {
       }>;
     }>(
       apiClient.get(`/user/papers/${userPaperId}/sections/${sectionId}/parsing-sessions`)
+=======
+   * 检查论文是否已在个人论文库中
+   */
+  checkPaperInLibrary(
+    paperId: string
+  ): Promise<UnifiedResult<{ inLibrary: boolean; userPaperId: string | null }>> {
+    return callAndNormalize<{ inLibrary: boolean; userPaperId: string | null }>(
+      apiClient.get(`/user/papers/check-in-library?paperId=${paperId}`)
+>>>>>>> origin/main
     );
   },
 
   /**
+<<<<<<< HEAD
    * 获取指定的解析会话详情
    */
   getParsingSession(
@@ -689,10 +728,21 @@ export const userPaperService = {
       paperData?: any;
     }>(
       apiClient.get(`/user/papers/${userPaperId}/sections/${sectionId}/parsing-sessions/${sessionId}`)
+=======
+   * 获取解析结果
+   */
+  getParseResult(
+    paperId: string,
+    parseId: string
+  ): Promise<UnifiedResult<ParseResult>> {
+    return callAndNormalize<ParseResult>(
+      apiClient.get(`/user/papers/${paperId}/parse-results/${parseId}`)
+>>>>>>> origin/main
     );
   },
 
   /**
+<<<<<<< HEAD
    * 删除指定的解析会话
    */
   deleteParsingSession(
@@ -702,6 +752,41 @@ export const userPaperService = {
   ): Promise<UnifiedResult<null>> {
     return callAndNormalize<null>(
       apiClient.delete(`/user/papers/${userPaperId}/sections/${sectionId}/parsing-sessions/${sessionId}`)
+=======
+   * 确认解析结果
+   */
+  confirmParseResult(
+    paperId: string,
+    parseId: string,
+    request: ConfirmParseResultRequest
+  ): Promise<UnifiedResult<ConfirmParseResultResult>> {
+    return callAndNormalize<ConfirmParseResultResult>(
+      apiClient.post(`/user/papers/${paperId}/parse-results/${parseId}/confirm`, request)
+    );
+  },
+
+  /**
+   * 丢弃解析结果
+   */
+  discardParseResult(
+    paperId: string,
+    parseId: string
+  ): Promise<UnifiedResult<DiscardParseResultResult>> {
+    return callAndNormalize<DiscardParseResultResult>(
+      apiClient.post(`/user/papers/${paperId}/parse-results/${parseId}/discard`, {})
+    );
+  },
+
+  /**
+   * 保存所有解析结果
+   */
+  saveAllParseResult(
+    paperId: string,
+    parseId: string
+  ): Promise<UnifiedResult<SaveAllParseResultResult>> {
+    return callAndNormalize<SaveAllParseResultResult>(
+      apiClient.post(`/user/papers/${paperId}/parse-results/${parseId}/save-all`, {})
+>>>>>>> origin/main
     );
   },
 
@@ -899,6 +984,7 @@ export const adminPaperService = {
   },
 
   /**
+<<<<<<< HEAD
    * 向管理员论文的指定section从文本解析添加block（流式传输）
    */
   addBlockFromTextToSectionStream(
@@ -933,11 +1019,17 @@ export const adminPaperService = {
   },
 
   /**
+=======
+>>>>>>> origin/main
    * 向管理员论文添加新章节（已移除subsection支持）
    */
   addSection(
     paperId: string,
     sectionData: {
+<<<<<<< HEAD
+=======
+      id?: string; // 添加可选的ID字段，用于前端生成的临时ID
+>>>>>>> origin/main
       title: { en: string; zh: string };
       content?: any[];
     },
@@ -1059,6 +1151,7 @@ export const adminPaperService = {
     paperId: string,
     sectionId: string,
     blockId: string
+<<<<<<< HEAD
   ): Promise<UnifiedResult<{
     status: 'pending' | 'processing' | 'completed' | 'failed';
     progress: number;
@@ -1075,11 +1168,16 @@ export const adminPaperService = {
       error?: string;
       addedBlocks?: import('@/types/paper/content').BlockContent[];
     }>(
+=======
+  ): Promise<UnifiedResult<CheckBlockParsingStatusResult>> {
+    return callAndNormalize<CheckBlockParsingStatusResult>(
+>>>>>>> origin/main
       apiClient.get(`/admin/papers/${paperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
     );
   },
 
   /**
+<<<<<<< HEAD
    * 获取指定section的所有解析会话
    */
   getParsingSessions(
@@ -1106,10 +1204,21 @@ export const adminPaperService = {
       }>;
     }>(
       apiClient.get(`/admin/papers/${paperId}/sections/${sectionId}/parsing-sessions`)
+=======
+   * 获取管理员论文解析结果
+   */
+  getParseResult(
+    paperId: string,
+    parseId: string
+  ): Promise<UnifiedResult<ParseResult>> {
+    return callAndNormalize<ParseResult>(
+      apiClient.get(`/admin/papers/${paperId}/parse-results/${parseId}`)
+>>>>>>> origin/main
     );
   },
 
   /**
+<<<<<<< HEAD
    * 获取指定的解析会话详情
    */
   getParsingSession(
@@ -1137,10 +1246,22 @@ export const adminPaperService = {
       paperData?: any;
     }>(
       apiClient.get(`/admin/papers/${paperId}/sections/${sectionId}/parsing-sessions/${sessionId}`)
+=======
+   * 确认管理员论文解析结果
+   */
+  confirmParseResult(
+    paperId: string,
+    parseId: string,
+    request: ConfirmParseResultRequest
+  ): Promise<UnifiedResult<ConfirmParseResultResult>> {
+    return callAndNormalize<ConfirmParseResultResult>(
+      apiClient.post(`/admin/papers/${paperId}/parse-results/${parseId}/confirm`, request)
+>>>>>>> origin/main
     );
   },
 
   /**
+<<<<<<< HEAD
    * 删除指定的解析会话
    */
   deleteParsingSession(
@@ -1150,6 +1271,28 @@ export const adminPaperService = {
   ): Promise<UnifiedResult<null>> {
     return callAndNormalize<null>(
       apiClient.delete(`/admin/papers/${paperId}/sections/${sectionId}/parsing-sessions/${sessionId}`)
+=======
+   * 丢弃管理员论文解析结果
+   */
+  discardParseResult(
+    paperId: string,
+    parseId: string
+  ): Promise<UnifiedResult<DiscardParseResultResult>> {
+    return callAndNormalize<DiscardParseResultResult>(
+      apiClient.post(`/admin/papers/${paperId}/parse-results/${parseId}/discard`, {})
+    );
+  },
+
+  /**
+   * 保存所有管理员论文解析结果
+   */
+  saveAllParseResult(
+    paperId: string,
+    parseId: string
+  ): Promise<UnifiedResult<SaveAllParseResultResult>> {
+    return callAndNormalize<SaveAllParseResultResult>(
+      apiClient.post(`/admin/papers/${paperId}/parse-results/${parseId}/save-all`, {})
+>>>>>>> origin/main
     );
   },
 
@@ -1209,4 +1352,8 @@ export function usePaperService() {
     adminPaperService,
     paperCache,
   };
+<<<<<<< HEAD
 }
+=======
+}
+>>>>>>> origin/main

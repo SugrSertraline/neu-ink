@@ -183,6 +183,21 @@ export default function ParseReferencesDialog({
               <li>预印本：[3] L. Wang, "Preprint title," arXiv:1234.5678, 2021.</li>
               <li>书籍：[4] M. Brown, "Book title," Publisher, 2018.</li>
             </ul>
+<<<<<<< HEAD
+=======
+            
+            <div className="mt-4 p-3 bg-blue-50 dark:bg-blue-900/20 rounded-lg border border-blue-200 dark:border-blue-800">
+              <h4 className="text-sm font-medium text-blue-800 dark:text-blue-200 mb-2">
+                📝 编号处理说明
+              </h4>
+              <ul className="text-xs text-blue-700 dark:text-blue-300 space-y-1">
+                <li>• <strong>连续编号</strong>：如 [1], [2], [3] - 保持原编号</li>
+                <li>• <strong>不连续编号</strong>：如 [1], [3] - 无编号内容将自动分配新编号</li>
+                <li>• <strong>无编号</strong>：系统会自动按顺序分配编号 (1, 2, 3...)</li>
+                <li>• <strong>混合格式</strong>：支持有编号和无编号参考文献混合输入</li>
+              </ul>
+            </div>
+>>>>>>> origin/main
           </div>
 
           <div>
@@ -195,7 +210,26 @@ export default function ParseReferencesDialog({
                 setText(e.target.value);
                 if (error) setError(null); // Clear error when user starts typing
               }}
+<<<<<<< HEAD
               placeholder={`请粘贴参考文献内容，例如：\n\n[1] J. Liu, Z. Lu, and W. Du, "Combining enterprise knowledge graph and news sentiment analysis for stock price prediction," *Hawaii International Conference on System Sciences*, 2019.\n[22] T. Jochem and F. S. Peters, "Bias propagation in economically linked firms," Available at SSRN 2698365, 2019.\n[23] J. Cao et al., "Too sensitive to fail: The impact of sentiment connectedness on stock price crash risk," Entropy, vol. 27, no. 4, p. 345, 2025.`}
+=======
+              placeholder={`请粘贴参考文献内容，例如：
+
+【有编号格式】
+[1] J. Liu, Z. Lu, and W. Du, "Combining enterprise knowledge graph and news sentiment analysis for stock price prediction," *Hawaii International Conference on System Sciences*, 2019.
+[22] T. Jochem and F. S. Peters, "Bias propagation in economically linked firms," Available at SSRN 2698365, 2019.
+[23] J. Cao et al., "Too sensitive to fail: The impact of sentiment connectedness on stock price crash risk," Entropy, vol. 27, no. 4, p. 345, 2025.
+
+【无编号格式】
+M. Brown, "Book title," Publisher, 2018.
+K. Johnson et al., "Another paper title," Conference Name, 2019.
+L. Wang, "Preprint title," arXiv:1234.5678, 2021.
+
+【混合格式】
+[1] J. Smith, "Title of paper," Journal Name, vol. 10, no. 2, pp. 123-145, 2020.
+A. Garcia, "Unnumbered reference," Another Journal, 2021.
+[3] B. Chen et al., "Third reference," Conference Name, 2022.`}
+>>>>>>> origin/main
               rows={12}
               className="w-full rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-slate-800 px-3 py-2 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:border-blue-500 focus:ring-1 focus:ring-blue-500 resize-none font-mono text-sm"
               disabled={isLoading}

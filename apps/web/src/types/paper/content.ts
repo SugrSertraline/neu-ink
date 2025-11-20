@@ -1,4 +1,8 @@
+<<<<<<< HEAD
 // 论文内容类型定义（InlineContent 和 BlockContent）
+=======
+// 论文内容类型定义(InlineContent 和 BlockContent)
+>>>>>>> origin/main
 
 // —— 内联元素类型 ——
 export interface TextNode {
@@ -133,8 +137,13 @@ export type TableCellContent = string | {
 // 表格单元格定义
 export interface TableCell {
   content: TableCellContent;
+<<<<<<< HEAD
   colspan?: number; // 跨列数，默认为1
   rowspan?: number; // 跨行数，默认为1
+=======
+  colspan?: number; // 跨列数,默认为1
+  rowspan?: number; // 跨行数,默认为1
+>>>>>>> origin/main
   isHeader?: boolean; // 是否为表头单元格
   align?: 'left' | 'center' | 'right'; // 单元格对齐方式
 }
@@ -157,11 +166,19 @@ export interface TableBlock {
     zh?: InlineContent[];
   };
   // 使用新的表格结构
+<<<<<<< HEAD
   headers?: TableRow[]; // 表头行数组，支持多行表头
   rows: TableRow[]; // 数据行数组
   // 保持向后兼容的默认对齐方式
   align?: ('left' | 'center' | 'right')[];
   // 新增：表格整体样式
+=======
+  headers?: TableRow[]; // 表头行数组,支持多行表头
+  rows: TableRow[]; // 数据行数组
+  // 保持向后兼容的默认对齐方式
+  align?: ('left' | 'center' | 'right')[];
+  // 新增:表格整体样式
+>>>>>>> origin/main
   style?: {
     borderless?: boolean; // 无边框
     compact?: boolean; // 紧凑模式
@@ -219,6 +236,7 @@ export interface DividerBlock {
   type: 'divider';
 }
 
+<<<<<<< HEAD
 export interface LoadingBlock {
   id: string;
   type: 'loading';
@@ -231,6 +249,21 @@ export interface LoadingBlock {
   createdAt?: string;
   completedAt?: string;
   sessionId?: string;
+=======
+
+export interface ParsingBlock {
+  id: string;
+  type: 'parsing';
+  stage: 'structuring' | 'translating' | 'failed' | 'pending_confirmation' | 'completed';
+  message: string;
+  createdAt: string;
+  // 新增:解析完成待确认时的字段
+  parsedBlocks?: BlockContent[];
+  sessionId?: string;
+  // 新增:新解析流程的字段
+  parseId?: string;
+  tempBlockId?: string;
+>>>>>>> origin/main
 }
 
 export type BlockContent =
@@ -244,4 +277,8 @@ export type BlockContent =
   | UnorderedListBlock
   | QuoteBlock
   | DividerBlock
+<<<<<<< HEAD
   | LoadingBlock;
+=======
+  | ParsingBlock;
+>>>>>>> origin/main

@@ -52,19 +52,31 @@ def create_response(
     }
 
 
+<<<<<<< HEAD
 def success_response(data: Any = None, message: str = ResponseMessage.SUCCESS) -> tuple:
+=======
+def success_response(data: Any = None, message: str = ResponseMessage.SUCCESS, business_code: int = 0) -> tuple:
+>>>>>>> origin/main
     """
     创建成功响应
     
     Args:
         data: 响应数据
         message: 响应消息
+<<<<<<< HEAD
+=======
+        business_code: 业务码，默认为0表示成功
+>>>>>>> origin/main
     
     Returns:
         (响应字典, 状态码)
     """
     business_response = {
+<<<<<<< HEAD
         "code": 0,  # BusinessCode.SUCCESS
+=======
+        "code": business_code,  # 使用传入的业务码，默认为BusinessCode.SUCCESS
+>>>>>>> origin/main
         "message": message or ResponseMessage.SUCCESS,
         "data": data
     }
@@ -123,6 +135,12 @@ def bad_request_response(message: str = ResponseMessage.INVALID_PARAMS) -> tuple
     Returns:
         (响应字典, 状态码)
     """
+<<<<<<< HEAD
+=======
+    # 确保错误消息不为空
+    if not message:
+        message = ResponseMessage.INVALID_PARAMS
+>>>>>>> origin/main
     return error_response(ResponseCode.BAD_REQUEST, message)
 
 
@@ -188,6 +206,12 @@ def internal_error_response(message: str = ResponseMessage.INTERNAL_ERROR) -> tu
     Returns:
         (响应字典, 状态码)
     """
+<<<<<<< HEAD
+=======
+    # 确保错误消息不为空
+    if not message:
+        message = ResponseMessage.INTERNAL_ERROR
+>>>>>>> origin/main
     return error_response(ResponseCode.INTERNAL_ERROR, message)
 
 
@@ -225,7 +249,11 @@ def sanitize_user_data(user_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     safe_data = user_data.copy()
     
+<<<<<<< HEAD
     # 移除敏感字段
+=======
+    # 移除敏感字段，但保留 role 字段
+>>>>>>> origin/main
     if "password" in safe_data:
         del safe_data["password"]
     
@@ -239,4 +267,11 @@ def sanitize_user_data(user_data: Dict[str, Any]) -> Dict[str, Any]:
     if "updatedAt" in safe_data and isinstance(safe_data["updatedAt"], datetime):
         safe_data["updatedAt"] = safe_data["updatedAt"].isoformat()
     
+<<<<<<< HEAD
+=======
+    # 确保 role 字段存在
+    if "role" not in safe_data and "role" in user_data:
+        safe_data["role"] = user_data["role"]
+    
+>>>>>>> origin/main
     return safe_data

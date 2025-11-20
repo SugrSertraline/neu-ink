@@ -7,6 +7,10 @@ import { BookOpen, Library, Settings, CheckSquare, Users } from 'lucide-react';
 
 import { useAuth } from '@/contexts/AuthContext';
 import { useTabStore } from '@/stores/useTabStore';
+<<<<<<< HEAD
+=======
+import { SidebarProvider } from '@/stores/useSidebarStore';
+>>>>>>> origin/main
 import { NavItem } from '@/types/navigation';
 
 import TabBar from './TabBar';
@@ -274,6 +278,7 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
   }, [pathname, tabs, activeTabId, setLoading, router]);
 
   return (
+<<<<<<< HEAD
     <div className="relative min-h-screen overflow-hidden bg-linear-to-br from-[#edf1f8] via-white to-[#e0e7f5] text-slate-900">
       <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_80%_at_15%_25%,rgba(40,65,138,0.16),transparent),radial-gradient(45%_60%_at_85%_30%,rgba(247,194,66,0.12),transparent)]" />
       <div className="pointer-events-none absolute inset-x-0 bottom-[-20%] h-[36%] blur-3xl bg-[linear-gradient(120deg,rgba(40,65,138,0.12),rgba(247,194,66,0.12),rgba(89,147,205,0.12))]" />
@@ -307,6 +312,43 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
         </div>
       </div>
     </div>
+=======
+    <SidebarProvider>
+      <div className="relative min-h-screen overflow-hidden bg-linear-to-br from-[#edf1f8] via-white to-[#e0e7f5] text-slate-900">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_80%_at_15%_25%,rgba(40,65,138,0.16),transparent),radial-gradient(45%_60%_at_85%_30%,rgba(247,194,66,0.12),transparent)]" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-[-20%] h-[36%] blur-3xl bg-[linear-gradient(120deg,rgba(40,65,138,0.12),rgba(247,194,66,0.12),rgba(89,147,205,0.12))]" />
+
+        <div className="relative z-10 flex h-screen max-h-screen items-stretch gap-4 px-5 py-4">
+          <Sidebar
+            navItems={visibleNavItems}
+            activeTabId={activeTabId}
+            loadingTabId={loadingTabId}
+            onNavigate={handleNavigate}
+            user={user}
+            isAdmin={isAdmin}
+            isAuthenticated={isAuthenticated}
+          />
+
+          <div
+            className="flex-1 flex flex-col min-w-0 rounded-2xl border border-white/70 bg-white/70 backdrop-blur-2xl shadow-[0_16px_52px_rgba(15,23,42,0.15)] overflow-hidden transition-all duration-300 ease-in-out"
+            data-glow="true"
+          >
+            <TabBar
+              navItems={navigationConfig}
+              onNavigate={handleNavigate}
+              onCloseTab={handleCloseTab}
+              isAuthenticated={isAuthenticated}
+            />
+
+           <main className="flex-1 min-h-0 bg-white/78 backdrop-blur-xl overflow-y-auto relative">
+
+              {children}
+            </main>
+          </div>
+        </div>
+      </div>
+    </SidebarProvider>
+>>>>>>> origin/main
   );
 }
 

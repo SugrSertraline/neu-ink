@@ -6,8 +6,29 @@ import type {
     ParagraphBlock,
   } from '@/types/paper';
   
+<<<<<<< HEAD
   export const generateId = (prefix: string) =>
     `${prefix}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+=======
+  export const generateId = (prefix: string) => {
+    // 生成 UUID v4 格式的 ID
+    const generateUUID = () => {
+      return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+        const r = Math.random() * 16 | 0;
+        const v = c === 'x' ? r : (r & 0x3 | 0x8);
+        return v.toString(16);
+      });
+    };
+    
+    // 如果没有前缀，直接返回 UUID
+    if (!prefix) {
+      return generateUUID();
+    }
+    
+    // 如果有前缀，返回 UUID（不再使用前缀，保持与后端一致的格式）
+    return generateUUID();
+  };
+>>>>>>> origin/main
   
   export const createEmptyReference = (): Reference => ({
     id: generateId('ref'),

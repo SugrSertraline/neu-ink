@@ -1,5 +1,9 @@
 """
 大模型工具类
+<<<<<<< HEAD
+=======
+提供基础的大模型调用方法，不包含具体业务逻辑
+>>>>>>> origin/main
 支持多种大模型调用，目前集成 GLM-4.6 模型
 """
 
@@ -15,7 +19,11 @@ logger = logging.getLogger(__name__)
 
 
 class LLMUtils:
+<<<<<<< HEAD
     """大模型工具类"""
+=======
+    """大模型工具类 - 只提供基础调用方法"""
+>>>>>>> origin/main
     
     def __init__(self):
         """初始化配置"""
@@ -62,6 +70,7 @@ class LLMUtils:
             logger.error(f"LLM调用失败: {e}")
             return None
     
+<<<<<<< HEAD
     def call_llm_stream(
         self,
         messages: List[Dict[str, str]],
@@ -181,6 +190,8 @@ class LLMUtils:
             logger.error(f"提取论文元数据时出错: {e}")
             return None
     
+=======
+>>>>>>> origin/main
     def simple_text_chat(self, user_message: str, system_message: str = "你是一个有用的AI助手。") -> Optional[str]:
         """
         简单的文本对话接口
@@ -204,6 +215,7 @@ class LLMUtils:
         
         return None
 
+<<<<<<< HEAD
     def parse_text_to_blocks(self, text: str, section_context: str = "") -> List[Dict[str, Any]]:
         """
         解析文本并生成适合添加到section中的block结构
@@ -856,6 +868,8 @@ Key advantages include:
             else:
                 raise Exception(f"LLM解析失败: {e}")
 
+=======
+>>>>>>> origin/main
     def _clean_json_response(self, content: str) -> str:
         """清理LLM响应，尽可能提取出纯净的JSON内容"""
         import re
@@ -960,6 +974,7 @@ Key advantages include:
         except Exception as save_error:
             logger.error(f"保存错误日志失败: {save_error}")
 
+<<<<<<< HEAD
     def parse_text_to_blocks_and_save(
         self,
         text: str,
@@ -1253,6 +1268,8 @@ Key advantages include:
             logger.error(f"参考文献解析失败: {e}")
             raise Exception(f"参考文献解析失败: {e}")
 
+=======
+>>>>>>> origin/main
 
 # 全局实例
 _llm_utils: Optional[LLMUtils] = None
@@ -1262,4 +1279,8 @@ def get_llm_utils() -> LLMUtils:
     global _llm_utils
     if _llm_utils is None:
         _llm_utils = LLMUtils()
+<<<<<<< HEAD
     return _llm_utils
+=======
+    return _llm_utils
+>>>>>>> origin/main

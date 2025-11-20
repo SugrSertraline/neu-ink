@@ -81,6 +81,13 @@ celerybeat-schedule
 
 # Environments
 .env
+<<<<<<< HEAD
+=======
+.env.local
+.env.production
+.env.development
+.env.example
+>>>>>>> origin/main
 .venv
 env/
 venv/
@@ -150,4 +157,14 @@ node_modules/
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+<<<<<<< HEAD
 .next
+=======
+.next
+
+# Qiniu SDK cache files (contains sensitive keys)
+*.qiniu_pythonsdk_hostscache.json
+
+# KiloCode configuration directory
+.kilocode/
+>>>>>>> origin/main
