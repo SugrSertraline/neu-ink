@@ -334,7 +334,7 @@ export default function ParseResultsManager({
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-6xl max-h-[85vh] overflow-hidden rounded-2xl border border-white/45 bg-white/55 shadow-[0_28px_72px_rgba(15,23,42,0.28)] backdrop-blur-xl flex flex-col p-0">
-        <DialogHeader className="flex items-center justify-between border-b border-white/40 bg-white/50 px-6 py-5 flex-shrink-0">
+        <DialogHeader className="flex items-center justify-between border-b border-white/40 bg-white/50 px-6 py-5 shrink-0">
           <div className="text-left">
             <DialogTitle className="text-lg font-semibold text-slate-900">解析结果管理</DialogTitle>
             <DialogDescription className="text-sm text-slate-600 mt-1">
@@ -463,7 +463,7 @@ export default function ParseResultsManager({
           )}
         </div>
 
-        <DialogFooter className="flex items-center justify-end gap-3 border-t border-white/40 bg-white/45 px-6 py-5 flex-shrink-0">
+        <DialogFooter className="flex items-center justify-end gap-3 border-t border-white/40 bg-white/45 px-6 py-5 shrink-0">
           <Button
             variant="outline"
             onClick={handleDiscard}

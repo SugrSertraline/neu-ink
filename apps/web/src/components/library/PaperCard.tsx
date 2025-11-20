@@ -10,6 +10,7 @@ import {
   Bookmark,
   Clock,
   Loader2,
+  CheckCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -394,7 +395,8 @@ export default function PaperCard({
                 <span className="text-xs text-[#28418A]">登录后查看详情</span>
               )}
               {isInLibrary ? (
-                <span className="text-xs text-[#28418A] bg-[#28418A]/10 px-2 py-1 rounded-md border border-[#28418A]/30 backdrop-blur-sm">
+                <span className="inline-flex items-center gap-1 text-xs text-emerald-700 bg-emerald-100/60 px-2 py-1 rounded-md border border-emerald-200/50 backdrop-blur-sm dark:text-emerald-300 dark:bg-emerald-900/40 dark:border-emerald-700/50">
+                  <CheckCircle className="h-3 w-3" />
                   已在个人论文库中
                 </span>
               ) : onAddToLibrary && (

@@ -426,6 +426,59 @@ export const userPaperService = {
        apiClient.upload(`/user/papers/${userPaperId}/upload-markdown`, formData)
      );
   },
+
+  /**
+   * 通过PDF解析生成Markdown
+   */
+  parsePdfToMarkdown(
+     userPaperId: string,
+     autoUpload: boolean = true
+  ): Promise<UnifiedResult<{ taskId: string; message: string }>> {
+    return callAndNormalize<{ taskId: string; message: string }>(
+      apiClient.post(`/user/papers/${userPaperId}/parse-pdf-to-markdown`, { autoUpload })
+    );
+  },
+
+  /**
+   * 获取PDF解析任务状态
+   */
+  getPdfParseTaskStatus(
+     userPaperId: string,
+     taskId: string
+  ): Promise<UnifiedResult<{
+    taskId: string;
+    status: string;
+    progress: number;
+    message: string;
+    markdownContent?: string;
+    markdownAttachment?: any;
+    createdAt: string;
+    updatedAt: string;
+  }>> {
+    return callAndNormalize<{
+    taskId: string;
+    status: string;
+    progress: number;
+    message: string;
+    markdownContent?: string;
+    markdownAttachment?: any;
+    createdAt: string;
+    updatedAt: string;
+  }>(
+      apiClient.get(`/user/papers/${userPaperId}/pdf-parse-tasks/${taskId}`)
+    );
+  },
+
+  /**
+   * 获取用户论文的所有PDF解析任务
+   */
+  getPdfParseTasks(
+     userPaperId: string
+  ): Promise<UnifiedResult<{ tasks: any[] }>> {
+    return callAndNormalize<{ tasks: any[] }>(
+      apiClient.get(`/user/papers/${userPaperId}/pdf-parse-tasks`)
+    );
+  },
 };
 
 // —— 笔记服务 —— //
@@ -856,6 +909,59 @@ export const adminPaperService = {
     return callAndNormalize<{ url: string; key: string; size: number; uploadedAt: string }>(
        apiClient.upload(`/admin/papers/${paperId}/upload-markdown`, formData)
      );
+  },
+
+  /**
+   * 通过PDF解析生成Markdown
+   */
+  parsePdfToMarkdown(
+     paperId: string,
+     autoUpload: boolean = true
+  ): Promise<UnifiedResult<{ taskId: string; message: string }>> {
+    return callAndNormalize<{ taskId: string; message: string }>(
+      apiClient.post(`/admin/papers/${paperId}/parse-pdf-to-markdown`, { autoUpload })
+    );
+  },
+
+  /**
+   * 获取PDF解析任务状态
+   */
+  getPdfParseTaskStatus(
+     paperId: string,
+     taskId: string
+  ): Promise<UnifiedResult<{
+    taskId: string;
+    status: string;
+    progress: number;
+    message: string;
+    markdownContent?: string;
+    markdownAttachment?: any;
+    createdAt: string;
+    updatedAt: string;
+  }>> {
+    return callAndNormalize<{
+    taskId: string;
+    status: string;
+    progress: number;
+    message: string;
+    markdownContent?: string;
+    markdownAttachment?: any;
+    createdAt: string;
+    updatedAt: string;
+  }>(
+      apiClient.get(`/admin/papers/${paperId}/pdf-parse-tasks/${taskId}`)
+    );
+  },
+
+  /**
+   * 获取论文的所有PDF解析任务
+   */
+  getPdfParseTasks(
+     paperId: string
+  ): Promise<UnifiedResult<{ tasks: any[] }>> {
+    return callAndNormalize<{ tasks: any[] }>(
+      apiClient.get(`/admin/papers/${paperId}/pdf-parse-tasks`)
+    );
   },
 };
 

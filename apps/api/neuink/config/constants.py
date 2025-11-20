@@ -144,9 +144,9 @@ class QiniuConfig:
     
     # 上传策略配置
     UPLOAD_POLICY = {
-        "mimeLimit": "image/*;application/pdf;text/*",  # 限制上传文件类型
+        "mimeLimit": "image/*;application/pdf;text/plain;text/markdown;text/x-markdown;application/octet-stream;application/zip",  # 限制上传文件类型，添加markdown和zip支持
         "fsizeLimit": 52428800,  # 限制文件大小为50MB (50 * 1024 * 1024)
-        "detectMime": 1,  # 自动检测MIME类型
+        "detectMime": 0,  # 禁用自动MIME检测，使用指定的MIME类型
     }
     
     # 文件路径前缀配置

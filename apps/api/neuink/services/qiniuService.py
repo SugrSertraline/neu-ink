@@ -50,7 +50,7 @@ class QiniuService:
         token = self.auth.upload_token(self.bucket_name, key, expires, policy)
         return token
     
-    def generate_file_key(self, file_extension: str, prefix: str = None, file_type: str = None) -> str:
+    def generate_file_key(self, file_extension: str, prefix: str = None, file_type: str = None, filename: str = None) -> str:
         """
         生成文件在七牛云中的存储路径
         
@@ -58,6 +58,7 @@ class QiniuService:
             file_extension: 文件扩展名（如 .jpg, .png）
             prefix: 文件路径前缀，优先使用此参数
             file_type: 文件类型（image, document, markdown, paper_image），用于获取对应前缀
+            filename: 自定义文件名（不包含扩展名），如果提供则使用此文件名
             
         Returns:
             文件存储路径
@@ -68,15 +69,18 @@ class QiniuService:
         elif prefix is None:
             prefix = QiniuConfig.FILE_PREFIX
         
-        # 生成唯一文件名
-        timestamp = int(time.time())
-        unique_id = str(uuid.uuid4())[:8]
-        filename = f"{timestamp}_{unique_id}{file_extension}"
+        # 如果提供了自定义文件名，则使用它；否则生成唯一文件名
+        if filename is not None:
+            final_filename = f"{filename}{file_extension}"
+        else:
+            timestamp = int(time.time())
+            unique_id = str(uuid.uuid4())[:8]
+            final_filename = f"{timestamp}_{unique_id}{file_extension}"
         
         # 组合完整路径
-        return f"{prefix}{filename}"
+        return f"{prefix}{final_filename}"
     
-    def upload_file_data(self, file_data: bytes, file_extension: str, prefix: str = None, file_type: str = None) -> Dict[str, Any]:
+    def upload_file_data(self, file_data: bytes, file_extension: str, prefix: str = None, file_type: str = None, filename: str = None) -> Dict[str, Any]:
         """
         上传文件数据到七牛云
         
@@ -85,13 +89,17 @@ class QiniuService:
             file_extension: 文件扩展名（如 .jpg, .png）
             prefix: 文件路径前缀，优先使用此参数
             file_type: 文件类型（image, document, markdown, paper_image），用于获取对应前缀
+            filename: 自定义文件名（不包含扩展名），如果提供则使用此文件名
             
         Returns:
             上传结果，包含文件URL等信息
         """
         try:
             # 生成文件存储路径
-            key = self.generate_file_key(file_extension, prefix, file_type)
+            key = self.generate_file_key(file_extension, prefix, file_type, filename)
+            
+            # 获取MIME类型
+            mime_type = self._get_content_type(file_extension)
             
             # 生成上传凭证
             token = self.generate_upload_token(key)
@@ -102,9 +110,10 @@ class QiniuService:
             print(f"[DEBUG] Key: {key}")
             print(f"[DEBUG] Token: {token[:50]}..." if len(token) > 50 else f"[DEBUG] Token: {token}")
             print(f"[DEBUG] File size: {len(file_data)} bytes")
+            print(f"[DEBUG] MIME type: {mime_type}")
             
-            # 上传文件数据
-            ret, info = put_data(token, key, file_data)
+            # 上传文件数据，指定MIME类型
+            ret, info = put_data(token, key, file_data, mime_type=mime_type)
             
             # 记录上传后的调试信息
             print(f"[DEBUG] 上传结果:")

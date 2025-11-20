@@ -215,8 +215,13 @@ export default function Sidebar({
                   className="p-3 flex justify-center rounded-xl border border-white/60 bg-white/75 backdrop-blur-2xl shadow-[0_14px_30px_rgba(40,65,138,0.18)] transition-all duration-300 cursor-pointer"
                   data-glow="true"
                 >
-                  <div className="w-8 h-8 rounded-full bg-linear-to-r from-[#28418A] to-[#3F66B0] flex items-center justify-center text-white text-sm font-semibold">
-                    {(user?.nickname || user?.username || 'U').charAt(0).toUpperCase()}
+                  <div className="relative">
+                    <div className="w-8 h-8 rounded-full bg-linear-to-r from-[#28418A] to-[#3F66B0] flex items-center justify-center text-white text-sm font-semibold">
+                      {(user?.nickname || user?.username || 'U').charAt(0).toUpperCase()}
+                    </div>
+                    {isAdmin && (
+                      <div className="absolute -bottom-1 -right-1 w-3 h-3 rounded-full bg-linear-to-r from-[#28418A] to-[#3F66B0] border-2 border-white shadow-[0_0_8px_rgba(40,65,138,0.5)]" />
+                    )}
                   </div>
                 </div>
               </TooltipTrigger>

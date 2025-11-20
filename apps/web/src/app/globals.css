@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
 
 
 @font-face {
@@ -422,5 +423,29 @@
 
 .fade-out-0 {
   animation-name: fade-out-0;
+}
+
+/* 确保 Markdown 内容可以选择和复制 */
+.prose {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+.prose * {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
+}
+
+/* 确保代码块也可以选择 */
+.prose pre,
+.prose code {
+  user-select: text;
+  -webkit-user-select: text;
+  -moz-user-select: text;
+  -ms-user-select: text;
 }
 
