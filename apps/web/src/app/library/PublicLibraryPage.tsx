@@ -2,7 +2,7 @@
 'use client';
 
 import React from 'react';
-import { Library, Plus, Loader2 } from 'lucide-react';
+import { Library, Plus, Loader2, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 import { Button } from '@/components/ui/button';
@@ -168,6 +168,17 @@ export default function PublicLibraryPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={reload}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-600 transition hover:border-white/60 hover:bg-white/70 hover:text-slate-900 disabled:opacity-50"
+              title="刷新获取最新解析进度"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              刷新进度
+            </Button>
             {isAdmin && (
               <Button
                 size="sm"
@@ -350,13 +361,17 @@ export default function PublicLibraryPage() {
                 if (payload.mode === 'manual') {
                   const data = buildCreatePayload(payload.data);
                   await adminPaperService.createPaper(data);
-                } else {
+                } else if (payload.mode === 'text') {
                   await adminPaperService.createPaperFromText({ text: payload.text.trim() });
+                } else if (payload.mode === 'pdf') {
+                  await adminPaperService.createPaperFromPdf(payload.file);
                 }
               } catch (e: any) {
                 const errorMessage = e?.message || '创建失败';
                 if (errorMessage.includes('文本解析失败')) {
                   toast.error('文本解析失败，建议使用手动输入模式或检查文本格式');
+                } else if (errorMessage.includes('PDF解析')) {
+                  toast.error('PDF解析失败，请检查文件格式或稍后重试');
                 } else {
                   toast.error(`创建失败：${errorMessage}`);
                 }

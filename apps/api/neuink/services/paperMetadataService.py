@@ -45,7 +45,7 @@ class PaperMetadataService:
             raise RuntimeError(f"LLM 不可用: {e}")
 
         # 构建提示词
-        user_prompt = f"{PAPER_METADATA_EXTRACTION_USER_PROMPT_TEMPLATE}\n\n{text[:40000]}"  # 限制文本长度
+        user_prompt = f"{PAPER_METADATA_EXTRACTION_USER_PROMPT_TEMPLATE}\n\n{text[:20000]}"  # 限制文本长度
         
         messages = [
             {"role": "system", "content": PAPER_METADATA_EXTRACTION_SYSTEM_PROMPT},
@@ -86,6 +86,60 @@ class PaperMetadataService:
             logger.error(f"提取论文元数据时出错: {e}")
             raise RuntimeError(f"LLM 解析失败: {e}")
 
+    def _translate_text(self, text: str, target_lang: str = "zh") -> Optional[str]:
+        """
+        使用LLM翻译文本
+        
+        Args:
+            text: 要翻译的文本
+            target_lang: 目标语言，默认为中文("zh")
+            
+        Returns:
+            翻译后的文本，如果翻译失败返回None
+        """
+        if not text or not text.strip():
+            return None
+            
+        try:
+            # 检查API可用性
+            provider = self.llm_utils._get_provider()
+            if not provider.api_key or provider.api_key == "your_glm_api_key_here":
+                raise RuntimeError("LLM 不可用：未配置或使用了占位 GLM_API_KEY")
+            
+            # 构建翻译提示词
+            if target_lang == "zh":
+                system_prompt = "你是一个专业的学术翻译助手。请将以下英文文本翻译为准确、专业的中文。保持学术术语的准确性和专业性。只返回翻译后的中文文本，不要包含任何解释或额外内容。"
+            else:
+                system_prompt = "你是一个专业的学术翻译助手。请将以下中文文本翻译为准确、专业的英文。保持学术术语的准确性和专业性。只返回翻译后的英文文本，不要包含任何解释或额外内容。"
+            
+            user_prompt = f"请翻译以下文本：\n\n{text}"
+            
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ]
+            
+            # 调用LLM
+            response = self.llm_utils.call_llm(messages, temperature=0.3)
+            
+            if not response or 'choices' not in response:
+                logger.error("翻译LLM响应格式错误")
+                return None
+                
+            content = response['choices'][0]['message']['content'].strip()
+            
+            # 清理可能的格式标记
+            if content.startswith('"') and content.endswith('"'):
+                content = content[1:-1]
+            if content.startswith("'") and content.endswith("'"):
+                content = content[1:-1]
+            
+            return content if content else None
+            
+        except Exception as e:
+            logger.error(f"翻译文本时出错: {e}")
+            return None
+
     def create_paper_from_text(self, text: str, creator_id: str, is_public: bool = True) -> Dict[str, Any]:
         """
         从文本创建论文，通过大模型解析 metadata、abstract 和 keywords
@@ -124,7 +178,22 @@ class PaperMetadataService:
                     "zh": str(abstract_data.get("zh", ""))
                 }
             else:
-                abstract = {"en": str(abstract_data), "zh": ""}
+                # 当摘要不是字典格式时，需要翻译摘要内容
+                abstract_text = str(abstract_data)
+                try:
+                    # 尝试使用LLM翻译摘要
+                    translation_result = self._translate_text(abstract_text, target_lang="zh")
+                    abstract = {
+                        "en": abstract_text,
+                        "zh": translation_result if translation_result else abstract_text
+                    }
+                except Exception as e:
+                    logger.error(f"翻译摘要失败: {e}")
+                    # 如果翻译失败，使用原文作为中文摘要
+                    abstract = {
+                        "en": abstract_text,
+                        "zh": abstract_text
+                    }
             
             paper_data = {
                 "isPublic": is_public,
@@ -215,7 +284,22 @@ class PaperMetadataService:
                     "zh": str(abstract_data.get("zh", ""))
                 }
             else:
-                abstract = {"en": str(abstract_data), "zh": ""}
+                # 当摘要不是字典格式时，需要翻译摘要内容
+                abstract_text = str(abstract_data)
+                try:
+                    # 尝试使用LLM翻译摘要
+                    translation_result = self._translate_text(abstract_text, target_lang="zh")
+                    abstract = {
+                        "en": abstract_text,
+                        "zh": translation_result if translation_result else abstract_text
+                    }
+                except Exception as e:
+                    logger.error(f"翻译摘要失败: {e}")
+                    # 如果翻译失败，使用原文作为中文摘要
+                    abstract = {
+                        "en": abstract_text,
+                        "zh": abstract_text
+                    }
             
             paper_data = {
                 "isPublic": is_public,

@@ -299,7 +299,7 @@ class MinerUService:
     
     def fetch_markdown_content_and_upload(self, result_url: str, paper_id: str, qiniu_service=None) -> Dict[str, Any]:
         """
-        从结果URL获取Markdown内容并上传到七牛云
+        从结果URL获取Markdown内容和content_list.json并上传到七牛云
         
         Args:
             result_url: 结果文件的URL（ZIP格式）
@@ -307,7 +307,7 @@ class MinerUService:
             qiniu_service: 七牛云服务实例
             
         Returns:
-            上传结果，包含Markdown内容和附件信息
+            上传结果，包含Markdown内容、content_list.json内容和附件信息
         """
         try:
             logger.info(f"开始下载ZIP文件: {result_url}")
@@ -333,50 +333,91 @@ class MinerUService:
                             "error": "ZIP文件中未找到.md文件"
                         }
                     
+                    # 查找content_list.json文件
+                    json_files = [f for f in file_list if f.endswith('content_list.json')]
+                    json_file = json_files[0] if json_files else None
+                    json_content = None
+                    
                     # 优先查找full.md文件，否则使用第一个.md文件
                     md_file = "full.md" if "full.md" in md_files else md_files[0]
                     logger.info(f"使用Markdown文件: {md_file}")
+                    if json_file:
+                        logger.info(f"找到content_list.json文件: {json_file}")
                     
                     # 读取Markdown内容
                     with zip_file.open(md_file) as md_file_content:
                         markdown_content = md_file_content.read().decode('utf-8')
                         logger.info(f"成功读取Markdown内容，长度: {len(markdown_content)} 字符")
+                    
+                    # 读取content_list.json内容（如果存在）
+                    if json_file:
+                        try:
+                            with zip_file.open(json_file) as json_file_content:
+                                json_content = json_file_content.read().decode('utf-8')
+                                logger.info(f"成功读取content_list.json内容，长度: {len(json_content)} 字符")
+                        except Exception as e:
+                            logger.warning(f"读取content_list.json失败: {str(e)}")
+                            json_content = None
                         
-                        # 如果提供了七牛云服务，则上传Markdown文件
+                        # 如果提供了七牛云服务，则上传Markdown文件和JSON文件
                         if qiniu_service:
-                            # 使用论文ID作为文件名
-                            filename = f"{paper_id}.md"
-                            markdown_bytes = markdown_content.encode('utf-8')
-                            
-                            # 上传到七牛云
-                            upload_result = qiniu_service.upload_file_data(
-                                file_data=markdown_bytes,
+                            # 使用统一目录结构上传Markdown文件
+                            markdown_result = qiniu_service.upload_file_data(
+                                file_data=markdown_content.encode('utf-8'),
                                 file_extension=".md",
-                                file_type="markdown"
+                                file_type="unified_paper",
+                                filename=f"{paper_id}.md",
+                                paper_id=paper_id
                             )
                             
-                            if upload_result["success"]:
-                                return {
+                            json_result = None
+                            if json_content:
+                                # 上传content_list.json文件
+                                json_result = qiniu_service.upload_file_data(
+                                    file_data=json_content.encode('utf-8'),
+                                    file_extension=".json",
+                                    file_type="unified_paper",
+                                    filename=f"{paper_id}.json",
+                                    paper_id=paper_id
+                                )
+                            
+                            if markdown_result["success"]:
+                                result_data = {
                                     "success": True,
                                     "markdown_content": markdown_content,
                                     "markdown_attachment": {
-                                        "url": upload_result["url"],
-                                        "key": upload_result["key"],
-                                        "size": upload_result["size"],
-                                        "uploadedAt": upload_result["uploadedAt"]
+                                        "url": markdown_result["url"],
+                                        "key": markdown_result["key"],
+                                        "size": markdown_result["size"],
+                                        "uploadedAt": markdown_result["uploadedAt"]
                                     }
                                 }
+                                
+                                # 如果JSON文件上传成功，添加到结果中
+                                if json_result and json_result["success"]:
+                                    result_data["content_list_attachment"] = {
+                                        "url": json_result["url"],
+                                        "key": json_result["key"],
+                                        "size": json_result["size"],
+                                        "uploadedAt": json_result["uploadedAt"]
+                                    }
+                                    result_data["content_list_content"] = json_content
+                                
+                                return result_data
                             else:
                                 return {
                                     "success": False,
-                                    "error": f"上传Markdown文件失败: {upload_result['error']}"
+                                    "error": f"上传Markdown文件失败: {markdown_result['error']}"
                                 }
                         else:
-                            return {
+                            result_data = {
                                 "success": True,
                                 "markdown_content": markdown_content,
                                 "markdown_attachment": None
                             }
+                            if json_content:
+                                result_data["content_list_content"] = json_content
+                            return result_data
             else:
                 logger.error(f"下载ZIP文件失败，状态码: {response.status_code}")
                 return {

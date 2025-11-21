@@ -12,7 +12,7 @@ PAPER_METADATA_EXTRACTION_SYSTEM_PROMPT = """你是一个专业的学术论文�
 1. metadata（元数据）:
    - title: 论文标题
    - titleZh: 论文标题的中文翻译
-   - authors: 作者列表，格式：[{"name": "作者姓名", "affiliation": "所属机构"}]
+   - authors: 作者列表，格式：[{"name": "作者姓名", "affiliation": "所属机构"},"email":"联系邮箱"]
    - year: 发表年份
    - journal: 期刊名称
    - articleType: 文章类型（如：journal, conference, preprint）
@@ -22,7 +22,7 @@ PAPER_METADATA_EXTRACTION_SYSTEM_PROMPT = """你是一个专业的学术论文�
 2. abstract（摘要）:
    - zh: 中文摘要（如果有）
    - en: 英文摘要（如果有）
-
+   **提示**：如果内容中只有中文或者英文的摘要，自动将其翻译成另一种语言，例如如果论文有英文摘要，请将其翻译并补齐到中文摘要
 3. keywords（关键词）:
    - 关键词列表
 

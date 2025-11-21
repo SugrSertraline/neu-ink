@@ -16,6 +16,7 @@ class LLMModel(Enum):
     """支持的大模型枚举"""
     GLM_4_6 = "glm-4.6"
     GLM_4_5 = "glm-4.5"
+    GLM_4_5_AIR = "glm-4.5-air"
     GLM_4_PLUS = "glm-4-plus"
     # 未来可以扩展其他模型
     # GPT_4 = "gpt-4"
@@ -142,7 +143,7 @@ class LLMFactory:
     @staticmethod
     def create_provider(model: LLMModel) -> LLMProvider:
         """创建大模型提供者"""
-        if model in [LLMModel.GLM_4_6, LLMModel.GLM_4_5, LLMModel.GLM_4_PLUS]:
+        if model in [LLMModel.GLM_4_6, LLMModel.GLM_4_5, LLMModel.GLM_4_5_AIR, LLMModel.GLM_4_PLUS]:
             return GLMProvider(model)
         else:
             raise ValueError(f"不支持的模型: {model}")

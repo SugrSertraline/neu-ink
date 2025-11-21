@@ -576,12 +576,12 @@ export default function BlockRenderer({
 
   const renderBilingualHeading = (headingBlock: HeadingBlock) => {
     const headingSizes = {
-      1: 'text-3xl',
-      2: 'text-2xl',
-      3: 'text-xl',
-      4: 'text-lg',
-      5: 'text-base',
-      6: 'text-sm',
+      1: 'text-2xl',
+      2: 'text-xl',
+      3: 'text-lg',
+      4: 'text-base',
+      5: 'text-sm',
+      6: 'text-xs',
     } as const;
 
     const enNodes = headingBlock.content?.en ?? [];

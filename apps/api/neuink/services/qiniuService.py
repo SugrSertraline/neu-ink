@@ -50,19 +50,40 @@ class QiniuService:
         token = self.auth.upload_token(self.bucket_name, key, expires, policy)
         return token
     
-    def generate_file_key(self, file_extension: str, prefix: str = None, file_type: str = None, filename: str = None) -> str:
+    def generate_file_key(self, file_extension: str, prefix: str = None, file_type: str = None, filename: str = None, paper_id: str = None) -> str:
         """
         生成文件在七牛云中的存储路径
         
         Args:
             file_extension: 文件扩展名（如 .jpg, .png）
             prefix: 文件路径前缀，优先使用此参数
-            file_type: 文件类型（image, document, markdown, paper_image），用于获取对应前缀
+            file_type: 文件类型（image, document, markdown, paper_image, unified_paper），用于获取对应前缀
             filename: 自定义文件名（不包含扩展名），如果提供则使用此文件名
+            paper_id: 论文ID，用于统一目录结构
             
         Returns:
             文件存储路径
         """
+        # 处理统一目录结构
+        if file_type == "unified_paper" and paper_id:
+            # 使用统一目录结构：neuink/{paper_id}/
+            base_prefix = QiniuConfig.FILE_PREFIXES["unified_paper"].format(paper_id=paper_id)
+            
+            # 如果提供了自定义文件名，则使用它；否则生成唯一文件名
+            if filename is not None:
+                # 检查filename是否已经包含扩展名，避免重复添加
+                if not filename.endswith(file_extension):
+                    final_filename = f"{filename}{file_extension}"
+                else:
+                    final_filename = filename
+            else:
+                timestamp = int(time.time())
+                unique_id = str(uuid.uuid4())[:8]
+                final_filename = f"{timestamp}_{unique_id}{file_extension}"
+            
+            # 组合完整路径
+            return f"{base_prefix}{final_filename}"
+        
         # 如果没有直接指定前缀，但指定了文件类型，则使用文件类型对应的前缀
         if prefix is None and file_type is not None:
             prefix = QiniuConfig.FILE_PREFIXES.get(file_type, QiniuConfig.FILE_PREFIX)
@@ -71,7 +92,11 @@ class QiniuService:
         
         # 如果提供了自定义文件名，则使用它；否则生成唯一文件名
         if filename is not None:
-            final_filename = f"{filename}{file_extension}"
+            # 检查filename是否已经包含扩展名，避免重复添加
+            if not filename.endswith(file_extension):
+                final_filename = f"{filename}{file_extension}"
+            else:
+                final_filename = filename
         else:
             timestamp = int(time.time())
             unique_id = str(uuid.uuid4())[:8]
@@ -80,7 +105,7 @@ class QiniuService:
         # 组合完整路径
         return f"{prefix}{final_filename}"
     
-    def upload_file_data(self, file_data: bytes, file_extension: str, prefix: str = None, file_type: str = None, filename: str = None) -> Dict[str, Any]:
+    def upload_file_data(self, file_data: bytes, file_extension: str, prefix: str = None, file_type: str = None, filename: str = None, paper_id: str = None) -> Dict[str, Any]:
         """
         上传文件数据到七牛云
         
@@ -88,15 +113,16 @@ class QiniuService:
             file_data: 文件二进制数据
             file_extension: 文件扩展名（如 .jpg, .png）
             prefix: 文件路径前缀，优先使用此参数
-            file_type: 文件类型（image, document, markdown, paper_image），用于获取对应前缀
+            file_type: 文件类型（image, document, markdown, paper_image, unified_paper），用于获取对应前缀
             filename: 自定义文件名（不包含扩展名），如果提供则使用此文件名
+            paper_id: 论文ID，用于统一目录结构
             
         Returns:
             上传结果，包含文件URL等信息
         """
         try:
             # 生成文件存储路径
-            key = self.generate_file_key(file_extension, prefix, file_type, filename)
+            key = self.generate_file_key(file_extension, prefix, file_type, filename, paper_id)
             
             # 获取MIME类型
             mime_type = self._get_content_type(file_extension)
@@ -311,6 +337,7 @@ class QiniuService:
             '.pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
             '.txt': 'text/plain',
             '.md': 'text/markdown',
+            '.json': 'application/json',
         }
         
         return content_types.get(file_extension.lower(), 'application/octet-stream')

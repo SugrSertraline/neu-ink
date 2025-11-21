@@ -819,22 +819,28 @@ def parse_references(paper_id):
         # 即使解析失败，也继续处理，因为解析结果中包含了错误信息
         # 这样前端可以显示部分解析成功的结果和错误信息
         
-        parse_data = parse_result["data"]
-        parsed_references = parse_data["references"]
+        # parse_reference_text 直接返回包含 references, count, errors 的字典，不是包装在 data 中
+        parsed_references = parse_result["references"]
         
-        if not parsed_references and not parse_data["errors"]:
+        if not parsed_references and not parse_result["errors"]:
             return bad_request_response("未能从文本中解析出有效的参考文献")
         
         # 将解析后的参考文献添加到论文中
-        add_result = reference_service.add_references_to_paper(paper_id, parsed_references)
+        add_result = reference_service.add_references_to_paper(
+            paper_id=paper_id,
+            references=parsed_references,
+            user_id=g.current_user["user_id"],
+            is_admin=True,
+            is_user_paper=False
+        )
         
         if add_result["code"] == BusinessCode.SUCCESS:
             # 在响应中包含解析结果（包括错误信息）
             response_data = add_result["data"].copy()
             response_data["parseResult"] = {
-                "references": parse_data["references"],
-                "count": parse_data["count"],
-                "errors": parse_data["errors"]
+                "references": parse_result["references"],
+                "count": parse_result["count"],
+                "errors": parse_result["errors"]
             }
             return success_response(response_data, add_result["message"])
         else:
@@ -1084,7 +1090,6 @@ def get_parsing_session(paper_id, section_id, session_id):
         "createdAt": "2023-01-01T00:00:00Z",
         "updatedAt": "2023-01-01T00:05:00Z",
         "completedBlocks": [...],  // 如果已完成
-        "paperData": {...}         // 如果已完成
     }
     """
     try:
@@ -1359,8 +1364,14 @@ def upload_admin_paper_pdf(paper_id):
        from ..services.qiniuService import get_qiniu_service
        qiniu_service = get_qiniu_service()
        
-       # 上传文件到七牛云，使用PDF路径前缀
-       upload_result = qiniu_service.upload_file_data(file_data, ".pdf", file_type="pdf")
+       # 上传文件到七牛云，使用统一目录结构
+       upload_result = qiniu_service.upload_file_data(
+           file_data=file_data,
+           file_extension=".pdf",
+           file_type="unified_paper",
+           filename=f"{paper_id}.pdf",
+           paper_id=paper_id
+       )
        
        if upload_result["success"]:
            # 使用paperService更新附件
@@ -1457,8 +1468,14 @@ def upload_admin_paper_markdown(paper_id):
        if len(file_data) > max_size:
            return bad_request_response(f"文件大小超过限制，最大允许 {max_size // (1024*1024)}MB")
        
-       # 上传文件到七牛云，使用Markdown路径前缀
-       upload_result = qiniu_service.upload_file_data(file_data, ".md", file_type="markdown")
+       # 上传文件到七牛云，使用统一目录结构
+       upload_result = qiniu_service.upload_file_data(
+           file_data=file_data,
+           file_extension=".md",
+           file_type="unified_paper",
+           filename=f"{paper_id}.md",
+           paper_id=paper_id
+       )
        
        if upload_result["success"]:
            # 使用paperService更新附件
@@ -1711,6 +1728,11 @@ def get_pdf_parse_task_status(paper_id, task_id):
                                        # 更新附件信息
                                        attachments["markdown"] = markdown_attachment
                                        
+                                       # 如果有content_list.json附件，也更新
+                                       content_list_attachment = result.get("content_list_attachment")
+                                       if content_list_attachment:
+                                           attachments["content_list"] = content_list_attachment
+                                       
                                        # 更新论文附件
                                        update_result = paper_service.update_paper_attachments(
                                            paper_id=paper_id,
@@ -1741,6 +1763,11 @@ def get_pdf_parse_task_status(paper_id, task_id):
                                            task["message"] = "PDF解析完成并已上传Markdown文件"
                                            task["markdownContent"] = markdown_content
                                            task["markdownAttachment"] = attachments["markdown"]
+                                           
+                                           # 如果有content_list.json，也添加到返回信息中
+                                           if content_list_attachment:
+                                               task["contentListAttachment"] = content_list_attachment
+                                               task["contentListContent"] = result.get("content_list_content")
                                        else:
                                            # 更新任务状态为失败
                                            task_model.update_task_status(
@@ -1835,6 +1862,417 @@ def get_pdf_parse_tasks(paper_id):
        tasks = task_model.get_paper_tasks(paper_id, is_admin=True)
        
        return success_response({"tasks": tasks}, "获取解析任务列表成功")
+       
+   except Exception as exc:
+       return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/create-from-pdf", methods=["POST"])
+@login_required
+@admin_required
+def create_paper_from_pdf():
+   """
+   管理员通过PDF创建公共论文
+   
+   请求格式: multipart/form-data
+   参数:
+       file: PDF文件
+       extra: JSON字符串，包含额外的论文信息
+   """
+   try:
+       # 检查是否有文件上传
+       if 'file' not in request.files:
+           return bad_request_response("没有选择文件")
+       
+       file = request.files['file']
+       
+       # 检查文件名是否为空
+       if file.filename == '':
+           return bad_request_response("没有选择文件")
+       
+       # 检查文件类型
+       if file.content_type != 'application/pdf':
+           return bad_request_response("请选择PDF文件")
+       
+       # 获取额外信息
+       extra_data = {}
+       if request.form.get('extra'):
+           try:
+               extra_data = json.loads(request.form.get('extra'))
+           except json.JSONDecodeError:
+               return bad_request_response("extra字段格式错误，应为JSON字符串")
+       
+       # 读取文件数据
+       file_data = file.read()
+       
+       # 检查文件大小（50MB限制）
+       max_size = 50 * 1024 * 1024  # 50MB
+       if len(file_data) > max_size:
+           return bad_request_response(f"文件大小超过限制，最大允许 {max_size // (1024*1024)}MB")
+       
+       # 首先创建一个基础论文，状态为"解析中"
+       from ..services.paperService import get_paper_service
+       paper_service = get_paper_service()
+       
+       # 创建基础论文数据
+       paper_data = {
+           "metadata": {
+               "title": "解析中...",
+               "titleZh": "解析中...",
+               "authors": [],
+               "year": None,
+               "journal": None,
+               "abstract": "正在解析PDF文件，请稍候...",
+               "abstractZh": "正在解析PDF文件，请稍候...",
+               "keywords": [],
+               "keywordsZh": []
+           },
+           "isPublic": True,
+           "parseStatus": "parsing",  # 设置解析状态
+           "attachments": {}
+       }
+       
+       # 创建论文
+       create_result = paper_service.create_paper(paper_data, g.current_user["user_id"])
+       
+       if create_result["code"] != BusinessCode.SUCCESS:
+           return bad_request_response(f"创建论文失败: {create_result['message']}")
+       
+       paper = create_result["data"]
+       paper_id = paper["id"]
+       
+       # 导入上传服务
+       from ..services.qiniuService import get_qiniu_service
+       qiniu_service = get_qiniu_service()
+       
+       # 上传PDF文件到七牛云
+       upload_result = qiniu_service.upload_file_data(
+           file_data=file_data,
+           file_extension=".pdf",
+           file_type="unified_paper",
+           filename=f"{paper_id}.pdf",
+           paper_id=paper_id
+       )
+       
+       if not upload_result["success"]:
+           # 如果上传失败，删除已创建的论文
+           paper_service.delete_paper(paper_id, g.current_user["user_id"], is_admin=True)
+           return internal_error_response(f"PDF上传失败: {upload_result['error']}")
+       
+       # 更新论文附件信息
+       attachments = {
+           "pdf": {
+               "url": upload_result["url"],
+               "key": upload_result["key"],
+               "size": upload_result["size"],
+               "uploadedAt": upload_result["uploadedAt"]
+           }
+       }
+       
+       update_result = paper_service.update_paper_attachments(
+           paper_id=paper_id,
+           attachments=attachments,
+           user_id=g.current_user["user_id"],
+           is_admin=True
+       )
+       
+       if update_result["code"] != BusinessCode.SUCCESS:
+           # 如果更新失败，删除已创建的论文和上传的文件
+           paper_service.delete_paper(paper_id, g.current_user["user_id"], is_admin=True)
+           qiniu_service.delete_file(upload_result["key"])
+           return bad_request_response(f"更新论文附件失败: {update_result['message']}")
+       
+       # 提交PDF解析任务
+       from ..services.mineruService import get_mineru_service
+       from ..models.pdfParseTask import get_pdf_parse_task_model
+       
+       mineru_service = get_mineru_service()
+       task_model = get_pdf_parse_task_model()
+       
+       # 检查MinerU服务是否配置
+       if not mineru_service.is_configured():
+           # 如果没有配置解析服务，论文创建成功但需要手动解析
+           return success_response({
+               "paper": update_result["data"],
+               "message": "论文创建成功，但PDF解析服务未配置，请手动上传Markdown文件或联系管理员配置解析服务"
+           }, "论文创建成功")
+       
+       # 创建解析任务
+       task = task_model.create_task(
+           paper_id=paper_id,
+           user_id=g.current_user["user_id"],
+           pdf_url=upload_result["url"],
+           is_admin=True
+       )
+       
+       # 提交MinerU解析任务
+       try:
+           submit_result = mineru_service.submit_parsing_task(upload_result["url"])
+           
+           if not submit_result["success"]:
+               # 更新任务状态为失败
+               task_model.update_task_status(
+                   task_id=task["id"],
+                   status="failed",
+                   error=submit_result["error"]
+               )
+               # 论文创建成功，但解析失败
+               return success_response({
+                   "paper": update_result["data"],
+                   "taskId": task["id"],
+                   "message": f"论文创建成功，但PDF解析任务提交失败: {submit_result['error']}，您可以稍后手动重试解析"
+               }, "论文创建成功")
+           
+           # 更新任务状态为处理中
+           task_model.update_task_status(
+               task_id=task["id"],
+               status="processing",
+               progress=10,
+               message="PDF解析任务已提交，正在处理中...",
+               mineru_task_id=submit_result["task_id"]
+           )
+           
+           # 启动后台任务监控解析进度
+           from ..utils.background_tasks import get_task_manager
+           task_manager = get_task_manager()
+           
+           # 在定义后台函数之前获取用户ID和任务ID
+           current_user_id = g.current_user["user_id"]
+           task_id_for_bg = task["id"]
+           paper_id_for_bg = paper_id
+           pdf_url_for_bg = upload_result["url"]
+           
+           def background_pdf_parsing():
+               """后台PDF解析任务"""
+               try:
+                   # 创建应用上下文
+                   try:
+                       from flask import current_app
+                       app_context = current_app.app_context()
+                   except (RuntimeError, ImportError):
+                       from neuink import create_app
+                       app = create_app()
+                       app_context = app.app_context()
+                   
+                   with app_context:
+                       # 设置用户ID到应用上下文中
+                       from flask import g
+                       g.current_user = {"user_id": current_user_id}
+                       
+                       # 轮询解析状态
+                       max_wait_time = 600  # 10分钟
+                       start_time = time.time()
+                       
+                       # 从任务模型重新获取任务信息，确保使用正确的任务ID
+                       from ..models.pdfParseTask import get_pdf_parse_task_model
+                       task_model_bg = get_pdf_parse_task_model()
+                       task_info = task_model_bg.get_task(task_id_for_bg)
+                       
+                       if not task_info:
+                           logger.error(f"后台任务找不到任务信息: {task_id_for_bg}")
+                           return
+                           
+                       mineru_task_id = task_info.get("mineruTaskId")
+                       if not mineru_task_id:
+                           logger.error(f"任务没有MinerU任务ID: {task_id_for_bg}")
+                           return
+                       
+                       while time.time() - start_time < max_wait_time:
+                           status_result = mineru_service.get_parsing_status(mineru_task_id)
+                           
+                           if not status_result["success"]:
+                               task_model_bg.update_task_status(
+                                   task_id=task_id_for_bg,
+                                   status="failed",
+                                   error=status_result["error"]
+                               )
+                               break
+                           
+                           status = status_result["status"]
+                           
+                           if status == "processing":
+                               task_model_bg.update_task_status(
+                                   task_id=task_id_for_bg,
+                                   status="processing",
+                                   progress=50,
+                                   message="PDF解析中..."
+                               )
+                           elif status == "completed":
+                               # 获取ZIP文件URL
+                               full_zip_url = status_result.get("full_zip_url")
+                               
+                               if not full_zip_url:
+                                   task_model.update_task_status(
+                                       task_id=task["id"],
+                                       status="failed",
+                                       error="解析完成但未获取到ZIP文件URL"
+                                   )
+                                   break
+                               
+                               # 获取Markdown内容并上传
+                               result = mineru_service.fetch_markdown_content_and_upload(
+                                   result_url=full_zip_url,
+                                   paper_id=paper_id_for_bg,
+                                   qiniu_service=qiniu_service
+                               )
+                               
+                               if result["success"]:
+                                   markdown_content = result["markdown_content"]
+                                   markdown_attachment = result.get("markdown_attachment")
+                                   
+                                   if markdown_attachment:
+                                       # 更新论文附件
+                                       attachments = update_result["data"].get("attachments", {})
+                                       attachments["markdown"] = markdown_attachment
+                                       
+                                       # 如果有content_list.json附件，也更新
+                                       content_list_attachment = result.get("content_list_attachment")
+                                       if content_list_attachment:
+                                           attachments["content_list"] = content_list_attachment
+                                       
+                                       # 更新论文附件
+                                       paper_service.update_paper_attachments(
+                                           paper_id=paper_id_for_bg,
+                                           attachments=attachments,
+                                           user_id=current_user_id,
+                                           is_admin=True
+                                       )
+                                       
+                                       # 使用Markdown内容创建论文内容
+                                       try:
+                                           # ✅ 改成：只解析，不创建paper
+                                           parse_result = paper_service.parse_paper_from_text(
+                                               text=markdown_content
+                                           )
+                                           
+                                           if parse_result["code"] == BusinessCode.SUCCESS:
+                                               # 获取解析后的论文数据
+                                               parsed_paper = parse_result["data"]
+                                               
+                                               # 更新原论文的元数据和内容
+                                               update_data = {
+                                                   "metadata": parsed_paper.get("metadata", {}),
+                                                   "abstract": parsed_paper.get("abstract", ""),
+                                                   "keywords": parsed_paper.get("keywords", []),
+                                                   "sections": parsed_paper.get("sections", []),
+                                                   "references": parsed_paper.get("references", []),
+                                                   "parseStatus": "completed"
+                                               }
+                                               
+                                               paper_service.update_paper(
+                                                   paper_id=paper_id_for_bg,
+                                                   update_data=update_data,
+                                                   user_id=current_user_id,
+                                                   is_admin=True
+                                               )
+                                               
+                                               # 更新任务状态为完成
+                                               task_model.update_task_status(
+                                                   task_id=task["id"],
+                                                   status="completed",
+                                                   progress=100,
+                                                   message="PDF解析完成并已更新论文内容",
+                                                   markdown_content=markdown_content
+                                               )
+                                           else:
+                                               # 如果解析失败，只更新附件信息
+                                               paper_service.update_paper(
+                                                   paper_id=paper_id_for_bg,
+                                                   update_data={"parseStatus": "completed"},
+                                                   user_id=current_user_id,
+                                                   is_admin=True
+                                               )
+                                               
+                                               task_model.update_task_status(
+                                                   task_id=task["id"],
+                                                   status="completed",
+                                                   progress=100,
+                                                   message="PDF解析完成但内容解析失败，已上传Markdown文件",
+                                                   markdown_content=markdown_content
+                                               )
+                                       except Exception as e:
+                                           logger.error(f"从Markdown创建论文内容失败: {str(e)}")
+                                           # 即使解析失败，也标记为完成
+                                           paper_service.update_paper(
+                                               paper_id=paper_id_for_bg,
+                                               update_data={"parseStatus": "completed"},
+                                               user_id=current_user_id,
+                                               is_admin=True
+                                           )
+                                           
+                                           task_model.update_task_status(
+                                               task_id=task["id"],
+                                               status="completed",
+                                               progress=100,
+                                               message="PDF解析完成但内容解析失败，已上传Markdown文件",
+                                               markdown_content=markdown_content
+                                           )
+                                   else:
+                                       task_model.update_task_status(
+                                           task_id=task["id"],
+                                           status="failed",
+                                           error="上传Markdown文件失败"
+                                       )
+                               else:
+                                   task_model_bg.update_task_status(
+                                       task_id=task_id_for_bg,
+                                       status="failed",
+                                       error=result["error"]
+                                   )
+                               break
+                           elif status == "failed":
+                               task_model_bg.update_task_status(
+                                   task_id=task_id_for_bg,
+                                   status="failed",
+                                   error=status_result.get("message", "PDF解析失败")
+                               )
+                               break
+                           
+                           # 等待一段时间再查询
+                           time.sleep(10)
+                       else:
+                           # 超时
+                           task_model_bg.update_task_status(
+                               task_id=task_id_for_bg,
+                               status="failed",
+                               error="PDF解析超时"
+                           )
+               
+               except Exception as e:
+                   logger.error(f"后台PDF解析任务异常: {str(e)}")
+                   task_model_bg.update_task_status(
+                       task_id=task_id_for_bg,
+                       status="failed",
+                       error=f"后台任务异常: {str(e)}"
+                   )
+           
+           # 提交后台任务
+           task_manager.submit_task(
+               task_id=task["id"],
+               func=background_pdf_parsing,
+               callback=lambda task_id, result: None
+           )
+           
+           return success_response({
+               "paper": update_result["data"],
+               "taskId": task["id"],
+               "message": "论文创建成功，PDF解析任务已提交，请稍后查看解析进度"
+           }, "论文创建成功")
+           
+       except Exception as e:
+           logger.error(f"提交MinerU解析任务异常: {str(e)}")
+           # 更新任务状态为失败
+           task_model.update_task_status(
+               task_id=task["id"],
+               status="failed",
+               error=f"提交解析任务异常: {str(e)}"
+           )
+           # 论文创建成功，但解析失败
+           return success_response({
+               "paper": update_result["data"],
+               "taskId": task["id"],
+               "message": f"论文创建成功，但PDF解析任务提交失败: {str(e)}，您可以稍后手动重试解析"
+           }, "论文创建成功")
        
    except Exception as exc:
        return internal_error_response(f"服务器错误: {exc}")

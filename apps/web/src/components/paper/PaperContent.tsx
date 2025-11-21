@@ -28,6 +28,7 @@ import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { calculateAllNumbers } from './utils/autoNumbering';
 import { toast } from 'sonner';
 import { userPaperService, adminPaperService } from '@/lib/services/paper';
+import { translationService } from '@/lib/services/translation';
 
 type Lang = 'en' | 'both';
 
@@ -337,6 +338,7 @@ export default function PaperContent({
   const [hoveredSectionId, setHoveredSectionId] = useState<string | null>(null);
   const [textParseSectionId, setTextParseSectionId] = useState<string | null>(null);
   const [textParseBlockId, setTextParseBlockId] = useState<string | null>(null);
+  const [translationResult, setTranslationResult] = useState<{ sectionId: string; translatedText: string } | null>(null);
   
   // ★ 新增：管理流式解析进度数据
   const [streamProgressData, setStreamProgressData] = useState<Record<string, StreamProgressData>>({});
@@ -691,6 +693,48 @@ export default function PaperContent({
     setPendingConfirmation(null);
   }, [pendingConfirmation, onBlockDelete]);
 
+  // 处理快速翻译功能
+  const handleQuickTranslate = useCallback(async (sectionId: string, title: string) => {
+    if (!title || !title.trim()) {
+      toast.error('章节标题为空，无法翻译');
+      return;
+    }
+
+    try {
+      toast.loading('正在翻译中...', { id: 'translate-loading' });
+      
+      // 调用翻译API，只翻译英文标题，使用 GLM-4.5-Air 模型
+      const result = await translationService.quickTranslation({
+        text: title.trim(),
+        model: 'glm-4.5-air',
+        temperature: 0.1,
+        maxTokens: 1000
+      });
+
+      toast.dismiss('translate-loading');
+      
+      // 检查响应是否成功
+      if (result && result.translatedText) {
+        console.log('翻译成功:', result);
+        
+        // 保存翻译结果到状态
+        setTranslationResult({ sectionId, translatedText: result.translatedText });
+        
+        // 进入编辑状态
+        await handleSectionEditStart(sectionId);
+        
+        toast.success('翻译完成，已自动填入中文标题');
+      } else {
+        console.error('翻译响应无效:', result);
+        toast.error('翻译失败，请重试');
+      }
+    } catch (error) {
+      toast.dismiss('translate-loading');
+      console.error('翻译失败:', error);
+      toast.error('翻译失败，请重试');
+    }
+  }, [handleSectionEditStart, paperId, userPaperId, isPersonalOwner, onSaveToServer]);
+
   // 处理ParseProgressBlock的onCompleted回调
   const handleParseProgressComplete = useCallback((result: any) => {
     // 处理重新开始的请求
@@ -865,6 +909,7 @@ export default function PaperContent({
                 : undefined
             }
             onStartTextParse={canEditContent ? () => handleStartTextParse(numberedSection.id) : undefined}
+            onQuickTranslate={canEditContent ? () => handleQuickTranslate(numberedSection.id, String(numberedSection.title)) : undefined}
             onMoveUp={
               canEditContent && onSectionMove && !isFirstSibling
                 ? () => onSectionMove(numberedSection.id, 'up', parentSectionId)
@@ -921,10 +966,15 @@ export default function PaperContent({
               key={numberedSection.id}
               initialTitle={numberedSection}
               lang={lang}
-              onCancel={() => setRenamingSectionId(null)}
+              onCancel={() => {
+                setRenamingSectionId(null);
+                setTranslationResult(null);
+              }}
               onConfirm={(title) => {
                 handleSectionRenameConfirm(numberedSection.id, title);
+                setTranslationResult(null);
               }}
+              externalZhValue={translationResult?.sectionId === numberedSection.id ? translationResult.translatedText : undefined}
             />
           )}
 
@@ -1189,7 +1239,8 @@ export default function PaperContent({
     paperId,
     userPaperId,
     onParseComplete,
-  ]); 
+    handleQuickTranslate,
+  ]);
 
   const emptyState = canEditContent && onSectionInsert ? (
     <RootSectionContextMenu onAddSection={() => onSectionInsert(null, 'below', null)}>
@@ -1227,15 +1278,24 @@ function SectionTitleInlineEditor({
   lang,
   onCancel,
   onConfirm,
+  externalZhValue,
 }: {
   initialTitle: Section;
   lang: Lang;
   onCancel: () => void;
   onConfirm: (title: { en: string; zh: string }) => void;
+  externalZhValue?: string;
 }) {
   const [en, setEn] = useState(initialTitle.title ?? '');
   const [zh, setZh] = useState(initialTitle.titleZh ?? '');
   const { setHasUnsavedChanges } = useEditingState();
+
+  // 当外部提供中文值时，更新中文标题
+  useEffect(() => {
+    if (externalZhValue !== undefined) {
+      setZh(externalZhValue);
+    }
+  }, [externalZhValue]);
 
   useEffect(() => {
     const hasChanges = en !== (initialTitle.title ?? '') || zh !== (initialTitle.titleZh ?? '');

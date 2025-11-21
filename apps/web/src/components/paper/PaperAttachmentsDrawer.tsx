@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
 import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
 import { Upload, FileText, File, Trash2, Copy, X, Maximize2 } from 'lucide-react';
@@ -12,6 +12,13 @@ import { cn } from '@/lib/utils';
 // ✅ 用于只读 Markdown 渲染
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import Image from 'next/image';
+
+// ✅ 模块级缓存：Markdown 内容 & 滚动位置
+const markdownCache = new Map<string, string>();        // url -> markdown text
+const markdownScrollCache = new Map<string, number>();  // url -> scrollTop
 
 interface PaperAttachmentsDrawerProps {
   isOpen: boolean;
@@ -42,13 +49,46 @@ export function PaperAttachmentsDrawer({
   const [isParsing, setIsParsing] = useState(false);
   const [parsingTaskId, setParsingTaskId] = useState<string | null>(null);
   const [parsingProgress, setParsingProgress] = useState(0);
-  const [parsingMessage, setParsingMessage] = useState<string>("");
-  const [parsingStatus, setParsingStatus] = useState<string>("");
+  const [parsingMessage, setParsingMessage] = useState<string>('');
+  const [parsingStatus, setParsingStatus] = useState<string>('');
 
   // ===== Markdown 预览相关状态 =====
   const [mdContent, setMdContent] = useState<string | null>(null);
   const [mdLoading, setMdLoading] = useState(false);
   const [mdError, setMdError] = useState<string | null>(null);
+
+  // ✅ Markdown 滚动容器 ref
+  const markdownScrollContainerRef = useRef<HTMLDivElement | null>(null);
+
+  // ✅ 自定义图片组件 - 显示灰色占位符而不是实际图片
+  const CustomImage = ({ src, alt, ...props }: any) => {
+    return (
+      <span className="block my-4">
+        <span className="flex items-center justify-center">
+          <span className="bg-gray-200 border-2 border-dashed border-gray-400 rounded-lg p-8 max-w-sm inline-block">
+            <span className="flex flex-col items-center text-gray-500">
+              <svg
+                className="w-12 h-12 mb-2"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                xmlns="http://www.w3.org/2000/svg"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
+                />
+              </svg>
+              <span className="text-sm">图片</span>
+              {alt && <span className="text-xs mt-1 text-center">{alt}</span>}
+            </span>
+          </span>
+        </span>
+      </span>
+    );
+  };
 
   // ===== 全屏模式状态 =====
   const [fullscreenMode, setFullscreenMode] = useState<'none' | 'pdf' | 'markdown'>('none');
@@ -81,7 +121,7 @@ export function PaperAttachmentsDrawer({
     setIsParsing(true);
     setParsingProgress(0);
     setParsingMessage('正在提交PDF解析任务...');
-    
+
     try {
       let result;
       if (isPersonalOwner && userPaperId) {
@@ -125,12 +165,17 @@ export function PaperAttachmentsDrawer({
             setParsingProgress(latestTask.progress || 0);
             setParsingMessage(latestTask.message || '获取任务状态中...');
             setIsParsing(true);
+
+            // 显示后端返回的消息
+            if (latestTask.message) {
+              toast.info(latestTask.message);
+            }
           } else {
             toast.error('没有找到解析任务');
             return;
           }
         } else {
-          toast.error('获取解析任务列表失败');
+          toast.error(tasksResult.bizMessage || '获取解析任务列表失败');
           return;
         }
       } catch (error) {
@@ -155,32 +200,37 @@ export function PaperAttachmentsDrawer({
         setParsingProgress(taskData.progress);
         setParsingMessage(taskData.message);
 
+        // 显示后端返回的消息
+        if (taskData.message) {
+          toast.info(taskData.message);
+        }
+
         if (taskData.status === 'completed') {
           setIsParsing(false);
           toast.success('PDF解析完成，Markdown文件已生成');
-          
+
           if (taskData.markdownAttachment) {
             onAttachmentsChange({
               ...attachments,
               markdown: taskData.markdownAttachment,
             });
           }
-          
+
           setTimeout(() => {
             setParsingTaskId(null);
             setParsingProgress(0);
-            setParsingMessage("");
-            setParsingStatus("");
+            setParsingMessage('');
+            setParsingStatus('');
           }, 3000);
         } else if (taskData.status === 'failed') {
           setIsParsing(false);
           toast.error(`PDF解析失败: ${taskData.message}`);
-          
+
           setTimeout(() => {
             setParsingTaskId(null);
             setParsingProgress(0);
-            setParsingMessage("");
-            setParsingStatus("");
+            setParsingMessage('');
+            setParsingStatus('');
           }, 3000);
         }
       } else {
@@ -206,10 +256,10 @@ export function PaperAttachmentsDrawer({
         }
 
         if (tasksResult.bizCode === 0 && tasksResult.data.tasks) {
-          const existingTask = tasksResult.data.tasks.find(task =>
-            task.status === 'pending' || task.status === 'processing'
+          const existingTask = tasksResult.data.tasks.find(
+            (task: any) => task.status === 'pending' || task.status === 'processing',
           );
-          
+
           if (existingTask) {
             setParsingTaskId(existingTask.taskId);
             setParsingStatus(existingTask.status);
@@ -227,11 +277,22 @@ export function PaperAttachmentsDrawer({
     checkExistingTasks();
   }, [paperId, userPaperId, isPersonalOwner, attachments.markdown, isParsing]);
 
-  // 加载 Markdown 内容
+  // ===== Markdown 内容加载 & 缓存 =====
   useEffect(() => {
     const url = attachments.markdown?.url;
-    if (!isOpen || !url) {
+
+    if (!url) {
+      // 真正没有 markdown 了才清掉
       setMdContent(null);
+      setMdLoading(false);
+      setMdError(null);
+      return;
+    }
+
+    // ✅ 先看缓存里有没有内容
+    const cached = markdownCache.get(url);
+    if (cached) {
+      setMdContent(cached);
       setMdLoading(false);
       setMdError(null);
       return;
@@ -239,7 +300,6 @@ export function PaperAttachmentsDrawer({
 
     setMdLoading(true);
     setMdError(null);
-    setMdContent(null);
 
     fetch(url)
       .then(async (res) => {
@@ -247,6 +307,9 @@ export function PaperAttachmentsDrawer({
           throw new Error(`请求失败: ${res.status} ${res.statusText}`);
         }
         const text = await res.text();
+
+        // ✅ 写入缓存
+        markdownCache.set(url, text);
         setMdContent(text);
       })
       .catch((err) => {
@@ -256,7 +319,26 @@ export function PaperAttachmentsDrawer({
       .finally(() => {
         setMdLoading(false);
       });
-  }, [isOpen, attachments.markdown?.url]);
+  }, [attachments.markdown?.url]);
+
+  // ✅ Markdown 滚动位置恢复
+  useEffect(() => {
+    const url = attachments.markdown?.url;
+    if (!url) return;
+    if (!mdContent) return; // 没内容就不用恢复
+
+    const savedScrollTop = markdownScrollCache.get(url);
+    if (typeof savedScrollTop !== 'number') return;
+
+    const el = markdownScrollContainerRef.current;
+    if (!el) return;
+
+    requestAnimationFrame(() => {
+      if (markdownScrollContainerRef.current) {
+        markdownScrollContainerRef.current.scrollTop = savedScrollTop;
+      }
+    });
+  }, [attachments.markdown?.url, mdContent]);
 
   const handlePdfUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -423,13 +505,15 @@ export function PaperAttachmentsDrawer({
       }}
       handleOnly={false}
       shouldScaleBackground={false}
+      
     >
       <DrawerContent
+        forceMount
         data-vaul-no-drag
         className={cn(
           'h-screen w-[85vw] max-w-none min-w-[1400px] flex flex-col',
           'data-[vaul-drawer-direction=right]:w-[85vw] data-[vaul-drawer-direction=right]:min-w-[1400px] data-[vaul-drawer-direction=right]:max-w-none',
-          'border-l border-white/60 bg-white/80 backdrop-blur-3xl shadow-[0_20px_54px_rgba(15,23,42,0.18)]'
+          'border-l border-white/60 bg-white/80 backdrop-blur-3xl shadow-[0_20px_54px_rgba(15,23,42,0.18)]',
         )}
       >
         {/* 隐藏上传 input */}
@@ -450,7 +534,7 @@ export function PaperAttachmentsDrawer({
           id="markdown-upload"
         />
 
-        <DrawerHeader className="pb-4 shrink-0 flex flex-row items-center justify-between px-6 border-b border-white/60 bg-white/70 backdrop-blur-3xl">
+        <DrawerHeader className="pb-4 shrink-0 flex flex-row items-center justify-between px-6 border-b border-white/60 bg白/70 backdrop-blur-3xl">
           <DrawerTitle className="text-base font-semibold text-[#1F2937] tracking-tight">
             论文附件 - 左右分屏查看
           </DrawerTitle>
@@ -462,7 +546,7 @@ export function PaperAttachmentsDrawer({
               'h-8 w-8 p-0 rounded-full border border-white/65',
               'bg-white/85 hover:bg-white/95 text-[#28418A]',
               'shadow-[0_10px_26px_rgba(15,23,42,0.22)]',
-              'transition-all duration-200 hover:-translate-y-[1px]'
+              'transition-all duration-200 hover:-translate-y-px',
             )}
           >
             <X className="h-4 w-4" />
@@ -472,20 +556,25 @@ export function PaperAttachmentsDrawer({
         {/* 主内容区域：左右分栏 */}
         <div className="flex-1 flex overflow-hidden px-6 py-5 gap-4">
           {/* 左侧：PDF 区域 */}
-          <div 
+          <div
             className={cn(
-              "flex flex-col overflow-hidden transition-all duration-300",
-              fullscreenMode === 'markdown' ? 'w-0 opacity-0' : 
-              fullscreenMode === 'pdf' ? 'w-full' : 'w-1/2'
+              'flex flex-col overflow-hidden transition-all duration-300',
+              fullscreenMode === 'markdown'
+                ? 'w-0 opacity-0'
+                : fullscreenMode === 'pdf'
+                ? 'w-full'
+                : 'w-1/2',
             )}
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <div className={cn(
-                  'w-8 h-8 rounded-lg flex items-center justify-center',
-                  'bg-gradient-to-br from-[#28418A]/20 to-[#1F3469]/20',
-                  'border border-[#28418A]/30'
-                )}>
+                <div
+                  className={cn(
+                    'w-8 h-8 rounded-lg flex items-center justify-center',
+                    'bg-linear-to-br from-[#28418A]/20 to-[#1F3469]/20',
+                    'border border-[#28418A]/30',
+                  )}
+                >
                   <File className="h-4 w-4 text-[#28418A]" />
                 </div>
                 <h3 className="text-sm font-semibold text-[#1F2937]">PDF 文档</h3>
@@ -495,13 +584,15 @@ export function PaperAttachmentsDrawer({
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => setFullscreenMode(fullscreenMode === 'pdf' ? 'none' : 'pdf')}
+                    onClick={() =>
+                      setFullscreenMode(fullscreenMode === 'pdf' ? 'none' : 'pdf')
+                    }
                     className={cn(
                       'inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-medium',
                       'border border-white/65 bg-white/85 text-[#28418A]',
                       'hover:bg-white/95 hover:text-[#1F2937]',
                       'shadow-[0_10px_24px_rgba(148,163,184,0.35)]',
-                      'transition-all duration-200'
+                      'transition-all duration-200',
                     )}
                   >
                     <Maximize2 className="h-3.5 w-3.5" />
@@ -519,7 +610,7 @@ export function PaperAttachmentsDrawer({
                       'border border-[#FECACA] bg-[#FDF2F2]/90 text-[#B91C1C]',
                       'hover:bg-[#FEE2E2] hover:text-[#991B1B]',
                       'shadow-[0_10px_26px_rgba(248,113,113,0.30)]',
-                      'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed'
+                      'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed',
                     )}
                     title={isParsing ? 'PDF正在解析中，无法删除' : ''}
                   >
@@ -548,7 +639,8 @@ export function PaperAttachmentsDrawer({
                   )}
                 </div>
                 <div className="text-[11px] text-slate-500 text-center mt-2">
-                  {formatFileSize(attachments.pdf.size)} · {new Date(attachments.pdf.uploadedAt).toLocaleDateString()}
+                  {formatFileSize(attachments.pdf.size)} ·{' '}
+                  {new Date(attachments.pdf.uploadedAt).toLocaleDateString()}
                 </div>
               </div>
             ) : (
@@ -558,25 +650,27 @@ export function PaperAttachmentsDrawer({
                     <File className="h-8 w-8 text-slate-400" />
                   </div>
                   <p className="text-sm text-slate-600 mb-4">尚未上传PDF文档</p>
-                  {(isPersonalOwner || isAdmin) ? (
+                  {isPersonalOwner || isAdmin ? (
                     <Button
                       disabled={isUploading || isParsing}
                       onClick={() => {
-                        const fileInput = document.getElementById('pdf-upload') as HTMLInputElement | null;
+                        const fileInput = document.getElementById(
+                          'pdf-upload',
+                        ) as HTMLInputElement | null;
                         fileInput?.click();
                       }}
                       className={cn(
                         'inline-flex items-center justify-center gap-2',
                         'h-9 rounded-xl px-4 text-sm font-medium',
-                        'border border-white/55 bg-gradient-to-r from-[#28418A]/92 via-[#28418A]/88 to-[#28418A]/92',
+                        'border border-white/55 bg-linear-to-r from-[#28418A]/92 via-[#28418A]/88 to-[#28418A]/92',
                         'text-white shadow-[0_14px_32px_rgba(40,65,138,0.35)]',
-                        'hover:shadow-[0_18px_40px_rgba(40,65,138,0.45)] hover:-translate-y-[1px]',
-                        'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed'
+                        'hover:shadow-[0_18px_40px_rgba(40,65,138,0.45)] hover:-translate-y-px',
+                        'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed',
                       )}
                       title={isParsing ? 'PDF正在解析中，请等待解析完成后再上传新文件' : ''}
                     >
                       <Upload className="h-4 w-4" />
-                      {isUploading ? '上传中...' : (isParsing ? 'PDF解析中...' : '上传PDF')}
+                      {isUploading ? '上传中...' : isParsing ? 'PDF解析中...' : '上传PDF'}
                     </Button>
                   ) : (
                     <p className="text-xs text-slate-500">您没有上传权限</p>
@@ -588,24 +682,29 @@ export function PaperAttachmentsDrawer({
 
           {/* 中间分隔线 */}
           {fullscreenMode === 'none' && (
-            <div className="w-px bg-gradient-to-b from-transparent via-slate-300/50 to-transparent" />
+            <div className="w-px bg-linear-to-b from-transparent via-slate-300/50 to-transparent" />
           )}
 
           {/* 右侧：Markdown 区域 */}
-          <div 
+          <div
             className={cn(
-              "flex flex-col overflow-hidden transition-all duration-300",
-              fullscreenMode === 'pdf' ? 'w-0 opacity-0' : 
-              fullscreenMode === 'markdown' ? 'w-full' : 'w-1/2'
+              'flex flex-col overflow-hidden transition-all duration-300',
+              fullscreenMode === 'pdf'
+                ? 'w-0 opacity-0'
+                : fullscreenMode === 'markdown'
+                ? 'w-full'
+                : 'w-1/2',
             )}
           >
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
-                <div className={cn(
-                  'w-8 h-8 rounded-lg flex items-center justify-center',
-                  'bg-gradient-to-br from-[#3050A5]/20 to-[#1F3469]/20',
-                  'border border-[#3050A5]/30'
-                )}>
+                <div
+                  className={cn(
+                    'w-8 h-8 rounded-lg flex items-center justify-center',
+                    'bg-linear-to-br from-[#3050A5]/20 to-[#1F3469]/20',
+                    'border border-[#3050A5]/30',
+                  )}
+                >
                   <FileText className="h-4 w-4 text-[#3050A5]" />
                 </div>
                 <h3 className="text-sm font-semibold text-[#1F2937]">Markdown 文档</h3>
@@ -616,13 +715,15 @@ export function PaperAttachmentsDrawer({
                     <Button
                       variant="ghost"
                       size="sm"
-                      onClick={() => setFullscreenMode(fullscreenMode === 'markdown' ? 'none' : 'markdown')}
+                      onClick={() =>
+                        setFullscreenMode(fullscreenMode === 'markdown' ? 'none' : 'markdown')
+                      }
                       className={cn(
                         'inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-medium',
                         'border border-white/65 bg-white/85 text-[#28418A]',
                         'hover:bg-white/95 hover:text-[#1F2937]',
                         'shadow-[0_10px_24px_rgba(148,163,184,0.35)]',
-                        'transition-all duration-200'
+                        'transition-all duration-200',
                       )}
                     >
                       <Maximize2 className="h-3.5 w-3.5" />
@@ -638,7 +739,7 @@ export function PaperAttachmentsDrawer({
                         'border border-white/65 bg-white/85 text-[#28418A]',
                         'hover:bg-white/95 hover:text-[#1F2937]',
                         'shadow-[0_10px_24px_rgba(148,163,184,0.35)]',
-                        'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed'
+                        'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed',
                       )}
                     >
                       <Copy className="h-4 w-4" />
@@ -657,7 +758,7 @@ export function PaperAttachmentsDrawer({
                       'border border-[#FECACA] bg-[#FDF2F2]/90 text-[#B91C1C]',
                       'hover:bg-[#FEE2E2] hover:text-[#991B1B]',
                       'shadow-[0_10px_26px_rgba(248,113,113,0.30)]',
-                      'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed'
+                      'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed',
                     )}
                     title={isParsing ? 'PDF正在解析中，无法删除Markdown' : ''}
                   >
@@ -672,7 +773,15 @@ export function PaperAttachmentsDrawer({
               <div className="flex-1 flex flex-col overflow-hidden">
                 <div className="border border-white/70 rounded-2xl overflow-hidden bg-white/80 backdrop-blur-2xl flex-1 flex flex-col min-h-0 shadow-[0_18px_40px_rgba(15,23,42,0.16)]">
                   {attachments.markdown.url ? (
-                    <div className="flex-1 overflow-y-auto min-h-0">
+                    <div
+                      ref={markdownScrollContainerRef}
+                      className="flex-1 overflow-y-auto min-h-0"
+                      onScroll={(e) => {
+                        const url = attachments.markdown?.url;
+                        if (!url) return;
+                        markdownScrollCache.set(url, e.currentTarget.scrollTop);
+                      }}
+                    >
                       {mdLoading && (
                         <div className="text-sm text-slate-500 flex items-center justify-center h-64">
                           正在加载 Markdown 内容...
@@ -687,7 +796,51 @@ export function PaperAttachmentsDrawer({
 
                       {!mdLoading && !mdError && mdContent && (
                         <div className="prose prose-gray dark:prose-invert max-w-none p-6 select-text">
-                          <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                          <ReactMarkdown
+                            remarkPlugins={[remarkGfm, remarkMath]}
+                            rehypePlugins={[rehypeKatex]}
+                            components={{
+                              img: CustomImage,
+                              p: ({ children }) => <div className="mb-4">{children}</div>,
+                              // 表格样式 - 支持rowspan和colspan
+                                table: ({ children, ...props }) => (
+                                  <div className="overflow-x-auto my-4">
+                                    <table className="min-w-full border-collapse border border-gray-300 dark:border-gray-600" {...props}>
+                                      {children}
+                                    </table>
+                                  </div>
+                                ),
+                                thead: ({ children, ...props }) => <thead className="bg-gray-100 dark:bg-gray-800" {...props}>{children}</thead>,
+                                tbody: ({ children, ...props }) => <tbody {...props}>{children}</tbody>,
+                                tr: ({ children, ...props }) => <tr className="border border-gray-300 dark:border-gray-600" {...props}>{children}</tr>,
+                                th: ({ children, ...props }) => {
+                                  const { rowspan, colspan, ...thProps } = props as any;
+                                  return (
+                                    <th
+                                      className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-left font-semibold"
+                                      rowSpan={rowspan}
+                                      colSpan={colspan}
+                                      {...thProps}
+                                    >
+                                      {children}
+                                    </th>
+                                  );
+                                },
+                                td: ({ children, ...props }) => {
+                                  const { rowspan, colspan, ...tdProps } = props as any;
+                                  return (
+                                    <td
+                                      className="border border-gray-300 dark:border-gray-600 px-3 py-2"
+                                      rowSpan={rowspan}
+                                      colSpan={colspan}
+                                      {...tdProps}
+                                    >
+                                      {children}
+                                    </td>
+                                  );
+                                },
+                            }}
+                          >
                             {mdContent}
                           </ReactMarkdown>
                         </div>
@@ -706,7 +859,8 @@ export function PaperAttachmentsDrawer({
                   )}
                 </div>
                 <div className="text-[11px] text-slate-500 text-center mt-2">
-                  {formatFileSize(attachments.markdown.size)} · {new Date(attachments.markdown.uploadedAt).toLocaleDateString()}
+                  {formatFileSize(attachments.markdown.size)} ·{' '}
+                  {new Date(attachments.markdown.uploadedAt).toLocaleDateString()}
                 </div>
               </div>
             ) : (
@@ -722,7 +876,9 @@ export function PaperAttachmentsDrawer({
                     <div className="mb-4 p-4 bg-blue-50/90 border border-blue-200/80 rounded-xl backdrop-blur-sm">
                       <div className="flex items-center justify-center mb-2">
                         <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-                        <span className="text-sm text-blue-700 font-medium">PDF解析任务已创建</span>
+                        <span className="text-sm text-blue-700 font-medium">
+                          PDF解析任务已创建
+                        </span>
                       </div>
                       <div className="w-full bg-blue-200 rounded-full h-2 mb-2">
                         <div
@@ -738,7 +894,7 @@ export function PaperAttachmentsDrawer({
                           'h-8 rounded-lg px-3 text-xs font-medium',
                           'border border-blue-300 bg-blue-100 text-blue-700',
                           'hover:bg-blue-200 hover:text-blue-800',
-                          'transition-all duration-200'
+                          'transition-all duration-200',
                         )}
                       >
                         查看解析进度
@@ -747,25 +903,30 @@ export function PaperAttachmentsDrawer({
                   )}
 
                   {/* PDF解析按钮 */}
-                  {(isPersonalOwner || isAdmin) && attachments.pdf && !attachments.markdown && !isParsing && (
-                    <div className="mb-4">
-                      <Button
-                        onClick={handleParsePdfToMarkdown}
-                        className={cn(
-                          'inline-flex items-center justify-center gap-2',
-                          'h-9 rounded-xl px-4 text-sm font-medium',
-                          'border border-white/55 bg-gradient-to-r from-[#10B981]/90 via-[#059669]/88 to-[#047857]/90',
-                          'text-white shadow-[0_14px_32px_rgba(16,185,129,0.35)]',
-                          'hover:shadow-[0_18px_40px_rgba(16,185,129,0.45)] hover:-translate-y-[1px]',
-                          'transition-all duration-200'
-                        )}
-                      >
-                        <FileText className="h-4 w-4" />
-                        通过PDF解析生成Markdown
-                      </Button>
-                      <p className="text-xs text-slate-500 mt-2">从左侧PDF自动提取文本内容</p>
-                    </div>
-                  )}
+                  {(isPersonalOwner || isAdmin) &&
+                    attachments.pdf &&
+                    !attachments.markdown &&
+                    !isParsing && (
+                      <div className="mb-4">
+                        <Button
+                          onClick={handleParsePdfToMarkdown}
+                          className={cn(
+                            'inline-flex items-center justify-center gap-2',
+                            'h-9 rounded-xl px-4 text-sm font-medium',
+                            'border border-white/55 bg-linear-to-r from-[#10B981]/90 via-[#059669]/88 to-[#047857]/90',
+                            'text-white shadow-[0_14px_32px_rgba(16,185,129,0.35)]',
+                            'hover:shadow-[0_18px_40px_rgba(16,185,129,0.45)] hover:-translate-y-px',
+                            'transition-all duration-200',
+                          )}
+                        >
+                          <FileText className="h-4 w-4" />
+                          通过PDF解析生成Markdown
+                        </Button>
+                        <p className="text-xs text-slate-500 mt-2">
+                          从左侧PDF自动提取文本内容
+                        </p>
+                      </div>
+                    )}
 
                   {/* 检查解析进度按钮 */}
                   {!isParsing && (
@@ -777,7 +938,7 @@ export function PaperAttachmentsDrawer({
                           'h-8 rounded-lg px-3 text-xs font-medium',
                           'border border-blue-300 bg-blue-50 text-blue-700',
                           'hover:bg-blue-100 hover:text-blue-800',
-                          'transition-all duration-200'
+                          'transition-all duration-200',
                         )}
                       >
                         检查解析进度
@@ -786,25 +947,27 @@ export function PaperAttachmentsDrawer({
                   )}
 
                   {/* 普通上传按钮 */}
-                  {(isPersonalOwner || isAdmin) ? (
+                  {isPersonalOwner || isAdmin ? (
                     <Button
                       disabled={isUploading || isParsing}
                       onClick={() => {
-                        const fileInput = document.getElementById('markdown-upload') as HTMLInputElement | null;
+                        const fileInput = document.getElementById(
+                          'markdown-upload',
+                        ) as HTMLInputElement | null;
                         fileInput?.click();
                       }}
                       className={cn(
                         'inline-flex items-center justify-center gap-2',
                         'h-9 rounded-xl px-4 text-sm font-medium',
-                        'border border-white/55 bg-gradient-to-r from-[#3050A5]/90 via-[#28418A]/88 to-[#1F3469]/90',
+                        'border border-white/55 bg-linear-to-r from-[#3050A5]/90 via-[#28418A]/88 to-[#1F3469]/90',
                         'text-white shadow-[0_14px_32px_rgba(37,99,235,0.35)]',
-                        'hover:shadow-[0_18px_40px_rgba(37,99,235,0.45)] hover:-translate-y-[1px]',
-                        'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed'
+                        'hover:shadow-[0_18px_40px_rgba(37,99,235,0.45)] hover:-translate-y-px',
+                        'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed',
                       )}
                       title={isParsing ? 'PDF正在解析中，请等待解析完成后再上传新文件' : ''}
                     >
                       <Upload className="h-4 w-4" />
-                      {isUploading ? '上传中...' : (isParsing ? 'PDF解析中...' : '上传Markdown')}
+                      {isUploading ? '上传中...' : isParsing ? 'PDF解析中...' : '上传Markdown'}
                     </Button>
                   ) : (
                     <p className="text-xs text-slate-500">您没有上传权限</p>
@@ -818,4 +981,3 @@ export function PaperAttachmentsDrawer({
     </Drawer>
   );
 }
-

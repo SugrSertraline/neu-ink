@@ -167,7 +167,12 @@ class ParsingSessionModel:
         }
         
         if paper_data:
-            update_data["paperData"] = paper_data
+            # 更新相关字段到扁平化结构
+            update_data["metadata"] = paper_data.get("metadata", {})
+            update_data["abstract"] = paper_data.get("abstract")
+            update_data["keywords"] = paper_data.get("keywords", [])
+            update_data["references"] = paper_data.get("references", [])
+            update_data["attachments"] = paper_data.get("attachments", {})
             
         return self.update_session(session_id, update_data)
     

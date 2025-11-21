@@ -365,7 +365,7 @@ class NoteService:
     def _block_exists_in_paper(user_paper: Dict[str, Any], block_id: str) -> bool:
         """
         检查 block 是否存在于论文中（已移除subsection支持）
-        优先检查 sections 数组，回退到 paperData.sections
+        优先检查 sections 数组
         """
 
         def check_section(section: Dict[str, Any]) -> bool:
@@ -378,10 +378,6 @@ class NoteService:
 
         # 优先检查直接加载的 sections 数组
         sections = user_paper.get("sections", [])
-        if not sections:
-            # 回退到 paperData.sections
-            paper_data = user_paper.get("paperData", {})
-            sections = paper_data.get("sections", [])
         
         # 检查所有 sections
         for section in sections:

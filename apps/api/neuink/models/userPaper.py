@@ -23,13 +23,25 @@ class UserPaperModel:
         self.collection.create_index("userId")
         self.collection.create_index("sourcePaperId")
         self.collection.create_index([("userId", 1), ("sourcePaperId", 1)])
-        # 全文搜索索引
-        self.collection.create_index([
-            ("paperData.metadata.title", "text"),
-            ("paperData.metadata.titleZh", "text"),
-            ("paperData.abstract.en", "text"),
-            ("paperData.abstract.zh", "text"),
-        ])
+        
+        # 全文搜索索引 - 添加异常处理避免索引冲突
+        try:
+            self.collection.create_index([
+                ("metadata.title", "text"),
+                ("metadata.titleZh", "text"),
+                ("abstract.en", "text"),
+                ("abstract.zh", "text"),
+            ])
+        except Exception as e:
+            # 如果索引已存在或类似索引已存在，忽略错误
+            # 这通常发生在数据库结构变更后，旧索引仍存在的情况
+            error_msg = str(e).lower()
+            if any(keyword in error_msg for keyword in ["already exists", "indexoptionsconflict", "duplicate"]):
+                print(f"[INFO] 索引已存在，跳过创建: {e}")
+            else:
+                # 其他类型的错误，重新抛出
+                raise e
+                
         self.collection.create_index("customTags")
         self.collection.create_index("readingStatus")
         self.collection.create_index("priority")
@@ -41,26 +53,21 @@ class UserPaperModel:
 
     def create(self, user_paper_data: Dict[str, Any]) -> Dict[str, Any]:
         """
-        创建新的个人论文库条目（支持扁平化结构）
+        创建新的个人论文库条目（扁平化结构）
         """
         user_paper_id = generate_id()
         current_time = get_current_time()
 
-        # 支持新的扁平化结构，同时兼容旧的 paperData 结构
-        paper_data = user_paper_data.get("paperData", {})
-        
         user_paper = {
             "id": user_paper_id,
             "userId": user_paper_data["userId"],
             "sourcePaperId": user_paper_data.get("sourcePaperId"),
-            # 扁平化字段（优先使用直接字段，回退到 paperData）
-            "metadata": user_paper_data.get("metadata") or paper_data.get("metadata", {}),
-            "abstract": user_paper_data.get("abstract") or paper_data.get("abstract"),
-            "keywords": user_paper_data.get("keywords") or paper_data.get("keywords", []),
-            "references": user_paper_data.get("references") or paper_data.get("references", []),
-            "attachments": user_paper_data.get("attachments") or paper_data.get("attachments", {}),
-            # 保持向后兼容
-            "paperData": paper_data,
+            # 扁平化字段
+            "metadata": user_paper_data.get("metadata", {}),
+            "abstract": user_paper_data.get("abstract"),
+            "keywords": user_paper_data.get("keywords", []),
+            "references": user_paper_data.get("references", []),
+            "attachments": user_paper_data.get("attachments", {}),
             "sectionIds": user_paper_data.get("sectionIds", []),  # section ID列表
             "customTags": user_paper_data.get("customTags", []),
             "readingStatus": user_paper_data.get("readingStatus", "unread"),
@@ -143,7 +150,7 @@ class UserPaperModel:
                 else:
                     base_query["sourcePaperId"] = None
 
-        # 使用列表页面的投影，只返回必要字段，不包括完整的paperData
+        # 使用列表页面的投影，只返回必要字段，不包括完整的论文数据
         projection = self._list_summary_projection(include_score=bool(search))
         
         # 全文搜索
@@ -245,7 +252,7 @@ class UserPaperModel:
     @staticmethod
     def _list_summary_projection(include_score: bool = False) -> Dict[str, Any]:
         """
-        列表页面的投影，只返回必要字段，不包括完整的paperData
+        列表页面的投影，只返回必要字段
         """
         projection: Dict[str, Any] = {
             "_id": 0,
@@ -262,9 +269,10 @@ class UserPaperModel:
             "remarks": 1,
             "addedAt": 1,
             "updatedAt": 1,
-            # 只返回paperData中的基本元数据，不包括大字段
-            "paperData.id": 1,
-            "paperData.metadata": 1,
+            # 返回基本元数据，不包括大字段
+            "metadata": 1,
+            "abstract": 1,
+            "attachments": 1,
         }
         if include_score:
             projection["score"] = {"$meta": "textScore"}

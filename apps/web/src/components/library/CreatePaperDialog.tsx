@@ -19,6 +19,7 @@ interface CreatePaperDialogProps {
     payload:
       | { mode: 'manual'; data: FormDataState }
       | { mode: 'text'; text: string }
+      | { mode: 'pdf'; file: File; extra?: any }
   ) => Promise<unknown>;
 }
 
@@ -65,6 +66,7 @@ export default function CreatePaperDialog({
 }: CreatePaperDialogProps) {
   const [loading, setLoading] = React.useState(false);
   const [pressing, setPressing] = React.useState(false);
+  const [isSubmitting, setIsSubmitting] = React.useState(false);
 
   const [formData, setFormData] = React.useState<FormDataState>({ ...initialFormData });
 
@@ -91,9 +93,10 @@ export default function CreatePaperDialog({
     }
   }, [open]);
 
-  // 新增：创建模式（手动 / 文本）
-  const [mode, setMode] = React.useState<'manual' | 'text'>('manual');
+  // 新增：创建模式（手动 / 文本 / PDF）
+  const [mode, setMode] = React.useState<'manual' | 'text' | 'pdf'>('manual');
   const [textInput, setTextInput] = React.useState('');
+  const [pdfFile, setPdfFile] = React.useState<File | null>(null);
 
   const triggerButtonPulse = React.useCallback(() => {
     if (pressing) return;
@@ -103,13 +106,22 @@ export default function CreatePaperDialog({
   }, [pressing]);
 
   const handleSubmit = async () => {
+    // 防止重复提交
+    if (isSubmitting) {
+      return;
+    }
+    
     triggerButtonPulse();
     setLoading(true);
+    setIsSubmitting(true);
+    
     try {
       if (mode === 'manual') {
         await onSave({ mode: 'manual', data: formData });
-      } else {
+      } else if (mode === 'text') {
         await onSave({ mode: 'text', text: textInput });
+      } else {
+        await onSave({ mode: 'pdf', file: pdfFile! });
       }
       onSuccess?.();
       handleClose();
@@ -117,17 +129,21 @@ export default function CreatePaperDialog({
       // 静默处理创建失败错误
     } finally {
       setLoading(false);
+      setIsSubmitting(false);
     }
   };
 
   const resetForm = () => {
     setFormData({ ...initialFormData });
     setTextInput('');
+    setPdfFile(null);
     setMode('manual');
+    setIsSubmitting(false); // 重置提交状态
   };
 
   const handleClose = () => {
     resetForm();
+    setIsSubmitting(false); // 确保关闭对话框时重置提交状态
     onClose();
   };
 
@@ -135,9 +151,12 @@ export default function CreatePaperDialog({
 
   const canSubmit =
     !loading &&
+    !isSubmitting &&
     (mode === 'manual'
       ? !!formData.title.trim()
-      : !!textInput.trim());
+      : mode === 'text'
+      ? !!textInput.trim()
+      : !!pdfFile);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-50/10 px-4 py-6 backdrop-blur">
@@ -165,13 +184,22 @@ export default function CreatePaperDialog({
           >
             文本导入
           </button>
+          <button
+            type="button"
+            className={cn(tabBase, mode === 'pdf' ? tabActive : tabInactive)}
+            onClick={() => setMode('pdf')}
+          >
+            PDF创建
+          </button>
         </div>
 
         <section className="max-h-[60vh] overflow-y-auto bg-white/45 px-6 py-6 backdrop-blur">
           {mode === 'manual' ? (
             <ManualForm formData={formData} setFormData={setFormData} />
-          ) : (
+          ) : mode === 'text' ? (
             <TextForm text={textInput} onChange={setTextInput} />
+          ) : (
+            <PdfForm file={pdfFile} onChange={setPdfFile} />
           )}
         </section>
 
@@ -185,7 +213,7 @@ export default function CreatePaperDialog({
             className={cn(glowButtonFilled, 'min-w-[110px]', pressing && 'animate-glow-press')}
             onAnimationEnd={event => event.currentTarget.classList.remove('animate-glow-press')}
           >
-            {loading ? '创建中…' : mode === 'manual' ? '创建论文' : '从文本创建'}
+            {loading ? '创建中…' : mode === 'manual' ? '创建论文' : mode === 'text' ? '从文本创建' : '从PDF创建'}
           </Button>
         </footer>
       </div>
@@ -400,5 +428,112 @@ function SelectField({
         ))}
       </select>
     </label>
+  );
+}
+
+function PdfForm({
+  file,
+  onChange,
+}: {
+  file: File | null;
+  onChange: (file: File | null) => void;
+}) {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const selectedFile = event.target.files?.[0] || null;
+    onChange(selectedFile);
+  };
+
+  const handleDrop = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+    const droppedFile = event.dataTransfer.files?.[0] || null;
+    if (droppedFile && droppedFile.type === 'application/pdf') {
+      onChange(droppedFile);
+    }
+  };
+
+  const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    event.preventDefault();
+  };
+
+  const openFileDialog = () => {
+    fileInputRef.current?.click();
+  };
+
+  return (
+    <div className="space-y-4">
+      <h3 className="text-lg font-medium text-slate-900">从PDF创建</h3>
+      
+      <div
+        className="relative border-2 border-dashed border-white/60 rounded-xl bg-white/40 p-8 text-center backdrop-blur-sm transition-all hover:border-white/80 hover:bg-white/50"
+        onDrop={handleDrop}
+        onDragOver={handleDragOver}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".pdf,application/pdf"
+          onChange={handleFileChange}
+          className="hidden"
+        />
+        
+        {file ? (
+          <div className="space-y-3">
+            <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-linear-to-br from-[#28418A]/18 via-[#28418A]/12 to-[#28418A]/24 shadow-[0_12px_26px_rgba(40,65,138,0.22)]">
+              <svg className="h-6 w-6 text-[#28418A]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+              </svg>
+            </div>
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-slate-900">{file.name}</p>
+              <p className="text-xs text-slate-500">
+                {(file.size / 1024 / 1024).toFixed(2)} MB
+              </p>
+            </div>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={openFileDialog}
+              className="mx-auto"
+            >
+              重新选择文件
+            </Button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-linear-to-br from-[#28418A]/18 via-[#28418A]/12 to-[#28418A]/24 shadow-[0_12px_26px_rgba(40,65,138,0.22)]">
+              <svg className="h-8 w-8 text-[#28418A]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+              </svg>
+            </div>
+            <div className="space-y-2">
+              <p className="text-lg font-medium text-slate-900">拖拽PDF文件到这里</p>
+              <p className="text-sm text-slate-500">或者</p>
+            </div>
+            <Button
+              type="button"
+              onClick={openFileDialog}
+              className="mx-auto"
+            >
+              选择文件
+            </Button>
+            <p className="text-xs text-slate-500">
+              支持 PDF 格式，最大 50MB
+            </p>
+          </div>
+        )}
+      </div>
+      
+      <div className="rounded-lg border border-white/40 bg-white/30 p-4 backdrop-blur-sm">
+        <h4 className="font-medium text-slate-900 mb-2">功能说明</h4>
+        <ul className="space-y-1 text-sm text-slate-600">
+          <li>• 上传PDF文件后，系统将自动解析PDF内容</li>
+          <li>• 解析完成后，会自动生成论文的标题、摘要、关键词等信息</li>
+          <li>• 解析过程可能需要几分钟时间，请耐心等待</li>
+          <li>• 解析完成后，您可以在论文详情中查看和编辑解析结果</li>
+        </ul>
+      </div>
+    </div>
   );
 }

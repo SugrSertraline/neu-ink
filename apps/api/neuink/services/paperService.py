@@ -184,16 +184,83 @@ class PaperService:
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"创建论文失败: {exc}")
 
-    def create_paper_from_text(self, text: str, creator_id: str, is_public: bool = True) -> Dict[str, Any]:
+    def parse_paper_from_text(self, text: str) -> Dict[str, Any]:
         """
-        从文本创建论文，通过大模型解析 metadata、abstract 和 keywords
+        仅从文本中解析出论文结构数据，不在 Paper collection 中创建记录
         """
         try:
-            # 使用元数据提取服务创建论文
+            # 使用元数据提取服务解析文本
             metadata_service = get_paper_metadata_service()
-            return metadata_service.create_paper_from_text(text, creator_id, is_public)
-        except Exception as exc:  # pylint: disable=broad-except
-            return self._wrap_error(f"从文本创建论文失败: {exc}")
+            parsed_data = metadata_service.extract_paper_metadata(text)
+
+            if not parsed_data:
+                return self._wrap_error("文本解析失败，无法提取论文元数据")
+
+            # 验证解析结果
+            metadata = parsed_data.get("metadata", {})
+            if not metadata.get("title"):
+                return self._wrap_error("解析结果中缺少标题信息")
+
+            # 确保标题使用新的结构（title 和 titleZh）
+            if "title" in metadata and isinstance(metadata["title"], dict):
+                # 如果是旧格式 {en: "...", zh: "..."}，转换为新格式
+                title_obj = metadata["title"]
+                if "en" in title_obj:
+                    metadata["title"] = title_obj["en"]
+                if "zh" in title_obj:
+                    metadata["titleZh"] = title_obj["zh"]
+
+            # 构建 abstract，确保使用字符串格式
+            abstract_data = parsed_data.get("abstract", {})
+            if isinstance(abstract_data, dict):
+                abstract = {
+                    "en": str(abstract_data.get("en", "")),
+                    "zh": str(abstract_data.get("zh", ""))
+                }
+            else:
+                # 当摘要不是字典格式时，需要翻译摘要内容
+                abstract_text = str(abstract_data)
+                try:
+                    # 尝试使用LLM翻译摘要
+                    translation_result = metadata_service._translate_text(abstract_text, target_lang="zh")
+                    abstract = {
+                        "en": abstract_text,
+                        "zh": translation_result if translation_result else abstract_text
+                    }
+                except Exception as e:
+                    logger.error(f"翻译摘要失败: {e}")
+                    # 如果翻译失败，使用原文作为中文摘要
+                    abstract = {
+                        "en": abstract_text,
+                        "zh": abstract_text
+                    }
+
+            # 构建论文数据结构
+            paper_data = {
+                "metadata": metadata,
+                "abstract": abstract,
+                "keywords": parsed_data.get("keywords", []),
+                "sections": parsed_data.get("sections", []),  # 解析出来的章节结构
+                "references": parsed_data.get("references", []),
+                # attachments 一般由上传流程填，这里可以不管
+            }
+
+            return self._wrap_success("解析成功", paper_data)
+        except Exception as e:
+            return self._wrap_error(f"从文本解析论文失败: {e}")
+
+    def create_paper_from_text(self, text: str, creator_id: str, is_public: bool = True) -> Dict[str, Any]:
+        """
+        保持原语义：从文本解析并在 Paper collection 中创建一条新论文
+        """
+        parse_result = self.parse_paper_from_text(text)
+        if parse_result["code"] != BusinessCode.SUCCESS:
+            return parse_result
+
+        paper_data = parse_result["data"]
+        paper_data["isPublic"] = is_public
+
+        return self.create_paper(paper_data, creator_id)
 
     def create_paper_from_metadata(self, metadata: Dict[str, Any], creator_id: str, is_public: bool = False) -> Dict[str, Any]:
         """
@@ -285,9 +352,15 @@ class PaperService:
         section_model = get_section_model()
         section_model.delete_by_paper_id(paper_id)
 
+        # 删除附件文件
+        deleted_attachments = self._delete_paper_attachments(paper)
+
         # 删除论文
         if self.paper_model.delete(paper_id):
-            return self._wrap_success("论文删除成功", None)
+            message = "论文删除成功"
+            if deleted_attachments > 0:
+                message += f"，同时删除了 {deleted_attachments} 个附件文件"
+            return self._wrap_success(message, None)
 
         return self._wrap_error("论文删除失败")
 
@@ -370,19 +443,25 @@ class PaperService:
         """从文本添加block"""
         return self.content_service.add_block_from_text(*args, **kwargs)
 
-    def parse_references(self, paper_id: str, text: str) -> Dict[str, Any]:
+    def parse_references(self, paper_id: str, text: str, user_id: Optional[str] = None, is_admin: bool = False) -> Dict[str, Any]:
         """解析参考文献"""
         try:
             # 使用参考文献服务解析文本
             from .paperReferenceService import get_paper_reference_service
             reference_service = get_paper_reference_service()
             parsed_references = reference_service.parse_reference_text(text)
-            
+           
             if not parsed_references:
                 return self._wrap_error("参考文献解析失败，请检查文本格式")
 
             # 添加到论文
-            result = reference_service.add_references_to_paper(paper_id, parsed_references)
+            result = reference_service.add_references_to_paper(
+                paper_id=paper_id,
+                references=parsed_references,
+                user_id=user_id,
+                is_admin=is_admin,
+                is_user_paper=False
+            )
             if result["success"]:
                 return {
                     "success": True,
@@ -398,13 +477,19 @@ class PaperService:
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"解析参考文献失败: {exc}")
 
-    def add_references_to_paper(self, paper_id: str, references: List[Dict[str, Any]]) -> Dict[str, Any]:
+    def add_references_to_paper(self, paper_id: str, references: List[Dict[str, Any]], user_id: Optional[str] = None, is_admin: bool = False) -> Dict[str, Any]:
         """添加参考文献到论文"""
         try:
             # 使用参考文献服务添加到论文
             from .paperReferenceService import get_paper_reference_service
             reference_service = get_paper_reference_service()
-            result = reference_service.add_references_to_paper(paper_id, references)
+            result = reference_service.add_references_to_paper(
+                paper_id=paper_id,
+                references=references,
+                user_id=user_id,
+                is_admin=is_admin,
+                is_user_paper=False
+            )
             
             if result["success"]:
                 return {
@@ -561,7 +646,7 @@ class PaperService:
                 
                 # 如果会话已完成或失败，直接返回结果
                 if existing_session["status"] == "completed":
-                    yield f"data: {json.dumps({'type': 'complete', 'blocks': existing_session.get("completedBlocks", []), 'paper': existing_session.get("paperData"), 'message': '会话已完成', 'sessionId': session_id}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'complete', 'blocks': existing_session.get("completedBlocks", []), 'message': '会话已完成', 'sessionId': session_id}, ensure_ascii=False)}\n\n"
                     return
                 elif existing_session["status"] == "failed":
                     yield f"data: {json.dumps({'type': 'status_update', 'data': {'status': 'failed', 'progress': 0, 'message': existing_session.get("error", "解析失败"), 'error': existing_session.get("error", "解析失败"), 'sessionId': session_id}}, ensure_ascii=False)}\n\n"
@@ -1179,6 +1264,63 @@ class PaperService:
         # 将sections数据添加到paper中
         paper["sections"] = sections
         return paper
+
+    def _delete_paper_attachments(self, paper: Dict[str, Any]) -> int:
+        """
+        删除论文的所有附件文件
+        
+        Args:
+            paper: 论文数据
+            
+        Returns:
+            成功删除的附件数量
+        """
+        try:
+            attachments = paper.get("attachments", {})
+            if not attachments:
+                return 0
+                
+            # 获取七牛云服务
+            from ..services.qiniuService import get_qiniu_service
+            qiniu_service = get_qiniu_service()
+            
+            deleted_count = 0
+            
+            # 删除PDF附件
+            if "pdf" in attachments and attachments["pdf"].get("key"):
+                pdf_key = attachments["pdf"]["key"]
+                result = qiniu_service.delete_file(pdf_key)
+                if result.get("success"):
+                    deleted_count += 1
+                    logger.info(f"成功删除PDF附件: {pdf_key}")
+                else:
+                    logger.error(f"删除PDF附件失败: {pdf_key}, 错误: {result.get('error')}")
+            
+            # 删除Markdown附件
+            if "markdown" in attachments and attachments["markdown"].get("key"):
+                md_key = attachments["markdown"]["key"]
+                result = qiniu_service.delete_file(md_key)
+                if result.get("success"):
+                    deleted_count += 1
+                    logger.info(f"成功删除Markdown附件: {md_key}")
+                else:
+                    logger.error(f"删除Markdown附件失败: {md_key}, 错误: {result.get('error')}")
+            
+            # 删除content_list.json附件（如果存在）
+            if "content_list" in attachments and attachments["content_list"].get("key"):
+                content_list_key = attachments["content_list"]["key"]
+                result = qiniu_service.delete_file(content_list_key)
+                if result.get("success"):
+                    deleted_count += 1
+                    logger.info(f"成功删除content_list附件: {content_list_key}")
+                else:
+                    logger.error(f"删除content_list附件失败: {content_list_key}, 错误: {result.get('error')}")
+            
+            return deleted_count
+            
+        except Exception as e:
+            logger.error(f"删除论文附件时发生异常: {str(e)}")
+            return 0
 
 
 _paper_service: Optional[PaperService] = None

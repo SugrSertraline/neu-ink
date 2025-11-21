@@ -61,7 +61,7 @@ interface BlockEditorProps {
   dragHandleProps?: Record<string, unknown>;
   onAddBlockAfter?: (type: BlockContent['type']) => void;
   lang?: 'en' | 'zh' | 'both';
-  onSaveToServer?: () => Promise<void>;
+  onSaveToServer?: (blockId: string, sectionId: string) => Promise<void>;
 }
 
 const cloneBlock = <T extends BlockContent>(target: T): T =>
@@ -121,7 +121,23 @@ export default function BlockEditor({
       setIsSaving(true);
       try {
         toast.loading('正在保存内容...', { id: 'save-block' });
-        await onSaveToServer();
+        
+        // 查找 block 所属的 section
+        let targetSectionId: string | null = null;
+        for (const section of allSections || []) {
+          const foundBlock = section.content?.find(b => b.id === block.id);
+          if (foundBlock) {
+            targetSectionId = section.id;
+            break;
+          }
+        }
+        
+        if (targetSectionId) {
+          await onSaveToServer(block.id, targetSectionId);
+        } else {
+          throw new Error('无法找到内容块所属的章节');
+        }
+        
         // 保存成功后，更新原始状态并退出编辑模式
         originalBlockRef.current = cloneBlock(block);
         originalSerializedRef.current = serializedBlock;
@@ -147,7 +163,7 @@ export default function BlockEditor({
       clearEditing();
       toast.success('内容已更新');
     }
-  }, [block, serializedBlock, clearEditing, setHasUnsavedChanges, onSaveToServer]);
+  }, [block, serializedBlock, clearEditing, setHasUnsavedChanges, onSaveToServer, allSections]);
 
   const handleCancelEditing = useCallback(() => {
     if (serializedBlock !== originalSerializedRef.current) {
@@ -715,6 +731,8 @@ function FigureEditor({
   const [error, setError] = useState<string | null>(null);
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pasting, setPasting] = useState(false);
+  const { isEditing } = useEditingState();
 
   // 用于"乐观预览"的本地状态；与 block.src 双向同步
   const [localSrc, setLocalSrc] = useState(block.src ?? '');
@@ -723,6 +741,29 @@ function FigureEditor({
     console.log('[DEBUG] block.src 变化:', block.src, 'block.id:', block.id);
     setLocalSrc(block.src ?? '');
   }, [block.src, block.id]);
+
+  // 添加键盘快捷键支持 (Ctrl+V 粘贴图片)
+  useEffect(() => {
+    const handleKeyDown = async (event: KeyboardEvent) => {
+      // 只在编辑模式下处理快捷键
+      if (!isEditing(block.id)) return;
+      
+      // Ctrl+V 或 Cmd+V (Mac)
+      if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
+        // 检查是否在输入框中，如果在输入框中则不处理
+        const target = event.target as HTMLElement;
+        if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.contentEditable === 'true') {
+          return;
+        }
+        
+        event.preventDefault();
+        await handlePasteFromClipboard();
+      }
+    };
+
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isEditing, block.id, uploading, pasting]);
 
   // 为 alt 文本添加本地状态，确保更改能立即反映在 UI 中
   const [localAlt, setLocalAlt] = useState(block.alt ?? '');
@@ -738,6 +779,92 @@ function FigureEditor({
     setLocalWidth(block.width ?? '');
     setLocalHeight(block.height ?? '');
   }, [block.width, block.height]);
+
+  const handlePasteFromClipboard = useCallback(async () => {
+    try {
+      setPasting(true);
+      setError(null);
+
+      // 尝试从剪贴板读取图片
+      const clipboardItems = await navigator.clipboard.read();
+      let imageFile: File | null = null;
+
+      // 遍历剪贴板项寻找图片
+      for (const item of clipboardItems) {
+        for (const type of item.types) {
+          if (type.startsWith('image/')) {
+            const blob = await item.getType(type);
+            imageFile = new File([blob], `clipboard-image-${Date.now()}.${type.split('/')[1]}`, {
+              type: type
+            });
+            break;
+          }
+        }
+        if (imageFile) break;
+      }
+
+      if (!imageFile) {
+        setError('剪贴板中没有找到图片');
+        toast.error('剪贴板中没有找到图片');
+        return;
+      }
+
+      // 检查文件大小
+      if (imageFile.size > 10 * 1024 * 1024) {
+        setError('图片大小不能超过 10MB');
+        toast.error('图片大小不能超过 10MB');
+        return;
+      }
+
+      // 使用与文件上传相同的逻辑处理图片
+      setUploadProgress(0);
+      setUploading(true);
+
+      // 1) 先用本地 ObjectURL 做乐观预览
+      const objectUrl = URL.createObjectURL(imageFile);
+      setLocalSrc(objectUrl);
+      onChange({ ...block, src: objectUrl, uploadedFilename: imageFile.name });
+
+      // 简单的进度模拟
+      const tm = setInterval(() => {
+        setUploadProgress((prev) => (prev >= 90 ? 90 : prev + 10));
+      }, 200);
+
+      try {
+        const res = paperId ? await uploadPaperImage(imageFile, paperId) : await uploadImage(imageFile);
+        clearInterval(tm);
+        setUploadProgress(100);
+
+        // 2) 后端返回 URL 后，统一写入本地预览 + block
+        const finalUrl = res.url;
+        
+        // 先更新本地状态，确保预览立即更新
+        setLocalSrc(finalUrl);
+        
+        // 然后更新 block 状态
+        onChange({ ...block, src: finalUrl, uploadedFilename: imageFile.name });
+
+        toast.success('图片从剪贴板上传成功');
+      } catch (err) {
+        clearInterval(tm);
+        // 回退到旧的 block.src（如果有）
+        setLocalSrc(block.src ?? '');
+        const msg = err instanceof Error ? err.message : '上传失败，请稍后重试';
+        setError(msg);
+        toast.error('图片上传失败', { description: msg });
+      } finally {
+        setUploading(false);
+        setTimeout(() => setUploadProgress(0), 600);
+        URL.revokeObjectURL(objectUrl);
+      }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : '无法访问剪贴板';
+      setError(msg);
+      toast.error('无法访问剪贴板', { description: msg });
+    } finally {
+      setPasting(false);
+    }
+  }, [block, paperId, setLocalSrc, onChange, setUploading, setUploadProgress, setError]);
 
   const handleFileSelect = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -843,7 +970,7 @@ function FigureEditor({
                 )}
               </div>
 
-              <div className="flex gap-2 justify-center">
+              <div className="flex gap-2 justify-center flex-wrap">
                 <label
                   htmlFor={`file-input-${block.id}`}
                   className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 cursor-pointer inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
@@ -851,6 +978,24 @@ function FigureEditor({
                   <Upload className="w-4 h-4" />
                   {uploading ? '上传中...' : '更换图片'}
                 </label>
+                <button
+                  type="button"
+                  onClick={handlePasteFromClipboard}
+                  disabled={uploading || pasting}
+                  className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2"
+                >
+                  {pasting ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      粘贴中...
+                    </>
+                  ) : (
+                    <>
+                      <Upload className="w-4 h-4" />
+                      从剪贴板粘贴
+                    </>
+                  )}
+                </button>
                 <button
                   type="button"
                   onClick={handleRemoveImage}
@@ -863,25 +1008,54 @@ function FigureEditor({
               </div>
             </div>
           ) : (
-            <label htmlFor={`file-input-${block.id}`} className="cursor-pointer inline-flex flex-col items-center">
-              {uploading ? (
-                <div className="text-center">
-                  <Loader2 className="w-12 h-12 text-blue-500 mb-2 animate-spin" />
-                  <span className="text-sm text-gray-600">上传中... {uploadProgress}%</span>
-                  <div className="w-48 bg-gray-200 rounded-full h-2 mt-2">
-                    <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+            <div className="space-y-4">
+              <label htmlFor={`file-input-${block.id}`} className="cursor-pointer inline-flex flex-col items-center">
+                {uploading ? (
+                  <div className="text-center">
+                    <Loader2 className="w-12 h-12 text-blue-500 mb-2 animate-spin" />
+                    <span className="text-sm text-gray-600">上传中... {uploadProgress}%</span>
+                    <div className="w-48 bg-gray-200 rounded-full h-2 mt-2">
+                      <div className="bg-blue-600 h-2 rounded-full transition-all duration-300" style={{ width: `${uploadProgress}%` }} />
+                    </div>
                   </div>
-                </div>
-              ) : (
-                <>
-                  <Image className="w-12 h-12 text-gray-400 mb-2" />
-                  <span className="text-sm text-gray-600">点击选择图片上传</span>
-                  <span className="text-xs text-gray-400 mt-1">
-                    支持 JPEG, PNG, GIF, SVG, WebP，最大 10MB
-                  </span>
-                </>
-              )}
-            </label>
+                ) : (
+                  <>
+                    <Image className="w-12 h-12 text-gray-400 mb-2" />
+                    <span className="text-sm text-gray-600">点击选择图片上传</span>
+                    <span className="text-xs text-gray-400 mt-1">
+                      支持 JPEG, PNG, GIF, SVG, WebP，最大 10MB
+                    </span>
+                  </>
+                )}
+              </label>
+              
+              <div className="text-center">
+                <span className="text-gray-400 text-sm">或</span>
+              </div>
+              
+              <button
+                type="button"
+                onClick={handlePasteFromClipboard}
+                disabled={uploading || pasting}
+                className="px-6 py-3 bg-green-600 text-white rounded hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed inline-flex items-center gap-2 mx-auto"
+              >
+                {pasting ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    粘贴中...
+                  </>
+                ) : (
+                  <>
+                    <Upload className="w-5 h-5" />
+                    从剪贴板粘贴图片
+                  </>
+                )}
+              </button>
+              
+              <div className="text-xs text-gray-400 text-center">
+                截图后可直接粘贴，支持 Ctrl+V 快捷键
+              </div>
+            </div>
           )}
         </div>
 
@@ -1044,7 +1218,7 @@ function TableEditor({
   references: Reference[];
   allSections: Section[];
   lang: 'en' | 'zh' | 'both';
-  onSaveToServer?: () => Promise<void>;
+  onSaveToServer?: (blockId: string, sectionId: string) => Promise<void>;
 }) {
   const [editMode, setEditMode] = useState<'json' | 'html'>('html');
   const [htmlInput, setHtmlInput] = useState('');
@@ -1077,7 +1251,22 @@ function TableEditor({
       // 自动保存并退出编辑状态
       if (onSaveToServer) {
         try {
-          await onSaveToServer();
+          // 查找 block 所属的 section
+          let targetSectionId: string | null = null;
+          for (const section of allSections || []) {
+            const foundBlock = section.content?.find(b => b.id === block.id);
+            if (foundBlock) {
+              targetSectionId = section.id;
+              break;
+            }
+          }
+          
+          if (targetSectionId) {
+            await onSaveToServer(block.id, targetSectionId);
+          } else {
+            throw new Error('无法找到内容块所属的章节');
+          }
+          
           toast.success('HTML表格解析并保存成功');
           // 保存成功后，触发完成编辑
           clearEditing();

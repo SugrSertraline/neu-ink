@@ -391,6 +391,7 @@ interface SectionContextMenuProps {
   onAddSectionAfter?: MenuAction;
   onAddBlock?: (type: BlockContent['type']) => void;
   onStartTextParse?: MenuAction;
+  onQuickTranslate?: MenuAction;
   onMoveUp?: MenuAction;
   onMoveDown?: MenuAction;
   onDelete?: MenuAction;
@@ -403,6 +404,7 @@ export function SectionContextMenu({
   onAddSectionAfter,
   onAddBlock,
   onStartTextParse,
+  onQuickTranslate,
   onMoveUp,
   onMoveDown,
   onDelete,
@@ -469,6 +471,14 @@ export function SectionContextMenu({
         kind: 'item',
         label: '📝 通过文本解析添加',
         onSelect: onStartTextParse,
+      });
+    }
+
+    if (onQuickTranslate) {
+      entries.push({
+        kind: 'item',
+        label: '🌐 快速翻译',
+        onSelect: onQuickTranslate,
       });
     }
   }

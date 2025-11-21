@@ -33,11 +33,12 @@ import PaperContent from '@/components/paper/PaperContent';
 import PaperReferences from '@/components/paper/PaperReferences';
 import PersonalNotePanel from '@/components/paper/PersonalNotePanel';
 import PaperTableOfContents from '@/components/paper/PaperTableOfContents';
+import { PaperFloatingViewer } from '@/components/paper/PaperFloatingViewer';
 import dynamic from 'next/dynamic';
 const PaperAttachmentsDrawer = dynamic(
   () => import('@/components/paper/PaperAttachmentsDrawer').then(mod => mod.PaperAttachmentsDrawer),
   {
-    ssr: false, 
+    ssr: false,
     loading: () => null, // 或者写一个 Loading 占位
   },
 );
@@ -498,6 +499,7 @@ function PaperPageContent() {
   const metadata = displayContent?.metadata ?? null;
   const [attachments, setAttachments] = useState(displayContent?.attachments ?? {});
   const [isAttachmentsDrawerOpen, setIsAttachmentsDrawerOpen] = useState(false);
+  const [isFloatingViewerOpen, setIsFloatingViewerOpen] = useState(false);
   const urlUserPaperId = searchParams?.get('userPaperId');
 
   const resolvedUserPaperId = useMemo(() => {
@@ -1612,6 +1614,13 @@ function PaperPageContent() {
           attachments={attachments}
           onAttachmentsChange={handleAttachmentsChange}
           onSaveToServer={handleSaveToServer}
+        />
+        
+        {/* 悬浮查看器 */}
+        <PaperFloatingViewer
+          attachments={attachments}
+          isVisible={isFloatingViewerOpen}
+          onClose={() => setIsFloatingViewerOpen(false)}
         />
       </div>
     </PaperEditPermissionsContext.Provider>

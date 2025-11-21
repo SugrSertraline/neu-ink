@@ -105,9 +105,11 @@ def create_app():
     from neuink.routes.health import bp as health_bp
     from neuink.routes.users import bp as users_bp
     from neuink.routes import notes
+    from neuink.routes.translation import bp as translation_bp
     app.register_blueprint(health_bp, url_prefix=f"{prefix}/health")
     app.register_blueprint(users_bp, url_prefix=f"{prefix}/users")
     app.register_blueprint(notes.bp, url_prefix=f"{prefix}/notes")
+    app.register_blueprint(translation_bp, url_prefix=f"{prefix}/translation")
 
     # 注册论文相关蓝图
     from neuink.routes import init_app as init_paper_routes

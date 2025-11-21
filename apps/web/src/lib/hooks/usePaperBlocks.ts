@@ -338,8 +338,7 @@ export function usePaperBlocks(
       currentDraft?: PaperContentModel
     ) => {
       try {
-        // 使用更简单的方式，直接调用API保存整个editableDraft
-        // 这样可以避免类型推断问题，并且确保所有更改都被保存
+        // 首先尝试只更新特定的block
         const { adminPaperService, userPaperService } = await import('@/lib/services/paper');
         
         const service = isPersonalOwner ? userPaperService : adminPaperService;
@@ -354,10 +353,65 @@ export function usePaperBlocks(
           return { success: false, error: '没有提供当前草稿' };
         }
         
-        // 保存整个草稿到服务器
+        // 查找要更新的block
+        let targetBlock: BlockContent | null = null;
+        let targetSection: Section | null = null;
+        
+        for (const section of currentDraft.sections || []) {
+          const block = section.content?.find(b => b.id === blockId);
+          if (block) {
+            targetBlock = block;
+            targetSection = section;
+            break;
+          }
+        }
+        
+        if (!targetBlock || !targetSection) {
+          return { success: false, error: '找不到要更新的block' };
+        }
+        
+        // 构建更新数据，只包含block的字段
+        const updateData: any = {
+          type: targetBlock.type,
+        };
+        
+        // 根据block类型添加相应字段
+        if ('content' in targetBlock && targetBlock.content !== undefined) {
+          updateData.content = targetBlock.content;
+        }
+        
+        if ('src' in targetBlock && targetBlock.src !== undefined) {
+          updateData.src = targetBlock.src;
+        }
+        
+        if ('alt' in targetBlock && targetBlock.alt !== undefined) {
+          updateData.alt = targetBlock.alt;
+        }
+        
+        if ('width' in targetBlock && targetBlock.width !== undefined) {
+          updateData.width = targetBlock.width;
+        }
+        
+        if ('height' in targetBlock && targetBlock.height !== undefined) {
+          updateData.height = targetBlock.height;
+        }
+        
+        if ('caption' in targetBlock && targetBlock.caption !== undefined) {
+          updateData.caption = targetBlock.caption;
+        }
+        
+        if ('description' in targetBlock && targetBlock.description !== undefined) {
+          updateData.description = targetBlock.description;
+        }
+        
+        if ('uploadedFilename' in targetBlock && targetBlock.uploadedFilename !== undefined) {
+          updateData.uploadedFilename = targetBlock.uploadedFilename;
+        }
+        
+        // 调用block更新API而不是更新整个论文
         const result = isPersonalOwner
-          ? await userPaperService.updateUserPaper(id, currentDraft)
-          : await adminPaperService.updatePaper(id, currentDraft);
+          ? await userPaperService.updateBlock(id, targetSection.id, blockId, updateData)
+          : await adminPaperService.updateBlock(paperId, targetSection.id, blockId, updateData);
         
         if (result.bizCode === 0) {
           toast.success('保存成功', { description: '内容已保存到服务器。' });

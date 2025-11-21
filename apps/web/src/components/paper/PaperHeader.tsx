@@ -9,8 +9,10 @@ import {
   Eye,
   EyeOff,
   Paperclip,
+  FileText,
 } from 'lucide-react';
 import { ViewerSource } from '@/types/paper/viewer';
+import { toast } from 'sonner';
 
 type Lang = 'en' | 'both';
 
@@ -62,6 +64,7 @@ interface PaperHeaderProps {
   actions?: PaperHeaderActions;
   viewerSource?: ViewerSource;
   onOpenAttachments?: () => void;
+  hasAttachments?: boolean;
 }
 
 export default function PaperHeader({
@@ -75,6 +78,7 @@ export default function PaperHeader({
   actions,
   viewerSource,
   onOpenAttachments,
+  hasAttachments = false,
 }: PaperHeaderProps) {
   const renderActionButton = (
     shouldRender: boolean | undefined,
@@ -186,7 +190,7 @@ export default function PaperHeader({
               附件
             </button>
           )}
-
+          
           <div className="inline-flex rounded-full border border-white/40 bg-white/30 p-1 shadow-[0_14px_32px_rgba(15,23,42,0.18)] backdrop-blur-xl dark:border-slate-700/40 dark:bg-slate-800/40">
             {(
               [

@@ -1,7 +1,7 @@
 'use client';
 
 import React from 'react';
-import { BookOpen, Tag, SlidersHorizontal, BookmarkMinus, Plus, Clock, Edit, Loader2 } from 'lucide-react';
+import { BookOpen, Tag, SlidersHorizontal, BookmarkMinus, Plus, Clock, Edit, Loader2, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 import { useAuth } from '@/contexts/AuthContext';
@@ -104,6 +104,7 @@ export default function PersonalLibraryPage() {
   const [showCreateDialog, setShowCreateDialog] = React.useState(false);
   const [showEditDialog, setShowEditDialog] = React.useState(false);
   const [editingPaper, setEditingPaper] = React.useState<PersonalLibraryItem | null>(null);
+  const [isCreatingPaper, setIsCreatingPaper] = React.useState(false);
 
   const handleCreateSuccess = React.useCallback(() => {
     toast.success('论文创建成功');
@@ -111,6 +112,7 @@ export default function PersonalLibraryPage() {
     setCurrentPage(1);
     reload();
     setShowCreateDialog(false);
+    setIsCreatingPaper(false); // 重置创建状态
   }, [setCurrentPage, reload]);
 
   const handleEditSuccess = React.useCallback(() => {
@@ -149,6 +151,17 @@ export default function PersonalLibraryPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={reload}
+              disabled={loading}
+              className="inline-flex items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-600 transition hover:border-white/60 hover:bg-white/70 hover:text-slate-900 disabled:opacity-50"
+              title="刷新获取最新解析进度"
+            >
+              <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+              刷新进度
+            </Button>
             <div className="inline-flex items-center gap-2 rounded-xl border border-white/70 bg-white/70 px-2 py-1 shadow backdrop-blur-xl">
               <ViewModeSwitcher value={viewMode} onChange={setViewMode} />
             </div>
@@ -156,7 +169,7 @@ export default function PersonalLibraryPage() {
               variant="ghost"
               size="sm"
               onClick={resetFilters}
-              className="inline-flex items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-600 transition hover:border-white/60 hover:bg白/70 hover:text-slate-900"
+              className="inline-flex items-center gap-2 rounded-xl border border-transparent px-3 py-2 text-sm text-slate-600 transition hover:border-white/60 hover:bg-white/70 hover:text-slate-900"
             >
               <SlidersHorizontal className="h-4 w-4" />
               重置筛选
@@ -374,21 +387,36 @@ export default function PersonalLibraryPage() {
             onClose={() => setShowCreateDialog(false)}
             onSuccess={handleCreateSuccess}
             onSave={async (payload) => {
+              // 防止重复提交
+              if (isCreatingPaper) {
+                throw new Error('正在创建论文，请稍候...');
+              }
+              
+              setIsCreatingPaper(true);
+              
               try {
                 if (payload.mode === 'manual') {
                   const data = buildCreatePayload(payload.data);
                   await userPaperService.createPaperFromMetadata({ metadata: data } as any);
-                } else {
+                } else if (payload.mode === 'text') {
                   await userPaperService.createPaperFromText({ text: payload.text.trim() });
+                } else if (payload.mode === 'pdf') {
+                  await userPaperService.createPaperFromPdf(payload.file);
                 }
               } catch (e: any) {
                 const errorMessage = e?.message || '创建失败';
-                if (errorMessage.includes('文本解析失败')) {
+                if (errorMessage.includes('正在创建论文，请稍候')) {
+                  toast.info('正在处理中，请耐心等待');
+                } else if (errorMessage.includes('文本解析失败')) {
                   toast.error('文本解析失败，建议使用手动输入模式或检查文本格式');
+                } else if (errorMessage.includes('PDF解析')) {
+                  toast.error('PDF解析失败，请检查文件格式或稍后重试');
                 } else {
                   toast.error(`创建失败：${errorMessage}`);
                 }
                 throw e;
+              } finally {
+                setIsCreatingPaper(false);
               }
             }}
           />

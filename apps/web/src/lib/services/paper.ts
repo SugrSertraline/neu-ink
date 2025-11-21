@@ -479,6 +479,28 @@ export const userPaperService = {
       apiClient.get(`/user/papers/${userPaperId}/pdf-parse-tasks`)
     );
   },
+
+  /**
+   * 通过PDF创建个人论文
+   */
+  createPaperFromPdf(
+     file: File,
+     extra?: {
+       customTags?: string[];
+       readingStatus?: string;
+       priority?: string;
+     }
+  ): Promise<UnifiedResult<{ userPaper: UserPaper; taskId: string; message: string }>> {
+     const formData = new FormData();
+     formData.append('file', file);
+     if (extra) {
+       formData.append('extra', JSON.stringify(extra));
+     }
+     
+     return callAndNormalize<{ userPaper: UserPaper; taskId: string; message: string }>(
+       apiClient.upload('/user/papers/create-from-pdf', formData)
+     );
+  },
 };
 
 // —— 笔记服务 —— //
@@ -871,13 +893,13 @@ export const adminPaperService = {
    * 删除管理员论文附件
    */
   deletePaperAttachment(
-    paperId: string,
-    attachmentType: 'pdf' | 'markdown'
-  ): Promise<UnifiedResult<Paper>> {
-    return callAndNormalize<Paper>(
-      apiClient.delete(`/admin/papers/${paperId}/attachments/${attachmentType}`)
-    );
-  },
+     paperId: string,
+     attachmentType: 'pdf' | 'markdown'
+   ): Promise<UnifiedResult<Paper>> {
+     return callAndNormalize<Paper>(
+       apiClient.delete(`/admin/papers/${paperId}/attachments/${attachmentType}`)
+     );
+   },
 
   /**
    * 上传管理员论文PDF附件
@@ -962,6 +984,28 @@ export const adminPaperService = {
     return callAndNormalize<{ tasks: any[] }>(
       apiClient.get(`/admin/papers/${paperId}/pdf-parse-tasks`)
     );
+  },
+
+  /**
+   * 通过PDF创建管理员论文
+   */
+  createPaperFromPdf(
+     file: File,
+     extra?: {
+       customTags?: string[];
+       readingStatus?: string;
+       priority?: string;
+     }
+  ): Promise<UnifiedResult<{ paper: Paper; taskId: string; message: string }>> {
+     const formData = new FormData();
+     formData.append('file', file);
+     if (extra) {
+       formData.append('extra', JSON.stringify(extra));
+     }
+     
+     return callAndNormalize<{ paper: Paper; taskId: string; message: string }>(
+       apiClient.upload('/admin/papers/create-from-pdf', formData)
+     );
   },
 };
 

@@ -413,9 +413,14 @@ def upload_paper_image():
         
         # 上传文件到七牛云，使用论文图片路径前缀
         if paper_id:
-            # 如果有论文ID，则在论文图片路径下再创建子目录
-            prefix = f"{QiniuConfig.FILE_PREFIXES['paper_image']}{paper_id}/"
-            upload_result = qiniu_service.upload_file_data(file_data, file_extension, prefix)
+            # 如果有论文ID，使用统一目录结构
+            upload_result = qiniu_service.upload_file_data(
+                file_data=file_data,
+                file_extension=file_extension,
+                file_type="unified_paper",
+                filename=f"images/{filename}",
+                paper_id=paper_id
+            )
         else:
             upload_result = qiniu_service.upload_file_data(file_data, file_extension, file_type="paper_image")
         

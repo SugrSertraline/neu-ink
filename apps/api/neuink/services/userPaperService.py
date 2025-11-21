@@ -49,25 +49,13 @@ class UserPaperService:
                 filters=filters or {},
             )
 
-            # 扁平化数据结构，将paperData中的字段提升到顶层
+            # 扁平化数据结构，确保所有字段都在顶层
             for paper in papers:
                 # 确保每篇论文都包含阅读时长字段
                 if "totalReadingTime" not in paper:
                     paper["totalReadingTime"] = 0
                 if "lastReadTime" not in paper:
                     paper["lastReadTime"] = None
-                
-                # 将paperData中的字段提升到顶层，使数据结构扁平化
-                paper_data = paper.get("paperData", {})
-                if paper_data:
-                    # 提升metadata字段
-                    if "metadata" in paper_data:
-                        paper["metadata"] = paper_data["metadata"]
-                    
-                    # 提升其他字段
-                    for field in ["abstract", "keywords", "references", "attachments"]:
-                        if field in paper_data:
-                            paper[field] = paper_data[field]
 
             return self._wrap_success(
                 "获取个人论文库成功",
@@ -130,8 +118,6 @@ class UserPaperService:
                 "keywords": paper_data["keywords"],
                 "references": paper_data["references"],
                 "attachments": paper_data["attachments"],
-                # 保持向后兼容
-                "paperData": paper_data,
                 "sectionIds": section_ids,  # 复制的section ID列表
                 "customTags": extra.get("customTags", []) if extra else [],
                 "readingStatus": extra.get("readingStatus", "unread") if extra else "unread",
@@ -207,8 +193,6 @@ class UserPaperService:
                 "keywords": extracted_data["keywords"],
                 "references": extracted_data["references"],
                 "attachments": extracted_data["attachments"],
-                # 保持向后兼容
-                "paperData": extracted_data,
                 "sectionIds": section_ids,  # 复制的section ID列表
                 "customTags": extra.get("customTags", []) if extra else [],
                 "readingStatus": extra.get("readingStatus", "unread") if extra else "unread",
@@ -297,7 +281,7 @@ class UserPaperService:
         """
         更新个人论文库条目
         支持修改：
-        1. 论文内容（paperData）
+        1. 论文内容（metadata, abstract, keywords, references, attachments）
         2. 自定义标签（customTags）
         3. 阅读状态（readingStatus）
         4. 优先级（priority）
@@ -346,7 +330,7 @@ class UserPaperService:
     ) -> Dict[str, Any]:
         """
         删除个人论文库条目
-        同时删除关联的所有笔记
+        同时删除关联的所有笔记和附件文件
         """
         try:
             user_paper = self.user_paper_model.find_by_id(entry_id)
@@ -376,11 +360,17 @@ class UserPaperService:
                 if section_model.delete(section_id):
                     deleted_sections += 1
 
+            # 删除附件文件
+            deleted_attachments = self._delete_user_paper_attachments(user_paper)
+
             # 删除论文
             if self.user_paper_model.delete(entry_id):
+                message = f"删除成功，同时删除了 {deleted_notes} 条笔记和 {deleted_sections} 个章节"
+                if deleted_attachments > 0:
+                    message += f"以及 {deleted_attachments} 个附件文件"
                 return self._wrap_success(
-                    f"删除成功，同时删除了 {deleted_notes} 条笔记和 {deleted_sections} 个章节",
-                    {"deletedNotes": deleted_notes, "deletedSections": deleted_sections}
+                    message,
+                    {"deletedNotes": deleted_notes, "deletedSections": deleted_sections, "deletedAttachments": deleted_attachments}
                 )
 
             return self._wrap_error("删除失败")
@@ -536,7 +526,6 @@ class UserPaperService:
     def _load_sections_for_user_paper(self, user_paper: Dict[str, Any]) -> Dict[str, Any]:
         """
         为用户论文加载sections数据
-        这个方法确保向后兼容，使上层接口不需要改变
         """
         if "sections" in user_paper:
             # 如果已经有sections数据，直接返回
@@ -549,11 +538,6 @@ class UserPaperService:
         # 获取用户论文的sectionIds
         section_ids = user_paper.get("sectionIds", [])
         if not section_ids:
-            # 如果没有sectionIds，尝试从paperData中获取（向后兼容）
-            paper_data = user_paper.get("paperData", {})
-            if "sections" in paper_data:
-                user_paper["sections"] = paper_data["sections"]
-                return user_paper
             user_paper["sections"] = []
             return user_paper
         
@@ -635,6 +619,65 @@ class UserPaperService:
 
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"更新阅读进度失败: {exc}")
+
+    def _delete_user_paper_attachments(self, user_paper: Dict[str, Any]) -> int:
+        """
+        删除用户论文的所有附件文件
+        
+        Args:
+            user_paper: 用户论文数据
+            
+        Returns:
+            成功删除的附件数量
+        """
+        try:
+            # 从扁平化字段中获取附件
+            attachments = user_paper.get("attachments", {})
+            
+            if not attachments:
+                return 0
+                
+            # 获取七牛云服务
+            from ..services.qiniuService import get_qiniu_service
+            qiniu_service = get_qiniu_service()
+            
+            deleted_count = 0
+            
+            # 删除PDF附件
+            if "pdf" in attachments and attachments["pdf"].get("key"):
+                pdf_key = attachments["pdf"]["key"]
+                result = qiniu_service.delete_file(pdf_key)
+                if result.get("success"):
+                    deleted_count += 1
+                    print(f"[DEBUG] 成功删除PDF附件: {pdf_key}")
+                else:
+                    print(f"[DEBUG] 删除PDF附件失败: {pdf_key}, 错误: {result.get('error')}")
+            
+            # 删除Markdown附件
+            if "markdown" in attachments and attachments["markdown"].get("key"):
+                md_key = attachments["markdown"]["key"]
+                result = qiniu_service.delete_file(md_key)
+                if result.get("success"):
+                    deleted_count += 1
+                    print(f"[DEBUG] 成功删除Markdown附件: {md_key}")
+                else:
+                    print(f"[DEBUG] 删除Markdown附件失败: {md_key}, 错误: {result.get('error')}")
+            
+            # 删除content_list.json附件（如果存在）
+            if "content_list" in attachments and attachments["content_list"].get("key"):
+                content_list_key = attachments["content_list"]["key"]
+                result = qiniu_service.delete_file(content_list_key)
+                if result.get("success"):
+                    deleted_count += 1
+                    print(f"[DEBUG] 成功删除content_list附件: {content_list_key}")
+                else:
+                    print(f"[DEBUG] 删除content_list附件失败: {content_list_key}, 错误: {result.get('error')}")
+            
+            return deleted_count
+            
+        except Exception as e:
+            print(f"[DEBUG] 删除用户论文附件时发生异常: {str(e)}")
+            return 0
 
 _user_paper_service: Optional[UserPaperService] = None
 

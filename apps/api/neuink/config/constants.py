@@ -144,7 +144,7 @@ class QiniuConfig:
     
     # 上传策略配置
     UPLOAD_POLICY = {
-        "mimeLimit": "image/*;application/pdf;text/plain;text/markdown;text/x-markdown;application/octet-stream;application/zip",  # 限制上传文件类型，添加markdown和zip支持
+        "mimeLimit": "image/*;application/pdf;text/plain;text/markdown;text/x-markdown;application/octet-stream;application/zip;application/json",  # 限制上传文件类型，添加markdown、zip和json支持
         "fsizeLimit": 52428800,  # 限制文件大小为50MB (50 * 1024 * 1024)
         "detectMime": 0,  # 禁用自动MIME检测，使用指定的MIME类型
     }
@@ -156,6 +156,9 @@ class QiniuConfig:
         "pdf": "neuink/pdf/",  # PDF文件存储路径前缀
         "markdown": "neuink/markdown/",  # Markdown文件存储路径前缀
         "paper_image": "neuink/paper_image/",  # 论文图片存储路径前缀
+        "content_list": "neuink/content_list/",  # content_list.json文件存储路径前缀
+        # 新的统一目录结构（推荐使用）
+        "unified_paper": "neuink/{paper_id}/",  # 统一的论文目录结构
     }
     
     # 默认文件路径前缀（向后兼容）
