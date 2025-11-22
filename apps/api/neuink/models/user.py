@@ -58,10 +58,6 @@ class UserModel:
 
     def verify_credentials(self, username: str, password: str) -> Optional[Dict[str, Any]]:
         """验证凭据 - 数据库查询操作"""
-        print("正在数据库中查询:")
-        print(f"   用户名: '{username}'")
-        print(f"   密码: [已隐藏]")
-
         # 首先根据用户名查找用户
         user = self.collection.find_one(
             {"username": username},
@@ -69,18 +65,14 @@ class UserModel:
         )
 
         if not user:
-            print("查询结果: 用户不存在")
             return None
 
         # 检查用户是否有盐值字段（判断是否为旧格式）
         if "salt" not in user:
-            print("检测到旧格式密码，使用明文比较")
             # 旧格式：直接比较明文密码
             if user.get("password") == password:
-                print("查询结果: 明文密码验证成功")
                 return user
             else:
-                print("查询结果: 明文密码验证失败")
                 return None
 
         # 新格式：使用加密验证
@@ -88,10 +80,8 @@ class UserModel:
         salt = user.get("salt")
         
         if verify_password(password, stored_password, salt):
-            print("查询结果: 加密密码验证成功")
             return user
         else:
-            print("查询结果: 加密密码验证失败")
             return None
 
     def update_user(self, user_id: str, update_data: Dict[str, Any]) -> bool:
@@ -180,12 +170,10 @@ class UserModel:
             
             # 检查是否需要迁移旧密码格式
             if "salt" not in admin_user:
-                print("检测到管理员用户使用旧密码格式，正在迁移...")
                 old_password = admin_user.get("password")
                 hashed_password, salt = hash_password(old_password)
                 self.update_user(admin_user["id"], {"password": hashed_password, "salt": salt})
                 admin_user = self.find_by_username(ADMIN_USERNAME)
-                print("管理员用户密码迁移完成")
                 
         return admin_user
 

@@ -501,6 +501,40 @@ export const userPaperService = {
        apiClient.upload('/user/papers/create-from-pdf', formData)
      );
   },
+
+  /**
+   * 获取管理员论文的content_list.json文件内容
+   */
+  getAdminPaperContentList(
+    paperId: string
+  ): Promise<UnifiedResult<{ contentList: any; attachment: any }>> {
+    return callAndNormalize<{ contentList: any; attachment: any }>(
+      apiClient.get(`/admin/papers/${paperId}/content-list`)
+    );
+  },
+
+
+  /**
+   * 获取用户论文的content_list.json文件内容
+   */
+  getUserPaperContentList(
+    userPaperId: string
+  ): Promise<UnifiedResult<{ contentList: any; attachment: any }>> {
+    return callAndNormalize<{ contentList: any; attachment: any }>(
+      apiClient.get(`/user/papers/${userPaperId}/content-list`)
+    );
+  },
+
+  /**
+   * 获取用户论文的PDF文件内容（base64格式）
+   */
+  getUserPaperPdfContent(
+    userPaperId: string
+  ): Promise<UnifiedResult<{ pdfContent: string; attachment: any }>> {
+    return callAndNormalize<{ pdfContent: string; attachment: any }>(
+      apiClient.get(`/user/papers/${userPaperId}/pdf-content`)
+    );
+  },
 };
 
 // —— 笔记服务 —— //
@@ -1006,6 +1040,17 @@ export const adminPaperService = {
      return callAndNormalize<{ paper: Paper; taskId: string; message: string }>(
        apiClient.upload('/admin/papers/create-from-pdf', formData)
      );
+  },
+
+ /**
+  * 获取管理员论文的PDF文件内容（base64格式）
+  */
+ getAdminPaperPdfContent(
+   paperId: string
+ ): Promise<UnifiedResult<{ pdfContent: string; attachment: any }>> {
+   return callAndNormalize<{ pdfContent: string; attachment: any }>(
+     apiClient.get(`/admin/papers/${paperId}/pdf-content`)
+   );
   },
 };
 

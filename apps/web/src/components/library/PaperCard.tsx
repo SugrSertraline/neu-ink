@@ -203,6 +203,15 @@ export default function PaperCard({
   const tx = useSpring(useTransform(mx, [0, 1], [-6, 6]), spring); // translateX
   const ty = useSpring(useTransform(my, [0, 1], [-6, 6]), spring); // translateY
 
+  // 初始化 CSS 变量
+  React.useEffect(() => {
+    const el = document.querySelector('[data-glow="true"]') as HTMLElement;
+    if (el && !el.style.getPropertyValue('--cursor-x')) {
+      el.style.setProperty('--cursor-x', '50%');
+      el.style.setProperty('--cursor-y', '50%');
+    }
+  }, []);
+
   const handleMouseMove: React.MouseEventHandler<HTMLDivElement> = (e) => {
     const el = e.currentTarget as HTMLDivElement;
     const rect = el.getBoundingClientRect();

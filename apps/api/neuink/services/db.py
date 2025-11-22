@@ -7,8 +7,13 @@ _client = None
 def get_client() -> MongoClient:
     global _client
     if _client is None:
-        uri = os.getenv("MONGO_URI", "mongodb://localhost:27017")
-        _client = MongoClient(uri, uuidRepresentation="standard", connect=True)
+        uri = os.getenv("MONGO_URI", "mongodb://localhost:27017/NeuInk")
+        try:
+            _client = MongoClient(uri, uuidRepresentation="standard", connect=True, serverSelectionTimeoutMS=5000)
+            # 测试连接
+            _client.admin.command('ping')
+        except Exception as e:
+            raise e
     return _client
 
 def get_db():

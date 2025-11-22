@@ -33,8 +33,8 @@ import PaperContent from '@/components/paper/PaperContent';
 import PaperReferences from '@/components/paper/PaperReferences';
 import PersonalNotePanel from '@/components/paper/PersonalNotePanel';
 import PaperTableOfContents from '@/components/paper/PaperTableOfContents';
-import { PaperFloatingViewer } from '@/components/paper/PaperFloatingViewer';
 import dynamic from 'next/dynamic';
+
 const PaperAttachmentsDrawer = dynamic(
   () => import('@/components/paper/PaperAttachmentsDrawer').then(mod => mod.PaperAttachmentsDrawer),
   {
@@ -63,8 +63,7 @@ import {
 import MetadataEditorDialog from '@/components/paper/MetadataEditorDialog';
 import AbstractAndKeywordsEditorDialog from '@/components/paper/AbstractAndKeywordsEditorDialog';
 import ReferenceEditorDialog from '@/components/paper/ReferenceEditorDialog';
-import { Drawer, DrawerClose, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle, DrawerTrigger } from '@/components/ui/drawer';
-import { Button } from '@/components/ui/button';
+
 
 type Lang = 'en' | 'both';
 const HEADER_STICKY_OFFSET = 8;
@@ -499,7 +498,6 @@ function PaperPageContent() {
   const metadata = displayContent?.metadata ?? null;
   const [attachments, setAttachments] = useState(displayContent?.attachments ?? {});
   const [isAttachmentsDrawerOpen, setIsAttachmentsDrawerOpen] = useState(false);
-  const [isFloatingViewerOpen, setIsFloatingViewerOpen] = useState(false);
   const urlUserPaperId = searchParams?.get('userPaperId');
 
   const resolvedUserPaperId = useMemo(() => {
@@ -1252,186 +1250,193 @@ function PaperPageContent() {
           <div
             ref={wrapperRef}
             className="mx-auto px-4 lg:px-8"
-            // NEW：固定为“内容 + 间距 + 面板”的最大宽度
+            // NEW：固定为"内容 + 间距 + 面板"的最大宽度
             style={{ maxWidth: WRAPPER_MAX_W }}
           >
             <div
-              className="lg:flex lg:items-start lg:gap-(--notes-gap,0)"
+              className="lg:items-start lg:gap-(--notes-gap,0) lg:flex"
               style={{ '--notes-gap': `${NOTES_PANEL_GAP}px` } as CSSProperties}
             >
-              {/* 左侧 content：只做 X 轴动画，避免 Y 抖动 */}
+              {/* 左侧内容区域：元数据、内容、参考文献 */}
               <motion.div
                 ref={contentRef}
                 className="max-w-5xl w-full p-8 mx-auto lg:mx-0 will-change-transform"
                 initial={false}
-                animate={{ x: showNotesPanel ? 0 : CONTENT_SHIFT_X }}
+                animate={{
+                  x: showNotesPanel ? 0 : CONTENT_SHIFT_X,
+                  width: 'auto'
+                }}
                 transition={MOTION}
               >
                 <div className="flex flex-col gap-8 pb-24">
-                  <PaperMetadata
-                    metadata={displayContent.metadata}
-                    abstract={displayContent.abstract}
-                    keywords={displayContent.keywords}
-                    lang={lang}
-                    onEditRequest={handleMetadataEditStart}
-                    onAbstractKeywordsEditRequest={handleAbstractKeywordsEditStart}
-                    data-metadata="true"
-                  />
+                  {(
+                    <>
+                      <PaperMetadata
+                        metadata={displayContent.metadata}
+                        abstract={displayContent.abstract}
+                        keywords={displayContent.keywords}
+                        lang={lang}
+                        onEditRequest={handleMetadataEditStart}
+                        onAbstractKeywordsEditRequest={handleAbstractKeywordsEditStart}
+                        data-metadata="true"
+                      />
 
-                  <PaperContent
-                    sections={displayContent.sections ?? []}
-                    references={displayContent.references}
-                    lang={lang}
-                    searchQuery={searchQuery}
-                    activeBlockId={activeBlockId}
-                    selectedBlockId={selectedBlockId}
-                    setActiveBlockId={setActiveBlockId}
-                    contentRef={contentRef}
-                    setSearchResults={setSearchResults}
-                    setCurrentSearchIndex={setCurrentSearchIndex}
-                    onBlockClick={handleBlockSelect}
-                    onSectionTitleUpdate={(sectionId, title) => {
-                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
-                      return handleSectionTitleUpdate(sectionId, title, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
-                    }}
-                    onSectionInsert={(targetSectionId, position, parentSectionId) => {
-                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
-                      return handleSectionInsert(targetSectionId, position, parentSectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
-                    }}
-                    onSectionMove={handleSectionMove}
-                    onSectionDelete={(sectionId) => {
-                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
-                      return handleSectionDelete(sectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
-                    }}
-                    onSectionAddBlock={(sectionId, type) => {
-                      return handleSectionAddBlock(sectionId, type, lang, paperId, resolvedUserPaperId, isPersonalOwner, handleSaveToServer);
-                    }}
-                    onBlockUpdate={(blockId, block) => {
-                      const blockInfo = findBlockSection(blockId);
-                      if (!blockInfo) return;
-
-                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
-                      return handleBlockUpdate(blockId, block, blockInfo.section.id, paperId, userPaperId, isPersonalOwner);
-                    }}
-                    onBlockDuplicate={handleBlockDuplicate}
-                    onBlockDelete={(blockId) => {
-                      const blockInfo = findBlockSection(blockId);
-                      if (!blockInfo) return;
-
-                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
-                      return handleBlockDelete(blockId, blockInfo.section.id, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
-                    }}
-                    onBlockInsert={handleBlockInsert}
-                    onBlockMove={handleBlockMove}
-                    onBlockAddComponent={handleBlockAddComponent}
-                    onParseTextAdd={canEditContent ? handleParseTextAdd : undefined}
-                    onParseTextComplete={canEditContent ? (sectionId, blocks, afterBlockId, paperData) => {
-                      const isTempProgressBlock =
-                        blocks?.length === 1 && (blocks[0] as any).type === 'parsing';
-
-                      // ★ 关键修复：优先使用完整的 paperData
-                      if (paperData && paperData.sections) {
-                        // 更新整个论文数据
-                        setEditableDraft(paperData);
-                        setHasUnsavedChanges(false);
-
-                        // 显示成功消息
-                        toast.success('解析完成，论文内容已更新');
-                        return;
-                      }
-
-                      // 如果没有完整的paperData，则回退到只处理blocks（兼容旧逻辑）
-                      updateSections(sections => {
-                        let touched = false;
-
-                        const updatedSections = sections.map(section => {
-                          if (section.id === sectionId) {
-                            touched = true;
-                            let currentBlocks = section.content || [];
-
-                            // 先删除所有临时进度块(type='parsing')
-                            currentBlocks = currentBlocks.filter(block =>
-                              (block as any).type !== 'parsing'
-                            );
-
-                            let insertIndex = currentBlocks.length; // 默认在末尾
-
-                            if (afterBlockId) {
-                              for (let i = 0; i < currentBlocks.length; i++) {
-                                if (currentBlocks[i].id === afterBlockId) {
-                                  insertIndex = i + 1;
-                                  break;
-                                }
-                              }
-                            }
-
-                            // 插入新的blocks
-                            const newBlocks = [...currentBlocks];
-                            newBlocks.splice(insertIndex, 0, ...blocks);
-
-                            return {
-                              ...section,
-                              content: newBlocks
-                            };
-                          }
-                          return section;
-                        });
-
-                        return { sections: touched ? updatedSections : sections, touched };
-                      });
-
-                      // 显示成功消息
-                      if (!isTempProgressBlock && blocks && blocks.length > 0) {
-                        toast.success(`成功解析并添加了${blocks.length}个段落`);
-                      }
-                    } : undefined}
-                    onSaveToServer={async () => {
-                      if (currentEditingId) {
-                        const blockInfo = findBlockSection(currentEditingId);
-                        if (blockInfo) {
+                      <PaperContent
+                        sections={displayContent.sections ?? []}
+                        references={displayContent.references}
+                        lang={lang}
+                        searchQuery={searchQuery}
+                        activeBlockId={activeBlockId}
+                        selectedBlockId={selectedBlockId}
+                        setActiveBlockId={setActiveBlockId}
+                        contentRef={contentRef}
+                        setSearchResults={setSearchResults}
+                        setCurrentSearchIndex={setCurrentSearchIndex}
+                        onBlockClick={handleBlockSelect}
+                        onSectionTitleUpdate={(sectionId, title) => {
                           const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
-                          await handleBlockSaveToServer(currentEditingId, blockInfo.section.id, paperId, userPaperId, isPersonalOwner, editableDraft || undefined);
-                          return;
+                          return handleSectionTitleUpdate(sectionId, title, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
+                        }}
+                        onSectionInsert={(targetSectionId, position, parentSectionId) => {
+                          const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                          return handleSectionInsert(targetSectionId, position, parentSectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
+                        }}
+                        onSectionMove={handleSectionMove}
+                        onSectionDelete={(sectionId) => {
+                          const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                          return handleSectionDelete(sectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
+                        }}
+                        onSectionAddBlock={(sectionId, type) => {
+                          return handleSectionAddBlock(sectionId, type, lang, paperId, resolvedUserPaperId, isPersonalOwner, handleSaveToServer);
+                        }}
+                        onBlockUpdate={(blockId, block) => {
+                          const blockInfo = findBlockSection(blockId);
+                          if (!blockInfo) return;
+
+                          const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                          return handleBlockUpdate(blockId, block, blockInfo.section.id, paperId, userPaperId, isPersonalOwner);
+                        }}
+                        onBlockDuplicate={handleBlockDuplicate}
+                        onBlockDelete={(blockId) => {
+                          const blockInfo = findBlockSection(blockId);
+                          if (!blockInfo) return;
+
+                          const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                          return handleBlockDelete(blockId, blockInfo.section.id, paperId, userPaperId, isPersonalOwner, handleSaveToServer);
+                        }}
+                        onBlockInsert={handleBlockInsert}
+                        onBlockMove={handleBlockMove}
+                        onBlockAddComponent={handleBlockAddComponent}
+                        onParseTextAdd={canEditContent ? handleParseTextAdd : undefined}
+                        onParseTextComplete={canEditContent ? (sectionId, blocks, afterBlockId, paperData) => {
+                          const isTempProgressBlock =
+                            blocks?.length === 1 && (blocks[0] as any).type === 'parsing';
+
+                          // ★ 关键修复：优先使用完整的 paperData
+                          if (paperData && paperData.sections) {
+                            // 更新整个论文数据
+                            setEditableDraft(paperData);
+                            setHasUnsavedChanges(false);
+
+                            // 显示成功消息
+                            toast.success('解析完成，论文内容已更新');
+                            return;
+                          }
+
+                          // 如果没有完整的paperData，则回退到只处理blocks（兼容旧逻辑）
+                          updateSections(sections => {
+                            let touched = false;
+
+                            const updatedSections = sections.map(section => {
+                              if (section.id === sectionId) {
+                                touched = true;
+                                let currentBlocks = section.content || [];
+
+                                // 先删除所有临时进度块(type='parsing')
+                                currentBlocks = currentBlocks.filter(block =>
+                                  (block as any).type !== 'parsing'
+                                );
+
+                                let insertIndex = currentBlocks.length; // 默认在末尾
+
+                                if (afterBlockId) {
+                                  for (let i = 0; i < currentBlocks.length; i++) {
+                                    if (currentBlocks[i].id === afterBlockId) {
+                                      insertIndex = i + 1;
+                                      break;
+                                    }
+                                  }
+                                }
+
+                                // 插入新的blocks
+                                const newBlocks = [...currentBlocks];
+                                newBlocks.splice(insertIndex, 0, ...blocks);
+
+                                return {
+                                  ...section,
+                                  content: newBlocks
+                                };
+                              }
+                              return section;
+                            });
+
+                            return { sections: touched ? updatedSections : sections, touched };
+                          });
+
+                          // 显示成功消息
+                          if (!isTempProgressBlock && blocks && blocks.length > 0) {
+                            toast.success(`成功解析并添加了${blocks.length}个段落`);
+                          }
+                        } : undefined}
+                        onSaveToServer={async () => {
+                          if (currentEditingId) {
+                            const blockInfo = findBlockSection(currentEditingId);
+                            if (blockInfo) {
+                              const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                              await handleBlockSaveToServer(currentEditingId, blockInfo.section.id, paperId, userPaperId, isPersonalOwner, editableDraft || undefined);
+                              return;
+                            }
+                          }
+                          await handleSaveToServer();
+                        }}
+                        onParseComplete={(result) => {
+                          // 处理解析完成的结果，可以更新 UI 或状态
+                          // 这里可以添加额外的处理逻辑，比如更新状态或显示通知
+                        }}
+                        notesByBlock={notesByBlock}
+                        isPersonalOwner={isPersonalOwner}
+                        paperId={paperId}
+                        userPaperId={resolvedUserPaperId}
+                        updateSections={updateSections}
+                      />
+
+                      <PaperReferences
+                        references={displayReferences}
+                        title={
+                          lang === 'both'
+                            ? '参考文献 / References'
+                            : lang === 'en'
+                              ? 'References'
+                              : '参考文献'
                         }
-                      }
-                      await handleSaveToServer();
-                    }}
-                    onParseComplete={(result) => {
-                      // 处理解析完成的结果，可以更新 UI 或状态
-                      // 这里可以添加额外的处理逻辑，比如更新状态或显示通知
-                    }}
-                    notesByBlock={notesByBlock}
-                    isPersonalOwner={isPersonalOwner}
-                    paperId={paperId}
-                    userPaperId={resolvedUserPaperId}
-                    updateSections={updateSections}
-                  />
+                        highlightedRefs={highlightedRefs}
+                        onHighlightChange={setHighlightedRefs}
+                        onReferenceEdit={canEditContent ? handleReferenceEdit : undefined}
+                        onReferenceDuplicate={canEditContent ? handleReferenceDuplicate : undefined}
+                        onReferenceInsertBelow={
+                          canEditContent ? handleReferenceInsertBelow : undefined
+                        }
+                        onReferenceDelete={canEditContent ? handleReferenceDelete : undefined}
+                        onReferenceMoveUp={canEditContent ? handleReferenceMoveUp : undefined}
+                        onReferenceMoveDown={canEditContent ? handleReferenceMoveDown : undefined}
+                        onReferenceAdd={canEditContent ? handleReferenceAdd : undefined}
+                        onParseReferences={canEditContent ? openParseDialog : undefined}
+                        data-references="true"
+                      />
 
-                  <PaperReferences
-                    references={displayReferences}
-                    title={
-                      lang === 'both'
-                        ? '参考文献 / References'
-                        : lang === 'en'
-                          ? 'References'
-                          : '参考文献'
-                    }
-                    highlightedRefs={highlightedRefs}
-                    onHighlightChange={setHighlightedRefs}
-                    onReferenceEdit={canEditContent ? handleReferenceEdit : undefined}
-                    onReferenceDuplicate={canEditContent ? handleReferenceDuplicate : undefined}
-                    onReferenceInsertBelow={
-                      canEditContent ? handleReferenceInsertBelow : undefined
-                    }
-                    onReferenceDelete={canEditContent ? handleReferenceDelete : undefined}
-                    onReferenceMoveUp={canEditContent ? handleReferenceMoveUp : undefined}
-                    onReferenceMoveDown={canEditContent ? handleReferenceMoveDown : undefined}
-                    onReferenceAdd={canEditContent ? handleReferenceAdd : undefined}
-                    onParseReferences={canEditContent ? openParseDialog : undefined}
-                    data-references="true"
-                  />
-
-                  {(displayReferences?.length ?? 0) === 0 && <div className="h-4" />}
+                      {(displayReferences?.length ?? 0) === 0 && <div className="h-4" />}
+                    </>
+                  )}
 
                   {/* 移动端 notes：顺滑折叠展开 */}
                   <AnimatePresence initial={false}>
@@ -1524,6 +1529,7 @@ function PaperPageContent() {
                 </AnimatePresence>,
                 document.body
               )}
+              
             </div>
           </div>
         </div>
@@ -1616,12 +1622,6 @@ function PaperPageContent() {
           onSaveToServer={handleSaveToServer}
         />
         
-        {/* 悬浮查看器 */}
-        <PaperFloatingViewer
-          attachments={attachments}
-          isVisible={isFloatingViewerOpen}
-          onClose={() => setIsFloatingViewerOpen(false)}
-        />
       </div>
     </PaperEditPermissionsContext.Provider>
   );

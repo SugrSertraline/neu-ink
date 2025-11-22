@@ -2278,6 +2278,167 @@ def create_paper_from_pdf():
        return internal_error_response(f"服务器错误: {exc}")
 
 
+@bp.route("/<paper_id>/content-list", methods=["GET"])
+@login_required
+@admin_required
+def get_admin_paper_content_list(paper_id):
+   """
+   管理员获取论文的content_list.json文件内容
+   
+   返回数据示例:
+   {
+       "contentList": {...},  // content_list.json的内容
+       "attachment": {...}   // 附件信息
+   }
+   """
+   try:
+       # 首先获取论文详情，确保管理员有权限
+       from ..services.paperService import get_paper_service
+       service = get_paper_service()
+       paper_result = service.get_admin_paper_detail(
+           paper_id=paper_id,
+           user_id=g.current_user["user_id"]
+       )
+       
+       if paper_result["code"] != BusinessCode.SUCCESS:
+           if paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+               return bad_request_response(paper_result["message"])
+           elif paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+               from flask import jsonify
+               return jsonify({
+                   "code": ResponseCode.FORBIDDEN,
+                   "message": paper_result["message"],
+                   "data": None
+               }), ResponseCode.FORBIDDEN
+           else:
+               return bad_request_response(paper_result["message"])
+       
+       paper_data = paper_result["data"]
+       attachments = paper_data.get("attachments", {})
+       
+       # 检查是否有content_list文件
+       if not attachments.get("content_list") or not attachments["content_list"].get("url"):
+           return bad_request_response("论文没有content_list文件")
+       
+       content_list_url = attachments["content_list"]["url"]
+       
+       # 从七牛云获取content_list.json内容
+       from ..services.qiniuService import get_qiniu_service
+       qiniu_service = get_qiniu_service()
+       
+       try:
+           # 直接使用数据库中的URL获取content_list.json内容
+           logger.info(f"开始获取content_list文件，URL: {content_list_url}")
+           content_list_result = qiniu_service.fetch_file_content(content_list_url)
+           
+           if not content_list_result["success"]:
+               logger.error(f"获取content_list文件失败: {content_list_result['error']}")
+               return bad_request_response(f"获取content_list文件失败: {content_list_result['error']}")
+           
+           # 解码base64内容
+           import base64
+           import json
+           try:
+               content_list_json = json.loads(base64.b64decode(content_list_result["content"]).decode('utf-8'))
+           except Exception as decode_error:
+               logger.error(f"解析content_list.json失败: {str(decode_error)}")
+               return bad_request_response(f"解析content_list.json失败: {str(decode_error)}")
+           
+           return success_response({
+               "contentList": content_list_json,
+               "attachment": attachments["content_list"]
+           }, "成功获取content_list文件")
+           
+       except Exception as e:
+           logger.error(f"获取content_list文件异常: {str(e)}")
+           import traceback
+           logger.error(f"异常详情: {traceback.format_exc()}")
+           return internal_error_response(f"获取content_list文件异常: {str(e)}")
+       
+   except Exception as exc:
+       return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<paper_id>/pdf-content", methods=["GET"])
+@login_required
+@admin_required
+def get_admin_paper_pdf_content_proxy(paper_id):
+   """
+   管理员获取论文PDF文件内容（以base64格式返回）
+   
+   返回数据示例:
+   {
+       "pdfContent": "base64编码的PDF内容",
+       "attachment": {...}   // PDF附件信息
+   }
+   """
+   try:
+       # 首先获取论文详情，确保管理员有权限
+       from ..services.paperService import get_paper_service
+       service = get_paper_service()
+       paper_result = service.get_admin_paper_detail(
+           paper_id=paper_id,
+           user_id=g.current_user["user_id"]
+       )
+       
+       if paper_result["code"] != BusinessCode.SUCCESS:
+           if paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+               return bad_request_response(paper_result["message"])
+           elif paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+               from flask import jsonify
+               return jsonify({
+                   "code": ResponseCode.FORBIDDEN,
+                   "message": paper_result["message"],
+                   "data": None
+               }), ResponseCode.FORBIDDEN
+           else:
+               return bad_request_response(paper_result["message"])
+       
+       paper_data = paper_result["data"]
+       attachments = paper_data.get("attachments", {})
+       
+       # 检查是否有PDF文件
+       if not attachments.get("pdf") or not attachments["pdf"].get("url"):
+           return bad_request_response("论文没有PDF文件")
+       
+       pdf_url = attachments["pdf"]["url"]
+       
+       # 添加调试日志
+       logger.info(f"管理员获取PDF内容 - paper_id: {paper_id}")
+       logger.info(f"PDF URL: {pdf_url}")
+       
+       # 从七牛云获取PDF文件内容
+       from ..services.qiniuService import get_qiniu_service
+       qiniu_service = get_qiniu_service()
+       
+       try:
+           logger.info(f"开始获取管理员论文PDF文件内容...")
+           logger.info(f"PDF URL: {pdf_url}")
+           
+           # 直接使用数据库中的URL获取PDF文件内容
+           pdf_content = qiniu_service.fetch_file_content(pdf_url)
+           logger.info(f"七牛云返回结果: {pdf_content}")
+           
+           if not pdf_content["success"]:
+               logger.error(f"获取PDF文件失败: {pdf_content['error']}")
+               return bad_request_response(f"获取PDF文件失败: {pdf_content['error']}")
+           
+           logger.info(f"成功获取PDF内容，大小: {pdf_content.get('size', 0)} 字节")
+           return success_response({
+               "pdfContent": pdf_content["content"],
+               "attachment": attachments["pdf"]
+           }, "成功获取PDF文件")
+           
+       except Exception as e:
+           logger.error(f"获取PDF文件异常: {str(e)}")
+           import traceback
+           logger.error(f"异常详情: {traceback.format_exc()}")
+           return internal_error_response(f"获取PDF文件异常: {str(e)}")
+       
+   except Exception as exc:
+       return internal_error_response(f"服务器错误: {exc}")
+
+
 
 
 

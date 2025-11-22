@@ -37,7 +37,8 @@ class UserPaperModel:
             # 这通常发生在数据库结构变更后，旧索引仍存在的情况
             error_msg = str(e).lower()
             if any(keyword in error_msg for keyword in ["already exists", "indexoptionsconflict", "duplicate"]):
-                print(f"[INFO] 索引已存在，跳过创建: {e}")
+                # 索引已存在，跳过创建
+                pass
             else:
                 # 其他类型的错误，重新抛出
                 raise e

@@ -23,9 +23,6 @@ def login():
         user_service = get_user_service()
         data = request.get_json()
         
-        print("路由层接收到登录请求")
-        print(f"原始数据: {data}")
-        
         if not data:
             return bad_request_response("请求数据格式错误")
         
@@ -37,8 +34,6 @@ def login():
         # 清理输入数据
         username = data["username"].strip()
         password = data["password"].strip()
-        
-        print(f"清理后数据: username='{username}', password='{password}'")
         
         # 调用Service处理业务逻辑
         result = user_service.login(username, password)
@@ -71,7 +66,6 @@ def login():
             )), ResponseCode.UNAUTHORIZED
         
     except Exception as e:
-        print(f"Exception异常: {str(e)}")
         import traceback
         traceback.print_exc()
         
@@ -95,14 +89,12 @@ def logout():
         # 在JWT无状态认证中，登出主要在前端清除token
         # 后端可以记录登出事件用于审计
         user_id = g.current_user["user_id"]
-        print(f"用户 {user_id} 登出")
         
         # 返回成功响应
         return success_response(None, "登出成功")
         
     except Exception as e:
         # 即使登出过程中出现错误，也不应该阻止用户登出
-        print(f"登出过程中出现错误: {str(e)}")
         return success_response(None, "登出成功")
 
 

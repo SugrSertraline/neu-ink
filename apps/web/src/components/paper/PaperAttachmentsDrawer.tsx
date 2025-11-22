@@ -1,25 +1,42 @@
 'use client';
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, {
+  useState,
+  useEffect,
+  useRef,
+  useCallback,
+  useMemo,
+} from 'react';
+import { createPortal } from 'react-dom';
 import { Button } from '@/components/ui/button';
-import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer';
-import { Upload, FileText, File, Trash2, Copy, X, Maximize2 } from 'lucide-react';
+import {
+  Upload,
+  FileText,
+  File,
+  Trash2,
+  X,
+  ZoomIn,
+  ZoomOut,
+  RefreshCw,
+  Download,
+} from 'lucide-react';
 import { userPaperService, adminPaperService } from '@/lib/services/paper';
 import type { PaperAttachments } from '@/types/paper/models';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
-// ✅ 用于只读 Markdown 渲染
-import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
-import remarkMath from 'remark-math';
-import rehypeKatex from 'rehype-katex';
-import Image from 'next/image';
+// ===================== pdf.js 单例 =====================
+let pdfjsLibSingleton: any | null = null;
 
-// ✅ 模块级缓存：Markdown 内容 & 滚动位置
-const markdownCache = new Map<string, string>();        // url -> markdown text
-const markdownScrollCache = new Map<string, number>();  // url -> scrollTop
+const initPdfJs = async () => {
+  if (!pdfjsLibSingleton) {
+    const pdfjsLib: any = await import('pdfjs-dist/webpack.mjs');
+    pdfjsLibSingleton = pdfjsLib;
+  }
+  return pdfjsLibSingleton;
+};
 
+// ===================== 类型定义 =====================
 interface PaperAttachmentsDrawerProps {
   isOpen: boolean;
   onClose: () => void;
@@ -32,6 +49,621 @@ interface PaperAttachmentsDrawerProps {
   onSaveToServer: (data?: any) => Promise<void>;
 }
 
+// content_list.json 的内容块
+interface ContentBlock {
+  type: 'image' | 'table' | 'text' | 'equation';
+  bbox: [number, number, number, number]; // [x0, y0, x1, y1] 映射到 0-1000
+  page_idx: number; // 从 0 开始
+
+  text?: string;
+  text_level?: number;
+
+  img_path?: string;
+  image_caption?: string[];
+  image_footnote?: string[];
+
+  table_caption?: string[];
+  table_footnote?: string[];
+  table_body?: string;
+}
+
+interface PdfViewerProps {
+  url: string;
+  isVisible: boolean; // 控制是否渲染 PDF 内容（组件本身不卸载）
+  userPaperId?: string | null;
+  isAdmin?: boolean;
+  isPersonalOwner?: boolean;
+
+  // 来自 content_list.json 的块
+  contentList?: ContentBlock[];
+}
+
+interface SidePanelProps {
+  open: boolean;
+  onClose: () => void;
+  children: React.ReactNode;
+  className?: string;
+}
+
+// ===================== 自定义 SidePanel（平替 Drawer，使用 portal） =====================
+function SidePanel({ open, onClose, children, className }: SidePanelProps) {
+  const [mounted, setMounted] = useState(false);
+
+  // 只在浏览器环境渲染
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  // 打开时锁定 body 滚动
+  useEffect(() => {
+    if (!mounted || !open) return;
+
+    const body = document.body;
+    const html = document.documentElement;
+
+    const prevBodyOverflow = body.style.overflow;
+    const prevHtmlOverflow = html.style.overflow;
+    const prevBodyPaddingRight = body.style.paddingRight;
+
+    const scrollBarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
+    if (scrollBarWidth > 0) {
+      body.style.paddingRight = `${scrollBarWidth}px`;
+    }
+
+    body.style.overflow = 'hidden';
+    html.style.overflow = 'hidden';
+
+    return () => {
+      body.style.overflow = prevBodyOverflow;
+      html.style.overflow = prevHtmlOverflow;
+      body.style.paddingRight = prevBodyPaddingRight;
+    };
+  }, [open, mounted]);
+
+  if (!mounted) return null;
+
+  const panel = (
+    <div
+      className={cn(
+        'fixed inset-0 z-[999] flex justify-end',
+        'transition-[visibility] duration-300',
+        open ? 'visible' : 'invisible',
+        !open && 'pointer-events-none',
+      )}
+    >
+      {/* 背景遮罩 */}
+      <div
+        className={cn(
+          'fixed inset-0 bg-black/40 transition-opacity duration-300',
+          open
+            ? 'opacity-100 pointer-events-auto'
+            : 'opacity-0 pointer-events-none',
+        )}
+        onClick={onClose}
+      />
+
+      {/* 右侧面板本体（已缩窄） */}
+      <div
+        className={cn(
+          'relative h-full w-[56vw] max-w-[840px]',
+          'bg-white/80 backdrop-blur-3xl border-l border-white/60',
+          'shadow-[0_20px_54px_rgba(15,23,42,0.18)]',
+          'transform transition-transform duration-300 ease-in-out',
+          open ? 'translate-x-0' : 'translate-x-full',
+          'pointer-events-auto flex flex-col',
+          className,
+        )}
+      >
+        {children}
+      </div>
+    </div>
+  );
+
+  return createPortal(panel, document.body);
+}
+
+// ===================== PdfViewer（增加 content_list caption 解析 & hover 高亮） =====================
+function PdfViewer({
+  url,
+  isVisible,
+  userPaperId,
+  isAdmin = false,
+  isPersonalOwner = false,
+  contentList,
+}: PdfViewerProps) {
+  const containerRef = useRef<HTMLDivElement | null>(null);
+  const [numPages, setNumPages] = useState(0);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  const [zoom, setZoom] = useState(1); // 1 = fit width
+  const zoomRef = useRef(1);
+  zoomRef.current = zoom;
+
+  const pdfDocRef = useRef<any>(null);
+  const loadingTaskRef = useRef<any>(null);
+  const isMountedRef = useRef(true);
+
+  // 每次完整重新渲染时，生成一批全新的 canvas，避免复用同一个 canvas
+  const [renderKey, setRenderKey] = useState(0);
+
+  // 管理所有 renderTask（用于 cancel）
+  const renderTasksRef = useRef<any[]>([]);
+
+  // 取消所有正在进行的渲染任务
+  const cancelAllRenderTasks = useCallback(() => {
+    renderTasksRef.current.forEach((task) => {
+      try {
+        task?.cancel?.();
+      } catch {
+        // ignore
+      }
+    });
+    renderTasksRef.current = [];
+  }, []);
+
+  // 销毁当前 PDF 文档 / loadingTask
+  const destroyPdf = useCallback(async () => {
+    cancelAllRenderTasks();
+
+    const loadingTask = loadingTaskRef.current;
+    const pdfDoc = pdfDocRef.current;
+    loadingTaskRef.current = null;
+    pdfDocRef.current = null;
+    setNumPages(0);
+
+    try {
+      if (loadingTask && typeof loadingTask.destroy === 'function') {
+        await loadingTask.destroy();
+      } else if (pdfDoc && typeof pdfDoc.destroy === 'function') {
+        await pdfDoc.destroy();
+      }
+    } catch {
+      // 销毁过程异常忽略
+    }
+  }, [cancelAllRenderTasks]);
+
+  // 组件总体生命周期
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+      cancelAllRenderTasks();
+      destroyPdf().catch(() => {});
+    };
+  }, [cancelAllRenderTasks, destroyPdf]);
+
+  // 加载 PDF 文档（url 变化时）
+  useEffect(() => {
+    let cancelled = false;
+
+    (async () => {
+      setIsLoading(true);
+      setError(null);
+
+      await destroyPdf();
+
+      if (!url) {
+        setIsLoading(false);
+        setNumPages(0);
+        return;
+      }
+
+      try {
+        const pdfjsLib: any = await initPdfJs();
+
+        // 检查是否是跨域URL，如果是则使用代理接口
+        let pdfUrlToLoad = url;
+
+        if (url.includes('image.neuwiki.top')) {
+          // 这是跨域PDF，需要使用代理接口
+          // 从URL中提取paperId（最后第二段路径）
+          const urlParts = url.split('/');
+          const paperIdFromUrl = urlParts[urlParts.length - 2];
+
+          try {
+            const { adminPaperService, userPaperService } = await import(
+              '@/lib/services/paper'
+            );
+            let response;
+            if (isPersonalOwner && userPaperId) {
+              response =
+                await userPaperService.getUserPaperPdfContent(userPaperId);
+            } else {
+              response =
+                await adminPaperService.getAdminPaperPdfContent(paperIdFromUrl);
+            }
+
+            // 检查HTTP状态码
+            if (response.topCode !== 200) {
+              throw new Error(response.topMessage || '获取PDF内容失败');
+            }
+
+            const base64Data = (response.data as any)?.pdfContent;
+            if (!base64Data) {
+              throw new Error('PDF内容为空');
+            }
+            pdfUrlToLoad = `data:application/pdf;base64,${base64Data}`;
+          } catch (proxyError: any) {
+            console.error('代理获取PDF失败:', proxyError);
+            throw new Error(
+              `代理获取PDF失败: ${proxyError.message || proxyError}`,
+            );
+          }
+        }
+
+        const loadingTask = pdfjsLib.getDocument({ url: pdfUrlToLoad });
+        loadingTaskRef.current = loadingTask;
+
+        const pdfDoc = await loadingTask.promise;
+        if (cancelled || !isMountedRef.current) {
+          try {
+            await loadingTask.destroy();
+          } catch {
+            // ignore
+          }
+          return;
+        }
+
+        pdfDocRef.current = pdfDoc;
+        setNumPages(pdfDoc.numPages);
+
+        // 新文档加载完成，触发一次全量重渲染（产生新的 canvas 批次）
+        setRenderKey((k) => k + 1);
+      } catch (e: any) {
+        if (cancelled) return;
+        console.error('加载 PDF 失败:', e);
+        setError('PDF 加载失败，请稍后重试或下载查看');
+      } finally {
+        if (!cancelled) setIsLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [url, destroyPdf, isPersonalOwner, userPaperId, isAdmin]);
+
+  // 渲染页面（注意：每次依赖 renderKey，会针对新一批 canvas 渲染）
+  const renderPages = useCallback(async () => {
+    if (!pdfDocRef.current || !containerRef.current || numPages === 0 || !isVisible)
+      return;
+
+    cancelAllRenderTasks();
+
+    const pdfDoc = pdfDocRef.current;
+    const containerWidth = containerRef.current.clientWidth || 800;
+
+    for (let pageNumber = 1; pageNumber <= numPages; pageNumber++) {
+      if (!isMountedRef.current || pdfDocRef.current !== pdfDoc) break;
+
+      try {
+        const page = await pdfDoc.getPage(pageNumber);
+
+        // fit width
+        const viewport = page.getViewport({ scale: 1 });
+        const fitScale = containerWidth / viewport.width;
+
+        // 结合 zoom
+        const scale = fitScale * zoomRef.current;
+        const scaledViewport = page.getViewport({ scale });
+
+        const canvasId = `pdf-page-canvas-${renderKey}-${pageNumber}`;
+        const canvas = document.getElementById(
+          canvasId,
+        ) as HTMLCanvasElement | null;
+
+        if (!canvas) continue;
+        const context = canvas.getContext('2d');
+        if (!context) continue;
+
+        const pixelRatio = window.devicePixelRatio || 1;
+        canvas.width = scaledViewport.width * pixelRatio;
+        canvas.height = scaledViewport.height * pixelRatio;
+        canvas.style.width = `${scaledViewport.width}px`;
+        canvas.style.height = `${scaledViewport.height}px`;
+
+        // 使用 setTransform 避免 transform 累积 / 反转
+        context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+        context.clearRect(0, 0, scaledViewport.width, scaledViewport.height);
+
+        const renderTask = page.render({
+          canvasContext: context,
+          viewport: scaledViewport,
+        });
+
+        renderTasksRef.current.push(renderTask);
+
+        await renderTask.promise;
+      } catch (e: any) {
+        if (e?.name === 'RenderingCancelledException') {
+          // 渲染被取消：正常情况（zoom 变化 / 销毁）
+          return;
+        }
+        console.error(`渲染 PDF 页面失败（第 ${pageNumber} 页）:`, e);
+      }
+    }
+  }, [numPages, isVisible, cancelAllRenderTasks, renderKey]);
+
+  // zoom / numPages / isVisible 变化时触发一次新的“渲染批次”
+  useEffect(() => {
+    if (isVisible && numPages > 0) {
+      setRenderKey((k) => k + 1);
+    }
+  }, [zoom, numPages, isVisible]);
+
+  // 每次 renderKey 变更，针对这批 canvas 实际执行渲染
+  useEffect(() => {
+    if (isVisible && numPages > 0) {
+      renderPages().catch((e) => console.error('渲染 PDF 页面失败:', e));
+    }
+  }, [renderPages, renderKey, isVisible, numPages]);
+
+  // 容器宽度变化时，同样触发一次新的“渲染批次”
+  useEffect(() => {
+    if (!containerRef.current || !isVisible) return;
+    const el = containerRef.current;
+    const ro = new ResizeObserver(() => {
+      setRenderKey((k) => k + 1);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [isVisible]);
+
+  const clampZoom = (z: number) => Math.min(3, Math.max(0.5, z));
+  const zoomIn = () =>
+    setZoom((z) => clampZoom(Number((z + 0.2).toFixed(2))));
+  const zoomOut = () =>
+    setZoom((z) => clampZoom(Number((z - 0.2).toFixed(2))));
+  const zoomReset = () => setZoom(1);
+
+  // ===== 新增：统一组装 caption / footnote / table_body 的 tooltip 文本 =====
+  const getBlockTooltip = (block: ContentBlock): string => {
+    const joinLines = (lines?: string[]) =>
+      Array.isArray(lines) && lines.length ? lines.join(' ') : '';
+
+    // 文字 / 公式：直接用 text
+    if (block.type === 'text' || block.type === 'equation') {
+      return (block.text || '').trim();
+    }
+
+    // 图片：caption + footnote
+    if (block.type === 'image') {
+      const caption = joinLines(block.image_caption);
+      const footnote = joinLines(block.image_footnote);
+      return [caption, footnote].filter(Boolean).join('\n');
+    }
+
+    // 表格：caption + footnote + table_body(转纯文本并截断)
+    if (block.type === 'table') {
+      const pieces: string[] = [];
+
+      const caption = joinLines(block.table_caption);
+      if (caption) pieces.push(caption);
+
+      const footnote = joinLines(block.table_footnote);
+      if (footnote) pieces.push(footnote);
+
+      if (block.table_body) {
+        // 粗暴把 HTML 表格转成一行文本，再截断
+        const tableText = block.table_body
+          .replace(/<\/tr>/gi, '\n') // 行结束换行
+          .replace(/<br\s*\/?>/gi, '\n') // <br> 换行
+          .replace(/<[^>]+>/g, ' ') // 去掉所有标签
+          .replace(/\s+/g, ' ') // 合并空白
+          .trim();
+
+        if (tableText) {
+          const maxLen = 200;
+          pieces.push(
+            tableText.length > maxLen
+              ? tableText.slice(0, maxLen) + '…'
+              : tableText,
+          );
+        }
+      }
+
+      return pieces.join('\n');
+    }
+
+    return '';
+  };
+
+  // 不可见时保持挂载但不渲染内容
+  if (!isVisible) {
+    return <div className="hidden" />;
+  }
+
+  return (
+    <div
+      className="relative w-full h-full"
+      style={{ height: '100%', maxHeight: '100%' }}
+    >
+      {/* Zoom 控制浮层 */}
+      <div className="absolute right-3 top-3 z-10 flex items-center gap-1 rounded-xl bg-white/90 border border-slate-200 shadow-md px-1.5 py-1">
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={zoomOut}
+          className="h-8 w-8"
+          title="缩小"
+        >
+          <ZoomOut className="h-4 w-4" />
+        </Button>
+        <div className="text-xs tabular-nums px-1 text-slate-700 w-[52px] text-center">
+          {Math.round(zoom * 100)}%
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={zoomIn}
+          className="h-8 w-8"
+          title="放大"
+        >
+          <ZoomIn className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={zoomReset}
+          className="h-8 w-8"
+          title="重置/适配宽度"
+        >
+          <RefreshCw className="h-4 w-4" />
+        </Button>
+      </div>
+
+      <div
+        ref={containerRef}
+        className={cn(
+          'w-full h-full rounded-2xl border border-slate-100 bg-slate-50',
+          'overflow-y-auto overflow-x-hidden shadow-[0_12px_30px_rgba(15,23,42,0.12)]',
+          'px-3 py-3 pb-20 space-y-4',
+          'scrollbar-thin scrollbar-thumb-slate-300 scrollbar-track-slate-100',
+        )}
+        style={{
+          overflowY: 'auto',
+          WebkitOverflowScrolling: 'touch',
+          maxHeight: '100%',
+        }}
+      >
+        {isLoading && (
+          <div className="flex items-center justify-center h-full text-sm text-slate-500">
+            <div className="flex items-center gap-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-slate-500" />
+              <span>正在加载 PDF...</span>
+            </div>
+          </div>
+        )}
+
+        {error && (
+          <div className="flex flex-col items-center justify-center h-full text-sm text-slate-500 text-center">
+            <p>{error}</p>
+            <p className="mt-2">
+              你可以
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-blue-600 underline ml-1"
+              >
+                点击这里下载或在新标签页中打开
+              </a>
+              。
+            </p>
+          </div>
+        )}
+
+        {!isLoading && !error && numPages === 0 && (
+          <div className="flex items-center justify-center h-full text-sm text-slate-500">
+            未能读取到 PDF 内容
+          </div>
+        )}
+
+        {/* 有 PDF 页时 + content_list hover 高亮 & caption 解析 */}
+        {!isLoading &&
+          !error &&
+          numPages > 0 &&
+          Array.from({ length: numPages }, (_, index) => {
+            const pageNumber = index + 1; // pdf.js page = 1-based
+            const pageIdx = pageNumber - 1; // content_list page_idx = 0-based
+            const canvasId = `pdf-page-canvas-${renderKey}-${pageNumber}`;
+            const key = `${renderKey}-${pageNumber}`;
+
+            const pageBlocks: ContentBlock[] = (contentList ?? []).filter(
+              (block) => block.page_idx === pageIdx,
+            );
+
+            return (
+              <div
+                key={key}
+                className="relative bg-white rounded-xl overflow-hidden shadow-sm border border-slate-100 inline-block"
+              >
+                <canvas
+                  id={canvasId}
+                  className="block mx-auto"
+                  style={{ maxWidth: '100%', height: 'auto' }}
+                />
+
+                {/* overlay 容器：用百分比定位，随着 canvas 缩放 */}
+                <div className="absolute inset-0 pointer-events-none">
+                  {pageBlocks.map((block, i) => {
+                    const [x0, y0, x1, y1] = block.bbox;
+                    const left = (x0 / 1000) * 100;
+                    const top = (y0 / 1000) * 100;
+                    const width = ((x1 - x0) / 1000) * 100;
+                    const height = ((y1 - y0) / 1000) * 100;
+
+                    const tooltip = getBlockTooltip(block);
+
+                    const isHeading =
+                      typeof block.text_level === 'number' &&
+                      block.text_level > 0;
+
+                    const baseColor =
+                      block.type === 'image'
+                        ? 'bg-amber-300/25 border-amber-400/80 hover:bg-amber-400/30'
+                        : block.type === 'table'
+                        ? 'bg-emerald-300/25 border-emerald-400/80 hover:bg-emerald-400/30'
+                        : block.type === 'equation'
+                        ? 'bg-purple-300/25 border-purple-400/80 hover:bg-purple-400/30'
+                        : isHeading
+                        ? 'bg-sky-300/25 border-sky-500/80 hover:bg-sky-400/30'
+                        : 'bg-blue-300/15 border-blue-400/70 hover:bg-blue-400/25';
+
+                    return (
+                      <div
+                        key={`${pageIdx}-${i}`}
+                        className={cn(
+                          'absolute rounded-md border cursor-pointer transition-colors duration-150',
+                          'pointer-events-auto group',
+                          baseColor,
+                        )}
+                        style={{
+                          left: `${left}%`,
+                          top: `${top}%`,
+                          width: `${width}%`,
+                          height: `${height}%`,
+                        }}
+                        title={tooltip || undefined}
+                      >
+                        {/* hover 小角标（类型） */}
+                        <div className="pointer-events-none absolute right-0 top-0 translate-x-full -translate-y-full bg-slate-900 text-[10px] text-white px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap shadow">
+                          {block.type}
+                          {block.text_level ? ` · H${block.text_level}` : ''}
+                        </div>
+
+                        {/* caption 预览：caption / footnote / table_body 的简要内容 */}
+                        {tooltip && (
+                          <div
+                            className={cn(
+                              'pointer-events-none absolute left-0 bottom-0 m-0.5',
+                              'max-w-[80%] overflow-hidden rounded bg-white/85 px-1.5 py-0.5',
+                              'text-[10px] leading-tight text-slate-900 shadow-sm',
+                              // 若项目已启用 line-clamp 插件，会生效；否则只是普通样式
+                              'line-clamp-2',
+                            )}
+                          >
+                            {tooltip}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+      </div>
+    </div>
+  );
+}
+
+// 用 React.memo 包装，避免不必要重渲染
+const MemoizedPdfViewer = React.memo(PdfViewer);
+
+// ===================== 主组件：PaperAttachmentsDrawer =====================
 export function PaperAttachmentsDrawer({
   isOpen,
   onClose,
@@ -41,70 +673,68 @@ export function PaperAttachmentsDrawer({
   isAdmin = false,
   attachments,
   onAttachmentsChange,
-  onSaveToServer,
 }: PaperAttachmentsDrawerProps) {
   const [isUploading, setIsUploading] = useState(false);
+
+  // PdfViewer 可见状态，与 Drawer 开关解耦（只要有 pdfUrl 就可见）
+  const [pdfState, setPdfState] = useState({
+    isVisible: false,
+  });
+
+  const pdfUrl = useMemo(
+    () => attachments.pdf?.url || '',
+    [attachments.pdf?.url],
+  );
+
+  useEffect(() => {
+    setPdfState((prev) => ({ ...prev, isVisible: Boolean(pdfUrl) }));
+  }, [pdfUrl]);
+
+  // ====== content_list.json 状态：直接用 attachments.content_list.url ======
+  const [contentList, setContentList] = useState<ContentBlock[] | null>(null);
+
+  useEffect(() => {
+    const url = attachments.content_list?.url;
+    if (!url) {
+      setContentList(null);
+      return;
+    }
+
+    let aborted = false;
+
+    (async () => {
+      try {
+        const res = await fetch(url);
+        if (!res.ok) {
+          console.warn('content_list.json 请求失败:', url, res.status);
+          if (!aborted) setContentList(null);
+          return;
+        }
+
+        const data = (await res.json()) as ContentBlock[];
+        if (!aborted) {
+          setContentList(data);
+        }
+      } catch (e) {
+        console.error('加载 content_list.json 失败:', e);
+        if (!aborted) {
+          setContentList(null);
+        }
+      }
+    })();
+
+    return () => {
+      aborted = true;
+    };
+  }, [attachments.content_list?.url]);
 
   // ===== PDF解析相关状态 =====
   const [isParsing, setIsParsing] = useState(false);
   const [parsingTaskId, setParsingTaskId] = useState<string | null>(null);
   const [parsingProgress, setParsingProgress] = useState(0);
   const [parsingMessage, setParsingMessage] = useState<string>('');
-  const [parsingStatus, setParsingStatus] = useState<string>('');
 
-  // ===== Markdown 预览相关状态 =====
-  const [mdContent, setMdContent] = useState<string | null>(null);
-  const [mdLoading, setMdLoading] = useState(false);
-  const [mdError, setMdError] = useState<string | null>(null);
-
-  // ✅ Markdown 滚动容器 ref
-  const markdownScrollContainerRef = useRef<HTMLDivElement | null>(null);
-
-  // ✅ 自定义图片组件 - 显示灰色占位符而不是实际图片
-  const CustomImage = ({ src, alt, ...props }: any) => {
-    return (
-      <span className="block my-4">
-        <span className="flex items-center justify-center">
-          <span className="bg-gray-200 border-2 border-dashed border-gray-400 rounded-lg p-8 max-w-sm inline-block">
-            <span className="flex flex-col items-center text-gray-500">
-              <svg
-                className="w-12 h-12 mb-2"
-                fill="none"
-                stroke="currentColor"
-                viewBox="0 0 24 24"
-                xmlns="http://www.w3.org/2000/svg"
-              >
-                <path
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  strokeWidth={2}
-                  d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"
-                />
-              </svg>
-              <span className="text-sm">图片</span>
-              {alt && <span className="text-xs mt-1 text-center">{alt}</span>}
-            </span>
-          </span>
-        </span>
-      </span>
-    );
-  };
-
-  // ===== 全屏模式状态 =====
-  const [fullscreenMode, setFullscreenMode] = useState<'none' | 'pdf' | 'markdown'>('none');
-
-  // 复制 Markdown 源代码
-  const handleCopyMarkdown = async () => {
-    if (!mdContent) return;
-
-    try {
-      await navigator.clipboard.writeText(mdContent);
-      toast.success('Markdown 源代码已复制到剪贴板');
-    } catch (err) {
-      console.error('复制失败:', err);
-      toast.error('复制失败，请手动选择文本复制');
-    }
-  };
+  const canEdit = isPersonalOwner || isAdmin;
 
   // ===== PDF解析相关函数 =====
   const handleParsePdfToMarkdown = async () => {
@@ -112,7 +742,6 @@ export function PaperAttachmentsDrawer({
       toast.error('没有找到PDF文件，无法解析');
       return;
     }
-
     if (attachments.markdown) {
       toast.error('已有Markdown文件，无需重复解析');
       return;
@@ -132,8 +761,8 @@ export function PaperAttachmentsDrawer({
 
       if (result.bizCode === 0) {
         setParsingTaskId(result.data.taskId);
-        setParsingMessage('PDF解析任务已提交，请点击"查看解析进度"按钮获取最新状态');
-        toast.success('PDF解析任务已提交，请点击"查看解析进度"按钮获取最新状态');
+        setParsingMessage('PDF解析任务已提交，请点击"查看解析进度"获取最新状态');
+        toast.success('PDF解析任务已提交，请点击"查看解析进度"获取最新状态');
       } else {
         setIsParsing(false);
         toast.error(result.bizMessage || 'PDF解析任务提交失败');
@@ -145,10 +774,8 @@ export function PaperAttachmentsDrawer({
     }
   };
 
-  // 手动查看解析进度
   const handleCheckParsingProgress = async () => {
     if (!parsingTaskId) {
-      // 如果没有任务ID，先尝试获取最新的任务
       try {
         let tasksResult;
         if (isPersonalOwner && userPaperId) {
@@ -161,15 +788,11 @@ export function PaperAttachmentsDrawer({
           const latestTask = tasksResult.data.tasks[0];
           if (latestTask) {
             setParsingTaskId(latestTask.taskId);
-            setParsingStatus(latestTask.status);
             setParsingProgress(latestTask.progress || 0);
             setParsingMessage(latestTask.message || '获取任务状态中...');
             setIsParsing(true);
 
-            // 显示后端返回的消息
-            if (latestTask.message) {
-              toast.info(latestTask.message);
-            }
+            if (latestTask.message) toast.info(latestTask.message);
           } else {
             toast.error('没有找到解析任务');
             return;
@@ -185,25 +808,26 @@ export function PaperAttachmentsDrawer({
       }
     }
 
-    // 查询任务状态
     try {
       let result;
       if (isPersonalOwner && userPaperId) {
-        result = await userPaperService.getPdfParseTaskStatus(userPaperId, parsingTaskId!);
+        result = await userPaperService.getPdfParseTaskStatus(
+          userPaperId,
+          parsingTaskId!,
+        );
       } else {
-        result = await adminPaperService.getPdfParseTaskStatus(paperId, parsingTaskId!);
+        result = await adminPaperService.getPdfParseTaskStatus(
+          paperId,
+          parsingTaskId!,
+        );
       }
 
       if (result.bizCode === 0) {
         const taskData = result.data;
-        setParsingStatus(taskData.status);
         setParsingProgress(taskData.progress);
         setParsingMessage(taskData.message);
 
-        // 显示后端返回的消息
-        if (taskData.message) {
-          toast.info(taskData.message);
-        }
+        if (taskData.message) toast.info(taskData.message);
 
         if (taskData.status === 'completed') {
           setIsParsing(false);
@@ -220,7 +844,6 @@ export function PaperAttachmentsDrawer({
             setParsingTaskId(null);
             setParsingProgress(0);
             setParsingMessage('');
-            setParsingStatus('');
           }, 3000);
         } else if (taskData.status === 'failed') {
           setIsParsing(false);
@@ -230,7 +853,6 @@ export function PaperAttachmentsDrawer({
             setParsingTaskId(null);
             setParsingProgress(0);
             setParsingMessage('');
-            setParsingStatus('');
           }, 3000);
         }
       } else {
@@ -242,7 +864,7 @@ export function PaperAttachmentsDrawer({
     }
   };
 
-  // 检查是否有进行中的解析任务
+  // 进入抽屉时检查进行中的解析任务
   useEffect(() => {
     if (attachments.markdown || isParsing) return;
 
@@ -257,16 +879,20 @@ export function PaperAttachmentsDrawer({
 
         if (tasksResult.bizCode === 0 && tasksResult.data.tasks) {
           const existingTask = tasksResult.data.tasks.find(
-            (task: any) => task.status === 'pending' || task.status === 'processing',
+            (task: any) =>
+              task.status === 'pending' || task.status === 'processing',
           );
 
           if (existingTask) {
             setParsingTaskId(existingTask.taskId);
-            setParsingStatus(existingTask.status);
             setParsingProgress(existingTask.progress || 0);
-            setParsingMessage(existingTask.message || '检测到进行中的PDF解析任务');
+            setParsingMessage(
+              existingTask.message || '检测到进行中的PDF解析任务',
+            );
             setIsParsing(true);
-            toast.success('检测到进行中的PDF解析任务，可点击"查看解析进度"按钮获取最新状态');
+            toast.success(
+              '检测到进行中的PDF解析任务，可点击"查看解析进度"获取最新状态',
+            );
           }
         }
       } catch (error) {
@@ -277,70 +903,10 @@ export function PaperAttachmentsDrawer({
     checkExistingTasks();
   }, [paperId, userPaperId, isPersonalOwner, attachments.markdown, isParsing]);
 
-  // ===== Markdown 内容加载 & 缓存 =====
-  useEffect(() => {
-    const url = attachments.markdown?.url;
-
-    if (!url) {
-      // 真正没有 markdown 了才清掉
-      setMdContent(null);
-      setMdLoading(false);
-      setMdError(null);
-      return;
-    }
-
-    // ✅ 先看缓存里有没有内容
-    const cached = markdownCache.get(url);
-    if (cached) {
-      setMdContent(cached);
-      setMdLoading(false);
-      setMdError(null);
-      return;
-    }
-
-    setMdLoading(true);
-    setMdError(null);
-
-    fetch(url)
-      .then(async (res) => {
-        if (!res.ok) {
-          throw new Error(`请求失败: ${res.status} ${res.statusText}`);
-        }
-        const text = await res.text();
-
-        // ✅ 写入缓存
-        markdownCache.set(url, text);
-        setMdContent(text);
-      })
-      .catch((err) => {
-        console.error('加载 Markdown 内容失败:', err);
-        setMdError('无法加载 Markdown 文件内容，请检查文件链接或网络。');
-      })
-      .finally(() => {
-        setMdLoading(false);
-      });
-  }, [attachments.markdown?.url]);
-
-  // ✅ Markdown 滚动位置恢复
-  useEffect(() => {
-    const url = attachments.markdown?.url;
-    if (!url) return;
-    if (!mdContent) return; // 没内容就不用恢复
-
-    const savedScrollTop = markdownScrollCache.get(url);
-    if (typeof savedScrollTop !== 'number') return;
-
-    const el = markdownScrollContainerRef.current;
-    if (!el) return;
-
-    requestAnimationFrame(() => {
-      if (markdownScrollContainerRef.current) {
-        markdownScrollContainerRef.current.scrollTop = savedScrollTop;
-      }
-    });
-  }, [attachments.markdown?.url, mdContent]);
-
-  const handlePdfUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  // ===== 上传/删除 =====
+  const handlePdfUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -386,7 +952,9 @@ export function PaperAttachmentsDrawer({
     }
   };
 
-  const handleMarkdownUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleMarkdownUpload = async (
+    event: React.ChangeEvent<HTMLInputElement>,
+  ) => {
     const file = event.target.files?.[0];
     if (!file) return;
 
@@ -406,9 +974,15 @@ export function PaperAttachmentsDrawer({
     try {
       let result;
       if (isPersonalOwner && userPaperId) {
-        result = await userPaperService.uploadUserPaperMarkdown(userPaperId, file);
+        result = await userPaperService.uploadUserPaperMarkdown(
+          userPaperId,
+          file,
+        );
       } else {
-        result = await adminPaperService.uploadAdminPaperMarkdown(paperId, file);
+        result = await adminPaperService.uploadAdminPaperMarkdown(
+          paperId,
+          file,
+        );
       }
 
       if (result.bizCode === 0) {
@@ -439,16 +1013,16 @@ export function PaperAttachmentsDrawer({
     try {
       let result;
       if (isPersonalOwner && userPaperId) {
-        result = await userPaperService.deleteUserPaperAttachment(userPaperId, 'pdf');
+        result = await userPaperService.deleteUserPaperAttachment(
+          userPaperId,
+          'pdf',
+        );
       } else {
         result = await adminPaperService.deletePaperAttachment(paperId, 'pdf');
       }
 
       if (result.bizCode === 0) {
-        onAttachmentsChange({
-          ...attachments,
-          pdf: undefined,
-        });
+        onAttachmentsChange({ ...attachments, pdf: undefined });
         toast.success('PDF已移除');
       } else {
         toast.error(result.bizMessage || 'PDF删除失败');
@@ -466,16 +1040,19 @@ export function PaperAttachmentsDrawer({
     try {
       let result;
       if (isPersonalOwner && userPaperId) {
-        result = await userPaperService.deleteUserPaperAttachment(userPaperId, 'markdown');
+        result = await userPaperService.deleteUserPaperAttachment(
+          userPaperId,
+          'markdown',
+        );
       } else {
-        result = await adminPaperService.deletePaperAttachment(paperId, 'markdown');
+        result = await adminPaperService.deletePaperAttachment(
+          paperId,
+          'markdown',
+        );
       }
 
       if (result.bizCode === 0) {
-        onAttachmentsChange({
-          ...attachments,
-          markdown: undefined,
-        });
+        onAttachmentsChange({ ...attachments, markdown: undefined });
         toast.success('Markdown文件已移除');
       } else {
         toast.error(result.bizMessage || 'Markdown删除失败');
@@ -496,488 +1073,328 @@ export function PaperAttachmentsDrawer({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
   };
 
-  return (
-    <Drawer
-      open={isOpen}
-      direction="right"
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-      handleOnly={false}
-      shouldScaleBackground={false}
-      
-    >
-      <DrawerContent
-        forceMount
-        data-vaul-no-drag
-        className={cn(
-          'h-screen w-[85vw] max-w-none min-w-[1400px] flex flex-col',
-          'data-[vaul-drawer-direction=right]:w-[85vw] data-[vaul-drawer-direction=right]:min-w-[1400px] data-[vaul-drawer-direction=right]:max-w-none',
-          'border-l border-white/60 bg-white/80 backdrop-blur-3xl shadow-[0_20px_54px_rgba(15,23,42,0.18)]',
-        )}
-      >
-        {/* 隐藏上传 input */}
-        <input
-          type="file"
-          accept=".pdf"
-          onChange={handlePdfUpload}
-          disabled={isUploading}
-          className="hidden"
-          id="pdf-upload"
-        />
-        <input
-          type="file"
-          accept=".md,.markdown"
-          onChange={handleMarkdownUpload}
-          disabled={isUploading}
-          className="hidden"
-          id="markdown-upload"
-        />
+  const pdfViewerHeight = useMemo(() => 'calc(100vh - 180px)', []);
 
-        <DrawerHeader className="pb-4 shrink-0 flex flex-row items-center justify-between px-6 border-b border-white/60 bg白/70 backdrop-blur-3xl">
-          <DrawerTitle className="text-base font-semibold text-[#1F2937] tracking-tight">
-            论文附件 - 左右分屏查看
-          </DrawerTitle>
+  return (
+    <SidePanel open={isOpen} onClose={onClose}>
+      {/* 隐藏上传 input */}
+      <input
+        type="file"
+        accept=".pdf"
+        onChange={handlePdfUpload}
+        disabled={isUploading}
+        className="hidden"
+        id="pdf-upload"
+      />
+      <input
+        type="file"
+        accept=".md,.markdown"
+        onChange={handleMarkdownUpload}
+        disabled={isUploading}
+        className="hidden"
+        id="markdown-upload"
+      />
+
+      {/* Header */}
+      <div className="pb-4 shrink-0 flex flex-row items-center justify-between px-6 border-b border-white/60 bg-white/70 backdrop-blur-3xl">
+        <h2 className="text-base font-semibold text-[#1F2937] tracking-tight">
+          论文附件
+        </h2>
+        <div className="flex items-center gap-2">
           <Button
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className={cn(
-              'h-8 w-8 p-0 rounded-full border border-white/65',
-              'bg-white/85 hover:bg-white/95 text-[#28418A]',
-              'shadow-[0_10px_26px_rgba(15,23,42,0.22)]',
-              'transition-all duration-200 hover:-translate-y-px',
-            )}
+            className="h-8 w-8 p-0 rounded-full border border-white/65 bg-white/85 hover:bg-white/95 text-[#28418A] shadow-[0_10px_26px_rgba(15,23,42,0.22)] transition-all duration-200 hover:-translate-y-px"
           >
             <X className="h-4 w-4" />
           </Button>
-        </DrawerHeader>
+        </div>
+      </div>
 
-        {/* 主内容区域：左右分栏 */}
-        <div className="flex-1 flex overflow-hidden px-6 py-5 gap-4">
-          {/* 左侧：PDF 区域 */}
-          <div
-            className={cn(
-              'flex flex-col overflow-hidden transition-all duration-300',
-              fullscreenMode === 'markdown'
-                ? 'w-0 opacity-0'
-                : fullscreenMode === 'pdf'
-                ? 'w-full'
-                : 'w-1/2',
-            )}
-          >
-            <div className="flex items-center justify-between mb-3">
+      {/* 顶部功能区 */}
+      <div className="shrink-0 px-6 pt-4 pb-3 border-b border-white/60 bg-white/60 backdrop-blur-2xl">
+        <div className="grid grid-cols-2 gap-3">
+          {/* PDF Card */}
+          <div className="rounded-2xl border border-slate-100 bg-white/80 p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <div
-                  className={cn(
-                    'w-8 h-8 rounded-lg flex items-center justify-center',
-                    'bg-linear-to-br from-[#28418A]/20 to-[#1F3469]/20',
-                    'border border-[#28418A]/30',
-                  )}
-                >
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-linear-to-br from-[#28418A]/20 to-[#1F3469]/20 border border-[#28418A]/30">
                   <File className="h-4 w-4 text-[#28418A]" />
                 </div>
-                <h3 className="text-sm font-semibold text-[#1F2937]">PDF 文档</h3>
+                <div className="text-sm font-semibold text-slate-800">
+                  PDF 文档
+                </div>
               </div>
-              <div className="flex gap-2">
-                {attachments.pdf && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() =>
-                      setFullscreenMode(fullscreenMode === 'pdf' ? 'none' : 'pdf')
-                    }
-                    className={cn(
-                      'inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-medium',
-                      'border border-white/65 bg-white/85 text-[#28418A]',
-                      'hover:bg-white/95 hover:text-[#1F2937]',
-                      'shadow-[0_10px_24px_rgba(148,163,184,0.35)]',
-                      'transition-all duration-200',
-                    )}
-                  >
-                    <Maximize2 className="h-3.5 w-3.5" />
-                    {fullscreenMode === 'pdf' ? '还原' : '全屏'}
-                  </Button>
-                )}
-                {(isPersonalOwner || isAdmin) && attachments.pdf && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleRemovePdf}
-                    disabled={isUploading || isParsing}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-medium',
-                      'border border-[#FECACA] bg-[#FDF2F2]/90 text-[#B91C1C]',
-                      'hover:bg-[#FEE2E2] hover:text-[#991B1B]',
-                      'shadow-[0_10px_26px_rgba(248,113,113,0.30)]',
-                      'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed',
-                    )}
-                    title={isParsing ? 'PDF正在解析中，无法删除' : ''}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    删除
-                  </Button>
-                )}
-              </div>
+
+              {attachments.pdf && (
+                <div className="text-[11px] text-slate-500">
+                  {formatFileSize(attachments.pdf.size)} ·{' '}
+                  {new Date(
+                    attachments.pdf.uploadedAt,
+                  ).toLocaleDateString()}
+                </div>
+              )}
             </div>
 
             {attachments.pdf ? (
-              <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="border border-white/70 rounded-2xl overflow-hidden bg-white/80 backdrop-blur-2xl flex-1 flex flex-col min-h-0 shadow-[0_18px_40px_rgba(15,23,42,0.16)]">
-                  {attachments.pdf.url ? (
-                    <div className="flex-1 overflow-hidden min-h-0">
-                      <iframe
-                        src={attachments.pdf.url}
-                        title="PDF预览"
-                        className="w-full h-full border-0"
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-sm text-slate-500">
-                      无法加载PDF，请检查文件链接
-                    </div>
-                  )}
-                </div>
-                <div className="text-[11px] text-slate-500 text-center mt-2">
-                  {formatFileSize(attachments.pdf.size)} ·{' '}
-                  {new Date(attachments.pdf.uploadedAt).toLocaleDateString()}
-                </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  asChild
+                  size="sm"
+                  className="rounded-xl"
+                  variant="secondary"
+                >
+                  <a
+                    href={attachments.pdf.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    下载 PDF
+                  </a>
+                </Button>
+
+                {canEdit && (
+                  <>
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        (
+                          document.getElementById(
+                            'pdf-upload',
+                          ) as HTMLInputElement | null
+                        )?.click()
+                      }
+                      disabled={isUploading || isParsing}
+                      className="rounded-xl bg-[#28418A] text-white hover:bg-[#1F3469]"
+                      title={isParsing ? 'PDF正在解析中，请稍后再上传' : ''}
+                    >
+                      <Upload className="h-4 w-4 mr-1" />
+                      重新上传
+                    </Button>
+
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleRemovePdf}
+                      disabled={isUploading || isParsing}
+                      className="rounded-xl border border-[#FECACA] bg-[#FDF2F2]/90 text-[#B91C1C] hover:bg-[#FEE2E2] hover:text-[#991B1B]"
+                      title={isParsing ? 'PDF正在解析中，无法删除' : ''}
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      删除
+                    </Button>
+                  </>
+                )}
               </div>
             ) : (
-              <div className="flex-1 flex items-center justify-center border border-white/70 rounded-2xl bg-white/60 backdrop-blur-xl">
-                <div className="text-center">
-                  <div className="w-16 h-16 bg-white/80 border border-white/70 rounded-full flex items-center justify-center mx-auto mb-4 shadow-[0_14px_32px_rgba(15,23,42,0.12)]">
-                    <File className="h-8 w-8 text-slate-400" />
-                  </div>
-                  <p className="text-sm text-slate-600 mb-4">尚未上传PDF文档</p>
-                  {isPersonalOwner || isAdmin ? (
-                    <Button
-                      disabled={isUploading || isParsing}
-                      onClick={() => {
-                        const fileInput = document.getElementById(
+              <div className="flex items-center gap-2">
+                {canEdit ? (
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      (
+                        document.getElementById(
                           'pdf-upload',
-                        ) as HTMLInputElement | null;
-                        fileInput?.click();
-                      }}
-                      className={cn(
-                        'inline-flex items-center justify-center gap-2',
-                        'h-9 rounded-xl px-4 text-sm font-medium',
-                        'border border-white/55 bg-linear-to-r from-[#28418A]/92 via-[#28418A]/88 to-[#28418A]/92',
-                        'text-white shadow-[0_14px_32px_rgba(40,65,138,0.35)]',
-                        'hover:shadow-[0_18px_40px_rgba(40,65,138,0.45)] hover:-translate-y-px',
-                        'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed',
-                      )}
-                      title={isParsing ? 'PDF正在解析中，请等待解析完成后再上传新文件' : ''}
-                    >
-                      <Upload className="h-4 w-4" />
-                      {isUploading ? '上传中...' : isParsing ? 'PDF解析中...' : '上传PDF'}
-                    </Button>
-                  ) : (
-                    <p className="text-xs text-slate-500">您没有上传权限</p>
-                  )}
-                </div>
+                        ) as HTMLInputElement | null
+                      )?.click()
+                    }
+                    disabled={isUploading || isParsing}
+                    className="rounded-xl bg-[#28418A] text-white hover:bg-[#1F3469]"
+                  >
+                    <Upload className="h-4 w-4 mr-1" />
+                    上传 PDF
+                  </Button>
+                ) : (
+                  <span className="text-xs text-slate-500">无上传权限</span>
+                )}
               </div>
             )}
           </div>
 
-          {/* 中间分隔线 */}
-          {fullscreenMode === 'none' && (
-            <div className="w-px bg-linear-to-b from-transparent via-slate-300/50 to-transparent" />
-          )}
-
-          {/* 右侧：Markdown 区域 */}
-          <div
-            className={cn(
-              'flex flex-col overflow-hidden transition-all duration-300',
-              fullscreenMode === 'pdf'
-                ? 'w-0 opacity-0'
-                : fullscreenMode === 'markdown'
-                ? 'w-full'
-                : 'w-1/2',
-            )}
-          >
-            <div className="flex items-center justify-between mb-3">
+          {/* Markdown Card */}
+          <div className="rounded-2xl border border-slate-100 bg-white/80 p-4 shadow-sm">
+            <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
-                <div
-                  className={cn(
-                    'w-8 h-8 rounded-lg flex items-center justify-center',
-                    'bg-linear-to-br from-[#3050A5]/20 to-[#1F3469]/20',
-                    'border border-[#3050A5]/30',
-                  )}
-                >
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-linear-to-br from-[#3050A5]/20 to-[#1F3469]/20 border border-[#3050A5]/30">
                   <FileText className="h-4 w-4 text-[#3050A5]" />
                 </div>
-                <h3 className="text-sm font-semibold text-[#1F2937]">Markdown 文档</h3>
+                <div className="text-sm font-semibold text-slate-800">
+                  Markdown 文档
+                </div>
               </div>
-              <div className="flex gap-2">
-                {attachments.markdown && (
-                  <>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() =>
-                        setFullscreenMode(fullscreenMode === 'markdown' ? 'none' : 'markdown')
-                      }
-                      className={cn(
-                        'inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-medium',
-                        'border border-white/65 bg-white/85 text-[#28418A]',
-                        'hover:bg-white/95 hover:text-[#1F2937]',
-                        'shadow-[0_10px_24px_rgba(148,163,184,0.35)]',
-                        'transition-all duration-200',
-                      )}
-                    >
-                      <Maximize2 className="h-3.5 w-3.5" />
-                      {fullscreenMode === 'markdown' ? '还原' : '全屏'}
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={handleCopyMarkdown}
-                      disabled={!mdContent}
-                      className={cn(
-                        'inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-medium',
-                        'border border-white/65 bg-white/85 text-[#28418A]',
-                        'hover:bg-white/95 hover:text-[#1F2937]',
-                        'shadow-[0_10px_24px_rgba(148,163,184,0.35)]',
-                        'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed',
-                      )}
-                    >
-                      <Copy className="h-4 w-4" />
-                      复制源码
-                    </Button>
-                  </>
-                )}
-                {(isPersonalOwner || isAdmin) && attachments.markdown && (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleRemoveMarkdown}
-                    disabled={isUploading || isParsing}
-                    className={cn(
-                      'inline-flex items-center gap-1.5 h-8 px-3 rounded-xl text-xs font-medium',
-                      'border border-[#FECACA] bg-[#FDF2F2]/90 text-[#B91C1C]',
-                      'hover:bg-[#FEE2E2] hover:text-[#991B1B]',
-                      'shadow-[0_10px_26px_rgba(248,113,113,0.30)]',
-                      'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed',
-                    )}
-                    title={isParsing ? 'PDF正在解析中，无法删除Markdown' : ''}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    删除
-                  </Button>
-                )}
-              </div>
+
+              {attachments.markdown && (
+                <div className="text-[11px] text-slate-500">
+                  {formatFileSize(attachments.markdown.size)} ·{' '}
+                  {new Date(
+                    attachments.markdown.uploadedAt,
+                  ).toLocaleDateString()}
+                </div>
+              )}
             </div>
 
             {attachments.markdown ? (
-              <div className="flex-1 flex flex-col overflow-hidden">
-                <div className="border border-white/70 rounded-2xl overflow-hidden bg-white/80 backdrop-blur-2xl flex-1 flex flex-col min-h-0 shadow-[0_18px_40px_rgba(15,23,42,0.16)]">
-                  {attachments.markdown.url ? (
-                    <div
-                      ref={markdownScrollContainerRef}
-                      className="flex-1 overflow-y-auto min-h-0"
-                      onScroll={(e) => {
-                        const url = attachments.markdown?.url;
-                        if (!url) return;
-                        markdownScrollCache.set(url, e.currentTarget.scrollTop);
-                      }}
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  asChild
+                  size="sm"
+                  className="rounded-xl"
+                  variant="secondary"
+                >
+                  <a
+                    href={attachments.markdown.url}
+                    download
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <Download className="h-4 w-4 mr-1" />
+                    下载 Markdown
+                  </a>
+                </Button>
+
+                {canEdit && (
+                  <>
+                    <Button
+                      size="sm"
+                      onClick={() =>
+                        (
+                          document.getElementById(
+                            'markdown-upload',
+                          ) as HTMLInputElement | null
+                        )?.click()
+                      }
+                      disabled={isUploading || isParsing}
+                      className="rounded-xl bg-[#3050A5] text-white hover:bg-[#28418A]"
                     >
-                      {mdLoading && (
-                        <div className="text-sm text-slate-500 flex items-center justify-center h-64">
-                          正在加载 Markdown 内容...
-                        </div>
-                      )}
+                      <Upload className="h-4 w-4 mr-1" />
+                      重新上传
+                    </Button>
 
-                      {mdError && (
-                        <div className="text-sm text-red-500 flex items-center justify-center h-64 px-4">
-                          {mdError}
-                        </div>
-                      )}
-
-                      {!mdLoading && !mdError && mdContent && (
-                        <div className="prose prose-gray dark:prose-invert max-w-none p-6 select-text">
-                          <ReactMarkdown
-                            remarkPlugins={[remarkGfm, remarkMath]}
-                            rehypePlugins={[rehypeKatex]}
-                            components={{
-                              img: CustomImage,
-                              p: ({ children }) => <div className="mb-4">{children}</div>,
-                              // 表格样式 - 支持rowspan和colspan
-                                table: ({ children, ...props }) => (
-                                  <div className="overflow-x-auto my-4">
-                                    <table className="min-w-full border-collapse border border-gray-300 dark:border-gray-600" {...props}>
-                                      {children}
-                                    </table>
-                                  </div>
-                                ),
-                                thead: ({ children, ...props }) => <thead className="bg-gray-100 dark:bg-gray-800" {...props}>{children}</thead>,
-                                tbody: ({ children, ...props }) => <tbody {...props}>{children}</tbody>,
-                                tr: ({ children, ...props }) => <tr className="border border-gray-300 dark:border-gray-600" {...props}>{children}</tr>,
-                                th: ({ children, ...props }) => {
-                                  const { rowspan, colspan, ...thProps } = props as any;
-                                  return (
-                                    <th
-                                      className="border border-gray-300 dark:border-gray-600 px-3 py-2 text-left font-semibold"
-                                      rowSpan={rowspan}
-                                      colSpan={colspan}
-                                      {...thProps}
-                                    >
-                                      {children}
-                                    </th>
-                                  );
-                                },
-                                td: ({ children, ...props }) => {
-                                  const { rowspan, colspan, ...tdProps } = props as any;
-                                  return (
-                                    <td
-                                      className="border border-gray-300 dark:border-gray-600 px-3 py-2"
-                                      rowSpan={rowspan}
-                                      colSpan={colspan}
-                                      {...tdProps}
-                                    >
-                                      {children}
-                                    </td>
-                                  );
-                                },
-                            }}
-                          >
-                            {mdContent}
-                          </ReactMarkdown>
-                        </div>
-                      )}
-
-                      {!mdLoading && !mdError && !mdContent && (
-                        <div className="text-sm text-slate-400 flex items-center justify-center h-64">
-                          暂无内容可显示。
-                        </div>
-                      )}
-                    </div>
-                  ) : (
-                    <div className="flex h-full items-center justify-center text-sm text-slate-500">
-                      无法加载Markdown，请检查文件链接
-                    </div>
-                  )}
-                </div>
-                <div className="text-[11px] text-slate-500 text-center mt-2">
-                  {formatFileSize(attachments.markdown.size)} ·{' '}
-                  {new Date(attachments.markdown.uploadedAt).toLocaleDateString()}
-                </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={handleRemoveMarkdown}
+                      disabled={isUploading || isParsing}
+                      className="rounded-xl border border-[#FECACA] bg-[#FDF2F2]/90 text-[#B91C1C] hover:bg-[#FEE2E2] hover:text-[#991B1B]"
+                    >
+                      <Trash2 className="h-4 w-4 mr-1" />
+                      删除
+                    </Button>
+                  </>
+                )}
               </div>
             ) : (
-              <div className="flex-1 flex items-center justify-center border border-white/70 rounded-2xl bg-white/60 backdrop-blur-xl">
-                <div className="text-center px-6 max-w-md">
-                  <div className="w-16 h-16 bg-white/80 border border-white/70 rounded-full flex items-center justify-center mx-auto mb-4 shadow-[0_14px_32px_rgba(15,23,42,0.12)]">
-                    <FileText className="h-8 w-8 text-slate-400" />
-                  </div>
-                  <p className="text-sm text-slate-600 mb-4">尚未上传Markdown文档</p>
-
-                  {/* PDF解析进度显示 */}
-                  {isParsing && parsingTaskId && (
-                    <div className="mb-4 p-4 bg-blue-50/90 border border-blue-200/80 rounded-xl backdrop-blur-sm">
-                      <div className="flex items-center justify-center mb-2">
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
-                        <span className="text-sm text-blue-700 font-medium">
-                          PDF解析任务已创建
-                        </span>
-                      </div>
-                      <div className="w-full bg-blue-200 rounded-full h-2 mb-2">
-                        <div
-                          className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                          style={{ width: `${parsingProgress}%` }}
-                        ></div>
-                      </div>
-                      <p className="text-xs text-blue-600 mb-2">{parsingMessage}</p>
-                      <Button
-                        onClick={handleCheckParsingProgress}
-                        className={cn(
-                          'inline-flex items-center justify-center gap-2 w-full',
-                          'h-8 rounded-lg px-3 text-xs font-medium',
-                          'border border-blue-300 bg-blue-100 text-blue-700',
-                          'hover:bg-blue-200 hover:text-blue-800',
-                          'transition-all duration-200',
-                        )}
-                      >
-                        查看解析进度
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* PDF解析按钮 */}
-                  {(isPersonalOwner || isAdmin) &&
-                    attachments.pdf &&
-                    !attachments.markdown &&
-                    !isParsing && (
-                      <div className="mb-4">
-                        <Button
-                          onClick={handleParsePdfToMarkdown}
-                          className={cn(
-                            'inline-flex items-center justify-center gap-2',
-                            'h-9 rounded-xl px-4 text-sm font-medium',
-                            'border border-white/55 bg-linear-to-r from-[#10B981]/90 via-[#059669]/88 to-[#047857]/90',
-                            'text-white shadow-[0_14px_32px_rgba(16,185,129,0.35)]',
-                            'hover:shadow-[0_18px_40px_rgba(16,185,129,0.45)] hover:-translate-y-px',
-                            'transition-all duration-200',
-                          )}
-                        >
-                          <FileText className="h-4 w-4" />
-                          通过PDF解析生成Markdown
-                        </Button>
-                        <p className="text-xs text-slate-500 mt-2">
-                          从左侧PDF自动提取文本内容
-                        </p>
-                      </div>
-                    )}
-
-                  {/* 检查解析进度按钮 */}
-                  {!isParsing && (
-                    <div className="mb-4">
-                      <Button
-                        onClick={handleCheckParsingProgress}
-                        className={cn(
-                          'inline-flex items-center justify-center gap-2',
-                          'h-8 rounded-lg px-3 text-xs font-medium',
-                          'border border-blue-300 bg-blue-50 text-blue-700',
-                          'hover:bg-blue-100 hover:text-blue-800',
-                          'transition-all duration-200',
-                        )}
-                      >
-                        检查解析进度
-                      </Button>
-                    </div>
-                  )}
-
-                  {/* 普通上传按钮 */}
-                  {isPersonalOwner || isAdmin ? (
-                    <Button
-                      disabled={isUploading || isParsing}
-                      onClick={() => {
-                        const fileInput = document.getElementById(
+              <div className="flex items-center gap-2">
+                {canEdit ? (
+                  <Button
+                    size="sm"
+                    onClick={() =>
+                      (
+                        document.getElementById(
                           'markdown-upload',
-                        ) as HTMLInputElement | null;
-                        fileInput?.click();
-                      }}
-                      className={cn(
-                        'inline-flex items-center justify-center gap-2',
-                        'h-9 rounded-xl px-4 text-sm font-medium',
-                        'border border-white/55 bg-linear-to-r from-[#3050A5]/90 via-[#28418A]/88 to-[#1F3469]/90',
-                        'text-white shadow-[0_14px_32px_rgba(37,99,235,0.35)]',
-                        'hover:shadow-[0_18px_40px_rgba(37,99,235,0.45)] hover:-translate-y-px',
-                        'transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed',
-                      )}
-                      title={isParsing ? 'PDF正在解析中，请等待解析完成后再上传新文件' : ''}
-                    >
-                      <Upload className="h-4 w-4" />
-                      {isUploading ? '上传中...' : isParsing ? 'PDF解析中...' : '上传Markdown'}
-                    </Button>
-                  ) : (
-                    <p className="text-xs text-slate-500">您没有上传权限</p>
-                  )}
-                </div>
+                        ) as HTMLInputElement | null
+                      )?.click()
+                    }
+                    disabled={isUploading || isParsing}
+                    className="rounded-xl bg-[#3050A5] text-white hover:bg-[#28418A]"
+                  >
+                    <Upload className="h-4 w-4 mr-1" />
+                    上传 Markdown
+                  </Button>
+                ) : (
+                  <span className="text-xs text-slate-500">无上传权限</span>
+                )}
               </div>
             )}
           </div>
         </div>
-      </DrawerContent>
-    </Drawer>
+
+        {/* 解析按钮 */}
+        {canEdit && attachments.pdf && !attachments.markdown && !isParsing && (
+          <div className="mt-3 flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50/80 p-3">
+            <div className="text-xs text-emerald-800">
+              你已上传 PDF，但还没有 Markdown，可直接从 PDF 自动解析生成。
+            </div>
+            <Button
+              size="sm"
+              onClick={handleParsePdfToMarkdown}
+              disabled={isUploading}
+              className="rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
+            >
+              <FileText className="h-4 w-4 mr-1" />
+              通过PDF解析生成Markdown
+            </Button>
+          </div>
+        )}
+
+        {/* 解析进度 */}
+        {isParsing && parsingTaskId && (
+          <div className="mt-3 p-4 bg-blue-50/90 border border-blue-200/80 rounded-xl backdrop-blur-sm">
+            <div className="flex items-center justify-center mb-2">
+              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-blue-600 mr-2"></div>
+              <span className="text-sm text-blue-700 font-medium">
+                PDF解析任务进行中
+              </span>
+            </div>
+            <div className="w-full bg-blue-200 rounded-full h-2 mb-2">
+              <div
+                className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                style={{ width: `${parsingProgress}%` }}
+              />
+            </div>
+            <p className="text-xs text-blue-600 mb-2">{parsingMessage}</p>
+            <Button
+              onClick={handleCheckParsingProgress}
+              className="inline-flex items-center justify-center gap-2 w-full h-8 rounded-lg px-3 text-xs font-medium border border-blue-300 bg-blue-100 text-blue-700 hover:bg-blue-200 hover:text-blue-800 transition-all duration-200"
+            >
+              查看解析进度
+            </Button>
+          </div>
+        )}
+
+        {!isParsing && (
+          <div className="mt-3 flex justify-end">
+            <Button
+              onClick={handleCheckParsingProgress}
+              size="sm"
+              className="inline-flex items-center justify-center gap-2 h-8 rounded-lg px-3 text-xs font-medium border border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 hover:text-blue-800 transition-all duration-200"
+            >
+              检查解析进度
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* 底部：PDF 渲染区 */}
+      <div
+        className="flex-1 overflow-hidden px-6 py-4 min-h-0"
+        style={{ paddingBottom: '24px' }}
+      >
+        {pdfUrl ? (
+          <div
+            className="w-full h-full"
+            style={{
+              height: pdfViewerHeight,
+              maxHeight: 'calc(100vh - 200px)',
+            }}
+          >
+            <MemoizedPdfViewer
+              url={pdfUrl}
+              isVisible={pdfState.isVisible}
+              userPaperId={userPaperId}
+              isAdmin={isAdmin}
+              isPersonalOwner={isPersonalOwner}
+              contentList={contentList || undefined}
+            />
+          </div>
+        ) : (
+          <div className="w-full h-full flex items-center justify-center rounded-2xl border border-slate-100 bg-slate-50 text-sm text-slate-500">
+            暂无 PDF，可在顶部上传
+          </div>
+        )}
+      </div>
+    </SidePanel>
   );
 }

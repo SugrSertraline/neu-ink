@@ -17,28 +17,15 @@ class UserService:
     
     def login(self, username: str, password: str) -> Dict[str, Any]:
         """用户登录业务逻辑"""
-        # 打印接收到的数据
-        print("=" * 50)
-        print("登录请求")
-        print(f"接收到的用户名: '{username}' (长度: {len(username)})")
-        print(f"接收到的密码: '{password}' (长度: {len(password)})")
-        print("=" * 50)
-        
         # 验证用户凭据
         user = self.user_model.verify_credentials(username, password)
         
-        print(f"数据库查询结果: {user}")
-        
         if not user:
-            print("登录失败 - 用户名或密码错误")
-            print("提示: 请检查用户名和密码是否与数据库完全一致")
             return {
                 "code": BusinessCode.LOGIN_FAILED,
                 "message": BusinessMessage.LOGIN_FAILED,
                 "data": None
             }
-        
-        print(f"登录成功 - 用户: {user.get('username')}")
         
         # 生成token（请确保 generate_token 会把 role 写入载荷）
         token = generate_token(user)

@@ -81,33 +81,26 @@ class UserPaperService:
         """
         try:
             # 1. 检查公共论文是否存在
-            print(f"[DEBUG] 查找公共论文: paperId={paper_id}")
             public_paper = self.paper_model.find_public_paper_by_id(paper_id)
             if not public_paper:
-                print(f"[DEBUG] 公共论文不存在: paperId={paper_id}")
                 return self._wrap_failure(
                     BusinessCode.PAPER_NOT_FOUND,
                     "公共论文不存在或不可访问"
                 )
-            print(f"[DEBUG] 找到公共论文: {public_paper.get('id')}")
 
             # 2. 检查是否已添加
-            print(f"[DEBUG] 检查是否已添加: userId={user_id}, paperId={paper_id}")
             existing = self.user_paper_model.find_by_user_and_source(
                 user_id=user_id,
                 source_paper_id=paper_id
             )
             if existing:
-                print(f"[DEBUG] 论文已存在于个人库中: {existing.get('id')}")
                 return self._wrap_failure(
                     BusinessCode.INVALID_PARAMS,
                     "该论文已在您的个人库中"
                 )
 
             # 3. 创建副本
-            print(f"[DEBUG] 开始创建论文副本")
             paper_data, section_ids = self._extract_paper_data_and_copy_sections(public_paper)
-            print(f"[DEBUG] 论文数据提取完成，复制sections数量: {len(section_ids)}")
             
             user_paper_data = {
                 "userId": user_id,
@@ -124,37 +117,18 @@ class UserPaperService:
                 "priority": extra.get("priority", "medium") if extra else "medium",
             }
 
-            print(f"[DEBUG] 开始创建用户论文记录")
             user_paper = self.user_paper_model.create(user_paper_data)
-            print(f"[DEBUG] 用户论文记录创建成功: {user_paper.get('id')}")
             
             # 4. 更新sections的paperId为用户论文ID
             if section_ids and user_paper.get("id"):
                 from ..models.section import get_section_model
                 section_model = get_section_model()
-                updated_count = 0
                 for section_id in section_ids:
-                    print(f"[DEBUG] 更新section {section_id} 的paperId为 {user_paper['id']}")
-                    success = section_model.update(section_id, {"paperId": user_paper["id"]})
-                    if success:
-                        updated_count += 1
-                        print(f"[DEBUG] 成功更新section {section_id}")
-                    else:
-                        print(f"[DEBUG] 更新section {section_id} 失败")
-                        # 验证section是否存在
-                        section = section_model.find_by_id(section_id)
-                        if section:
-                            print(f"[DEBUG] section存在，当前数据: {section}")
-                        else:
-                            print(f"[DEBUG] section不存在: {section_id}")
-                print(f"[DEBUG] 成功更新 {updated_count}/{len(section_ids)} 个sections的paperId为用户论文ID: {user_paper['id']}")
-            else:
-                print(f"[DEBUG] 没有sections需要更新或UserPaper ID为空: section_ids={section_ids}, user_paper_id={user_paper.get('id')}")
+                    section_model.update(section_id, {"paperId": user_paper["id"]})
             
             return self._wrap_success("添加到个人论文库成功", user_paper)
 
         except Exception as exc:  # pylint: disable=broad-except
-            print(f"[DEBUG] 添加论文异常: {exc}", exc_info=True)
             return self._wrap_error(f"添加论文失败: {exc}")
 
     # ------------------------------------------------------------------
@@ -205,24 +179,8 @@ class UserPaperService:
             if section_ids and user_paper.get("id"):
                 from ..models.section import get_section_model
                 section_model = get_section_model()
-                updated_count = 0
                 for section_id in section_ids:
-                    print(f"[DEBUG] 更新section {section_id} 的paperId为 {user_paper['id']}")
-                    success = section_model.update(section_id, {"paperId": user_paper["id"]})
-                    if success:
-                        updated_count += 1
-                        print(f"[DEBUG] 成功更新section {section_id}")
-                    else:
-                        print(f"[DEBUG] 更新section {section_id} 失败")
-                        # 验证section是否存在
-                        section = section_model.find_by_id(section_id)
-                        if section:
-                            print(f"[DEBUG] section存在，当前数据: {section}")
-                        else:
-                            print(f"[DEBUG] section不存在: {section_id}")
-                print(f"[DEBUG] 成功更新 {updated_count}/{len(section_ids)} 个sections的paperId为用户论文ID: {user_paper['id']}")
-            else:
-                print(f"[DEBUG] 没有sections需要更新或UserPaper ID为空: section_ids={section_ids}, user_paper_id={user_paper.get('id')}")
+                    section_model.update(section_id, {"paperId": user_paper["id"]})
             
             return self._wrap_success("添加到个人论文库成功", user_paper)
 
@@ -599,7 +557,6 @@ class UserPaperService:
             if reading_time > 0:
                 current_time = user_paper.get("totalReadingTime", 0)
                 update_data["totalReadingTime"] = current_time + reading_time
-                print(f"[DEBUG] 更新阅读进度: userPaperId={entry_id}, 当前时间={current_time}秒, 新增时间={reading_time}秒, 总时间={update_data['totalReadingTime']}秒")
             
             # 更新最后阅读时间
             from ..utils.common import get_current_time
@@ -649,9 +606,6 @@ class UserPaperService:
                 result = qiniu_service.delete_file(pdf_key)
                 if result.get("success"):
                     deleted_count += 1
-                    print(f"[DEBUG] 成功删除PDF附件: {pdf_key}")
-                else:
-                    print(f"[DEBUG] 删除PDF附件失败: {pdf_key}, 错误: {result.get('error')}")
             
             # 删除Markdown附件
             if "markdown" in attachments and attachments["markdown"].get("key"):
@@ -659,9 +613,6 @@ class UserPaperService:
                 result = qiniu_service.delete_file(md_key)
                 if result.get("success"):
                     deleted_count += 1
-                    print(f"[DEBUG] 成功删除Markdown附件: {md_key}")
-                else:
-                    print(f"[DEBUG] 删除Markdown附件失败: {md_key}, 错误: {result.get('error')}")
             
             # 删除content_list.json附件（如果存在）
             if "content_list" in attachments and attachments["content_list"].get("key"):
@@ -669,14 +620,10 @@ class UserPaperService:
                 result = qiniu_service.delete_file(content_list_key)
                 if result.get("success"):
                     deleted_count += 1
-                    print(f"[DEBUG] 成功删除content_list附件: {content_list_key}")
-                else:
-                    print(f"[DEBUG] 删除content_list附件失败: {content_list_key}, 错误: {result.get('error')}")
             
             return deleted_count
             
         except Exception as e:
-            print(f"[DEBUG] 删除用户论文附件时发生异常: {str(e)}")
             return 0
 
 _user_paper_service: Optional[UserPaperService] = None

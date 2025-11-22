@@ -10,6 +10,7 @@ import {
   EyeOff,
   Paperclip,
   FileText,
+  FileText as FilePDF,
 } from 'lucide-react';
 import { ViewerSource } from '@/types/paper/viewer';
 import { toast } from 'sonner';

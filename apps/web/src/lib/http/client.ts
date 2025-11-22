@@ -2,8 +2,8 @@
 import { ApiResponse } from '@/types/api';
 import { ApiError } from './errors';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5000';
-const API_PREFIX = process.env.NEXT_PUBLIC_API_PREFIX || '/api/v1';
+const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5000';
+const API_PREFIX = process.env.NEXT_PUBLIC_API_URL?.includes('/api/v1') ? '/api/v1' : process.env.NEXT_PUBLIC_API_PREFIX || '/api/v1';
 const AUTH_STORAGE_KEY = 'auth_token';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -12,7 +12,7 @@ export class ApiClient {
   private baseURL: string;
   private apiPrefix: string;
   private token: string | null = null;
-  private defaultTimeoutMs = 300_000; // 增加到5分钟，以适应LLM解析的延迟
+  private defaultTimeoutMs = 600_000; // 增加到10分钟，以适应大文件下载和LLM解析的延迟
 
   constructor(baseURL: string, apiPrefix: string = '') {
     this.baseURL = baseURL.replace(/\/+$/, '');

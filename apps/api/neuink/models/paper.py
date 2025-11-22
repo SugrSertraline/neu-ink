@@ -124,21 +124,17 @@ class PaperModel:
         """
         查询公开论文详情
         """
-        print(f"[DEBUG] 查找公开论文: paperId={paper_id}")
         query = {"id": paper_id, "isPublic": True}
         paper = self.collection.find_one(query, self._full_document_projection())
         
         if not paper:
-            print(f"[DEBUG] 未找到公开论文: paperId={paper_id}")
             return None
             
-        print(f"[DEBUG] 找到公开论文，开始获取sections: paperId={paper_id}")
         # 获取sections数据，按照sectionIds的顺序
         section_model = get_section_model()
         try:
             # 先获取所有sections
             all_sections = section_model.find_by_paper_id(paper_id)
-            print(f"[DEBUG] 获取到sections数据，数量: {len(all_sections)}")
             
             # 按照paper中sectionIds的顺序重新排序sections
             section_ids = paper.get("sectionIds", [])
@@ -156,11 +152,9 @@ class PaperModel:
             for section in all_sections:
                 if section["id"] not in section_ids:
                     ordered_sections.append(section)
-            
-            print(f"[DEBUG] 重新排序后的sections数量: {len(ordered_sections)}")
         except Exception as e:
-            print(f"[DEBUG] 获取sections数据失败: {e}", exc_info=True)
-            raise e
+            # 如果排序失败，使用原始sections
+            ordered_sections = section_model.find_by_paper_id(paper_id)
         
         # 将排序后的sections数据添加到paper中
         paper["sections"] = ordered_sections

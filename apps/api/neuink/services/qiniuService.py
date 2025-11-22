@@ -130,22 +130,8 @@ class QiniuService:
             # 生成上传凭证
             token = self.generate_upload_token(key)
             
-            # 记录上传前的调试信息
-            print(f"[DEBUG] 准备上传到七牛云:")
-            print(f"[DEBUG] Bucket: {self.bucket_name}")
-            print(f"[DEBUG] Key: {key}")
-            print(f"[DEBUG] Token: {token[:50]}..." if len(token) > 50 else f"[DEBUG] Token: {token}")
-            print(f"[DEBUG] File size: {len(file_data)} bytes")
-            print(f"[DEBUG] MIME type: {mime_type}")
-            
             # 上传文件数据，指定MIME类型
             ret, info = put_data(token, key, file_data, mime_type=mime_type)
-            
-            # 记录上传后的调试信息
-            print(f"[DEBUG] 上传结果:")
-            print(f"[DEBUG] Status code: {info.status_code}")
-            print(f"[DEBUG] Response body: {info.text_body}")
-            print(f"[DEBUG] Return data: {ret}")
             
             if info.status_code == 200:
                 # 构建文件访问URL
@@ -173,9 +159,6 @@ class QiniuService:
                 }
                 
         except Exception as e:
-            print(f"[DEBUG] 上传异常: {str(e)}")
-            import traceback
-            print(f"[DEBUG] 异常堆栈: {traceback.format_exc()}")
             return {
                 "success": False,
                 "error": f"上传异常: {str(e)}",
@@ -312,6 +295,98 @@ class QiniuService:
                 "error": f"获取文件信息异常: {str(e)}"
             }
     
+    def fetch_file_content(self, url: str, max_retries: int = 3) -> Dict[str, Any]:
+        """
+        从七牛云获取文件内容（直接使用数据库中的URL，带重试机制）
+        
+        Args:
+            url: 文件的完整URL（来自数据库attachments中的url字段）
+            max_retries: 最大重试次数，默认3次
+           
+        Returns:
+            文件内容（base64编码）和相关信息
+        """
+        import requests
+        import base64
+        import time
+       
+        # 验证URL格式
+        if not url or not isinstance(url, str):
+            return {
+                "success": False,
+                "error": "无效的URL"
+            }
+        
+        # 直接使用数据库中的URL，不进行路径猜测
+        download_url = url
+        
+        # 使用简化的请求头
+        headers = {
+            'User-Agent': 'NeuInk-PDF-Viewer/1.0',
+            'Accept': 'application/pdf,*/*',
+        }
+       
+        # 重试机制
+        last_exception = None
+        for attempt in range(max_retries):
+            try:
+                # 发送HTTP请求获取文件，启用SSL证书验证
+                response = requests.get(
+                    download_url,
+                    timeout=60,
+                    headers=headers,
+                    verify=True  # 启用SSL证书验证
+                )
+                response.raise_for_status()
+               
+                # 将文件内容编码为base64
+                content_base64 = base64.b64encode(response.content).decode('utf-8')
+               
+                return {
+                    "success": True,
+                    "content": content_base64,
+                    "size": len(response.content),
+                    "contentType": response.headers.get('content-type', 'application/octet-stream')
+                }
+               
+            except requests.exceptions.RequestException as e:
+                last_exception = e
+                error_msg = f"网络请求失败: {str(e)}"
+                # 添加更详细的错误信息
+                if hasattr(e, 'response') and e.response is not None:
+                    error_msg += f" (状态码: {e.response.status_code})"
+                    if hasattr(e.response, 'text'):
+                        error_msg += f" (响应: {e.response.text[:200]})"
+               
+                # 如果不是最后一次尝试，等待一段时间再重试
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # 指数退避：1s, 2s, 4s
+                    time.sleep(wait_time)
+               
+            except Exception as e:
+                last_exception = e
+               
+                # 如果不是最后一次尝试，等待一段时间再重试
+                if attempt < max_retries - 1:
+                    wait_time = 2 ** attempt  # 指数退避：1s, 2s, 4s
+                    time.sleep(wait_time)
+       
+        # 所有重试都失败了
+        error_msg = f"获取文件内容失败，已重试 {max_retries} 次"
+        if last_exception:
+            if isinstance(last_exception, requests.exceptions.RequestException):
+                error_msg += f"。最后错误: {str(last_exception)}"
+                if hasattr(last_exception, 'response') and last_exception.response is not None:
+                    error_msg += f" (状态码: {last_exception.response.status_code})"
+            else:
+                error_msg += f"。最后错误: {str(last_exception)}"
+        
+        
+        return {
+            "success": False,
+            "error": error_msg
+        }
+    
     def _get_content_type(self, file_extension: str) -> str:
         """
         根据文件扩展名获取MIME类型
@@ -394,6 +469,13 @@ def get_qiniu_service() -> QiniuService:
     global _qiniu_service
     if _qiniu_service is None:
         _qiniu_service = QiniuService()
+    return _qiniu_service
+
+
+def is_qiniu_configured() -> bool:
+    """检查七牛云是否已配置"""
+    required_env_vars = ['QINIU_ACCESS_KEY', 'QINIU_SECRET_KEY', 'QINIU_BUCKET_NAME', 'QINIU_DOMAIN']
+    return all(os.getenv(var) for var in required_env_vars)
     return _qiniu_service
 
 

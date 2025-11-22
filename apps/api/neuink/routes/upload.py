@@ -7,6 +7,7 @@ import uuid
 from werkzeug.utils import secure_filename
 from flask import Blueprint, request, g, current_app
 
+
 from ..services.qiniuService import get_qiniu_service, is_qiniu_configured
 from ..utils.auth import login_required
 from ..utils.common import (
@@ -61,76 +62,51 @@ def upload_image():
         }
     """
     try:
-        print(f"[DEBUG] 图片上传请求开始")
-        print(f"[DEBUG] 请求方法: {request.method}")
-        print(f"[DEBUG] 请求URL: {request.url}")
-        print(f"[DEBUG] 请求头: {dict(request.headers)}")
-        
         # 检查七牛云是否已配置
         if not is_qiniu_configured():
-            print(f"[DEBUG] 七牛云未配置")
             return bad_request_response("七牛云存储未配置，请联系管理员")
-        
-        print(f"[DEBUG] 七牛云配置检查通过")
         
         # 检查是否有文件上传
         if 'file' not in request.files:
-            print(f"[DEBUG] 请求中没有文件")
             return bad_request_response("没有选择文件")
         
         file = request.files['file']
-        print(f"[DEBUG] 文件信息: filename={file.filename}, content_type={file.content_type}")
         
         # 检查文件名是否为空
         if file.filename == '':
-            print(f"[DEBUG] 文件名为空")
             return bad_request_response("没有选择文件")
         
         # 检查文件类型是否允许
         if not allowed_file(file.filename):
-            print(f"[DEBUG] 不支持的文件类型: {file.filename}")
             return bad_request_response("不支持的文件类型，仅支持: png, jpg, jpeg, gif, webp")
         
         # 获取文件扩展名
         filename = secure_filename(file.filename)
         file_extension = os.path.splitext(filename)[1].lower()
-        print(f"[DEBUG] 文件扩展名: {file_extension}")
         
         # 读取文件数据
         file_data = file.read()
-        print(f"[DEBUG] 文件大小: {len(file_data)} bytes")
         
         # 获取七牛云服务实例
         qiniu_service = get_qiniu_service()
-        print(f"[DEBUG] 获取七牛云服务实例成功")
         
         # 验证文件
         is_valid, error_message = qiniu_service.validate_file(file_data, file_extension)
         if not is_valid:
-            print(f"[DEBUG] 文件验证失败: {error_message}")
             return bad_request_response(error_message)
-        
-        print(f"[DEBUG] 文件验证通过")
         
         # 上传文件到七牛云，使用图片路径前缀
         upload_result = qiniu_service.upload_file_data(file_data, file_extension, file_type="image")
-        
-        print(f"[DEBUG] 上传结果: {upload_result}")
         
         if upload_result["success"]:
             return success_response(upload_result, "图片上传成功")
         else:
             error_msg = f"图片上传失败: {upload_result['error']}"
-            print(f"[DEBUG] {error_msg}")
-            if "debugInfo" in upload_result:
-                print(f"[DEBUG] 调试信息: {upload_result['debugInfo']}")
             return internal_error_response(error_msg)
-            
+             
     except Exception as exc:
         import traceback
         error_msg = f"服务器错误: {exc}"
-        print(f"[DEBUG] {error_msg}")
-        print(f"[DEBUG] 异常堆栈: {traceback.format_exc()}")
         return internal_error_response(error_msg)
 
 

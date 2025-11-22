@@ -69,26 +69,7 @@ function TabBarContent({
     return query ? `${base}?${query}` : base;
   }, [pathname, searchParams]);
 
-  useEffect(() => {
-    const tabBar = tabBarRef.current;
-    if (!tabBar) return;
 
-    const handleMouseMove = (e: MouseEvent) => {
-      const glowElements = tabBar.querySelectorAll<HTMLElement>('[data-glow="true"]');
-
-      glowElements.forEach(element => {
-        const rect = element.getBoundingClientRect();
-        const x = e.clientX - rect.left;
-        const y = e.clientY - rect.top;
-
-        element.style.setProperty('--cursor-x', `${x}px`);
-        element.style.setProperty('--cursor-y', `${y}px`);
-      });
-    };
-
-    tabBar.addEventListener('mousemove', handleMouseMove);
-    return () => tabBar.removeEventListener('mousemove', handleMouseMove);
-  }, []);
 
   useEffect(() => {
     if (!activeTabId) return;

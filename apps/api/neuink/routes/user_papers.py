@@ -9,6 +9,9 @@ import time
 from flask import Blueprint, request, g
 from contextlib import nullcontext
 
+from neuink.models import userPaper
+from neuink.services import paperService
+
 from ..services.userPaperService import get_user_paper_service
 from ..services.paperContentService import PaperContentService
 from ..services.paperTranslationService import PaperTranslationService
@@ -183,22 +186,18 @@ def create_user_paper_from_text():
         text = data.get("text")
         extra = data.get("extra", {})
         
-        # 使用PaperService创建论文（设为非公开）
+        # 直接解析文本，不在Paper集合中创建记录
         from ..services.paperService import get_paper_service
         paper_service = get_paper_service()
         
-        # 首先创建论文数据
-        paper_result = paper_service.create_paper_from_text(
-            text=text,
-            creator_id=g.current_user["user_id"],
-            is_public=False  # 个人论文设为非公开
-        )
+        # 仅解析文本，获取论文结构数据
+        parse_result = paper_service.parse_paper_from_text(text)
         
-        if paper_result["code"] != BusinessCode.SUCCESS:
-            return internal_error_response(paper_result["message"])
+        if parse_result["code"] != BusinessCode.SUCCESS:
+            return internal_error_response(parse_result["message"])
         
-        # 然后添加到个人论文库
-        paper_data = paper_result["data"]
+        # 直接添加到个人论文库，不经过Paper集合
+        paper_data = parse_result["data"]
         service = get_user_paper_service()
         result = service.add_uploaded_paper(
             user_id=g.current_user["user_id"],
@@ -212,7 +211,6 @@ def create_user_paper_from_text():
         return bad_request_response(result["message"])
     
     except Exception as exc:
-        return internal_error_response(f"服务器错误: {exc}")
         return internal_error_response(f"服务器错误: {exc}")
 
 @bp.route("/create-from-metadata", methods=["POST"])
@@ -246,22 +244,39 @@ def create_user_paper_from_metadata():
         metadata = data.get("metadata")
         extra = data.get("extra", {})
         
-        # 使用PaperService创建论文（设为非公开）
-        from ..services.paperService import get_paper_service
-        paper_service = get_paper_service()
+        # 构建论文数据结构，不经过Paper集合
+        from ..utils.common import get_current_time
         
-        # 首先创建论文数据
-        paper_result = paper_service.create_paper_from_metadata(
-            metadata=metadata,
-            creator_id=g.current_user["user_id"],
-            is_public=False  # 个人论文设为非公开
-        )
+        # 确保abstract使用正确的格式
+        abstract = metadata.get("abstract", "")
+        if isinstance(abstract, str):
+            # 如果是字符串，转换为双语言格式
+            abstract_data = {
+                "en": abstract,
+                "zh": abstract
+            }
+        elif isinstance(abstract, dict):
+            # 如果已经是字典格式，确保包含en和zh
+            abstract_data = {
+                "en": abstract.get("en", ""),
+                "zh": abstract.get("zh", abstract.get("en", ""))
+            }
+        else:
+            abstract_data = {"en": "", "zh": ""}
         
-        if paper_result["code"] != BusinessCode.SUCCESS:
-            return internal_error_response(paper_result["message"])
+        # 构建论文数据
+        paper_data = {
+            "metadata": metadata,
+            "abstract": abstract_data,
+            "keywords": metadata.get("keywords", []),
+            "sections": [],  # 初始为空，用户后续可以添加
+            "references": metadata.get("references", []),
+            "attachments": {},
+            "createdAt": get_current_time(),
+            "updatedAt": get_current_time()
+        }
         
-        # 然后添加到个人论文库
-        paper_data = paper_result["data"]
+        # 直接添加到个人论文库，不经过Paper集合
         service = get_user_paper_service()
         result = service.add_uploaded_paper(
             user_id=g.current_user["user_id"],
@@ -275,7 +290,6 @@ def create_user_paper_from_metadata():
         return bad_request_response(result["message"])
     
     except Exception as exc:
-        return internal_error_response(f"服务器错误: {exc}")
         return internal_error_response(f"服务器错误: {exc}")
 
 
@@ -1568,16 +1582,6 @@ def test_parse_text():
         llm_utils = get_llm_utils()
         
         # 直接调用解析方法，但不保存到论文
-        print("=" * 80)
-        print("🧪 开始测试文本解析功能")
-        print("=" * 80)
-        print(f"📄 测试文本长度: {len(text)} 字符")
-        print(f"📝 Section上下文: {section_context}")
-        print("=" * 80)
-        
-        # 显示完整的提示词
-        print("🤖 使用的系统提示词:")
-        print("=" * 80)
         
         PARSER_SYSTEM_PROMPT = """你是一个专业的学术论文内容结构化助手，专注于将文本内容解析为标准化的block数组。
 
@@ -1619,30 +1623,11 @@ def test_parse_text():
 - 如果无法翻译，复制原文到目标语言数组
 - 严格遵循JSON格式，不能有注释或额外文字"""
         
-        print(PARSER_SYSTEM_PROMPT)
-        print("=" * 80)
-        
         # 执行解析
-        print("🚀 开始执行解析...")
         # 直接复用 PaperContentService 中的解析逻辑，保持与正式业务一致
         paper_model = PaperModel()
         content_service = PaperContentService(paper_model)
         parsed_blocks = content_service._parse_text_to_blocks_with_llm(text, section_context)
-        print(f"✅ 解析完成，共生成 {len(parsed_blocks)} 个blocks")
-        
-        # 打印blocks的详细信息
-        if parsed_blocks:
-            print("\n📋 Blocks详情:")
-            for i, block in enumerate(parsed_blocks[:5]):  # 只打印前5个
-                print(f"  {i+1}. 类型: {block.get('type', 'unknown')}")
-                print(f"     ID: {block.get('id', 'no-id')}")
-                if 'content' in block:
-                    content = block['content']
-                    if isinstance(content, dict):
-                        print(f"     内容: en={len(content.get('en', []))}项, zh={len(content.get('zh', []))}项")
-                    else:
-                        print(f"     内容: {type(content).__name__}")
-                print()
         
         return success_response({
             "original_text": text,
@@ -2548,7 +2533,7 @@ def parse_user_paper_pdf_to_markdown(entry_id):
        
        # 创建解析任务
        task = task_model.create_task(
-           paper_id=paper_id,
+           paper_id=paper_id,  # 使用UserPaper的ID
            user_id=g.current_user["user_id"],
            pdf_url=pdf_url,
            is_admin=False,
@@ -2646,7 +2631,7 @@ def parse_user_paper_pdf_to_markdown(entry_id):
                                
                                result = mineru_service.fetch_markdown_content_and_upload(
                                    result_url=full_zip_url,
-                                   paper_id=paper_id,
+                                   paper_id=paper_id,  # 使用UserPaper的ID
                                    qiniu_service=qiniu_service
                                )
                                
@@ -2921,9 +2906,8 @@ def create_user_paper_from_pdf():
        if len(file_data) > max_size:
            return bad_request_response(f"文件大小超过限制，最大允许 {max_size // (1024*1024)}MB")
        
-       # 首先创建一个基础论文，状态为"解析中"
-       from ..services.paperService import get_paper_service
-       paper_service = get_paper_service()
+       # 构建基础论文数据，不创建Paper集合记录
+       from ..utils.common import get_current_time
        
        # 创建基础论文数据
        paper_data = {
@@ -2938,40 +2922,42 @@ def create_user_paper_from_pdf():
                "keywords": [],
                "keywordsZh": []
            },
+           "abstract": {
+               "en": "正在解析PDF文件，请稍候...",
+               "zh": "正在解析PDF文件，请稍候..."
+           },
+           "keywords": [],
+           "sections": [],
+           "references": [],
+           "attachments": {},
            "isPublic": False,  # 个人论文设为非公开
            "parseStatus": "parsing",  # 设置解析状态
-           "attachments": {}
+           "createdAt": get_current_time(),
+           "updatedAt": get_current_time()
        }
        
-       # 创建论文
-       create_result = paper_service.create_paper(paper_data, g.current_user["user_id"])
-       
-       if create_result["code"] != BusinessCode.SUCCESS:
-           return bad_request_response(f"创建论文失败: {create_result['message']}")
-       
-       paper = create_result["data"]
-       paper_id = paper["id"]
+       # 生成临时paper_id用于文件命名，不创建Paper集合记录
+       import uuid
+       temp_paper_id = str(uuid.uuid4())
        
        # 导入上传服务
        from ..services.qiniuService import get_qiniu_service
        qiniu_service = get_qiniu_service()
        
-       # 上传PDF文件到七牛云
+       # 上传PDF文件到七牛云，使用临时paper_id
        upload_result = qiniu_service.upload_file_data(
            file_data=file_data,
            file_extension=".pdf",
            file_type="unified_paper",
-           filename=f"{paper_id}.pdf",
-           paper_id=paper_id
+           filename=f"{temp_paper_id}.pdf",
+           paper_id=temp_paper_id
        )
        
        if not upload_result["success"]:
-           # 如果上传失败，删除已创建的论文
-           paper_service.delete_paper(paper_id, g.current_user["user_id"], is_admin=False)
            return internal_error_response(f"PDF上传失败: {upload_result['error']}")
        
-       # 更新论文附件信息
-       attachments = {
+       # 更新论文数据中的附件信息
+       paper_data["attachments"] = {
            "pdf": {
                "url": upload_result["url"],
                "key": upload_result["key"],
@@ -2980,32 +2966,18 @@ def create_user_paper_from_pdf():
            }
        }
        
-       update_result = paper_service.update_paper_attachments(
-           paper_id=paper_id,
-           attachments=attachments,
-           user_id=g.current_user["user_id"],
-           is_admin=False
-       )
-       
-       if update_result["code"] != BusinessCode.SUCCESS:
-           # 如果更新失败，删除已创建的论文和上传的文件
-           paper_service.delete_paper(paper_id, g.current_user["user_id"], is_admin=False)
-           qiniu_service.delete_file(upload_result["key"])
-           return bad_request_response(f"更新论文附件失败: {update_result['message']}")
-       
-       # 将论文添加到个人论文库
+       # 直接将论文添加到个人论文库，不经过Paper集合
        from ..services.userPaperService import get_user_paper_service
        user_paper_service = get_user_paper_service()
        
        user_paper_result = user_paper_service.add_uploaded_paper(
            user_id=g.current_user["user_id"],
-           paper_data=update_result["data"],
+           paper_data=paper_data,
            extra=extra_data
        )
        
        if user_paper_result["code"] != BusinessCode.SUCCESS:
-           # 如果添加到个人库失败，删除已创建的论文和上传的文件
-           paper_service.delete_paper(paper_id, g.current_user["user_id"], is_admin=False)
+           # 如果添加到个人库失败，删除上传的文件
            qiniu_service.delete_file(upload_result["key"])
            return bad_request_response(f"添加到个人论文库失败: {user_paper_result['message']}")
        
@@ -3024,9 +2996,9 @@ def create_user_paper_from_pdf():
                "message": "论文创建成功，但PDF解析服务未配置，请手动上传Markdown文件或联系管理员配置解析服务"
            }, "论文创建成功")
        
-       # 创建解析任务
+       # 创建解析任务，使用UserPaper的ID作为paper_id
        task = task_model.create_task(
-           paper_id=paper_id,
+           paper_id=user_paper_result["data"]["id"],  # 使用UserPaper的ID
            user_id=g.current_user["user_id"],
            pdf_url=upload_result["url"],
            is_admin=False,
@@ -3123,7 +3095,7 @@ def create_user_paper_from_pdf():
                                # 获取Markdown内容并上传
                                result = mineru_service.fetch_markdown_content_and_upload(
                                    result_url=full_zip_url,
-                                   paper_id=paper_id,
+                                   paper_id=user_paper_result["data"]["id"],  # 使用UserPaper的ID
                                    qiniu_service=qiniu_service
                                )
                                
@@ -3131,9 +3103,13 @@ def create_user_paper_from_pdf():
                                    markdown_content = result["markdown_content"]
                                    markdown_attachment = result.get("markdown_attachment")
                                    
-                                   if markdown_attachment:
+                                   # 获取当前用户论文数据
+                                   user_paper_service = get_user_paper_service()
+                                   current_user_paper = user_paper_service.user_paper_model.find_by_id(user_paper_result["data"]["id"])
+                                   
+                                   if current_user_paper and markdown_attachment:
                                        # 更新论文附件
-                                       attachments = update_result["data"].get("attachments", {})
+                                       attachments = current_user_paper.get("attachments", {})
                                        attachments["markdown"] = markdown_attachment
                                        
                                        # 如果有content_list.json附件，也更新
@@ -3141,9 +3117,11 @@ def create_user_paper_from_pdf():
                                        if content_list_attachment:
                                            attachments["content_list"] = content_list_attachment
                                        
-                                       # 更新论文附件
+                                       # 使用paperService更新论文附件
+                                       from ..services.paperService import get_paper_service
+                                       paper_service = get_paper_service()
                                        paper_service.update_paper_attachments(
-                                           paper_id=paper_id,
+                                           paper_id=user_paper_result["data"]["id"],  # 使用UserPaper的ID
                                            attachments=attachments,
                                            user_id=current_user_id,
                                            is_admin=False
@@ -3152,7 +3130,7 @@ def create_user_paper_from_pdf():
                                        # 使用Markdown内容创建论文内容
                                        try:
                                            # ✅ 改成：只解析，不创建paper
-                                           parse_result = paper_service.parse_paper_from_text(
+                                           parse_result = paperService.parse_paper_from_text(
                                                text=markdown_content
                                            )
                                           
@@ -3170,16 +3148,16 @@ def create_user_paper_from_pdf():
                                                    "parseStatus": "completed"
                                                }
                                                
-                                               paper_service.update_paper(
-                                                   paper_id=paper_id,
+                                               paperService.update_paper(
+                                                   paper_id=user_paper_result["data"]["id"],  # 使用UserPaper的ID
                                                    update_data=update_data,
                                                    user_id=current_user_id,
                                                    is_admin=False
                                                )
                                                
                                                # 获取最新的论文数据
-                                               updated_paper = paper_service.get_paper_by_id(
-                                                   paper_id=paper_id,
+                                               updated_paper = paperService.get_paper_by_id(
+                                                   paper_id=user_paper_result["data"]["id"],  # 使用UserPaper的ID
                                                    user_id=current_user_id,
                                                    is_admin=False
                                                )
@@ -3207,9 +3185,11 @@ def create_user_paper_from_pdf():
                                                    markdown_content=markdown_content
                                                )
                                            else:
-                                               # 如果解析失败，只更新附件信息
+                                               # 如果解析失败，只更新附件信息和解析状态
+                                               from ..services.paperService import get_paper_service
+                                               paper_service = get_paper_service()
                                                paper_service.update_paper(
-                                                   paper_id=paper_id,
+                                                   paper_id=user_paper_result["data"]["id"],  # 使用UserPaper的ID
                                                    update_data={"parseStatus": "completed"},
                                                    user_id=current_user_id,
                                                    is_admin=False
@@ -3225,11 +3205,11 @@ def create_user_paper_from_pdf():
                                        except Exception as e:
                                            logger.error(f"从Markdown创建论文内容失败: {str(e)}")
                                            # 即使解析失败，也标记为完成
-                                           paper_service.update_paper(
-                                               paper_id=paper_id,
-                                               update_data={"parseStatus": "completed"},
+                                           # 直接更新UserPaper，不通过PaperService
+                                           user_paper_service.update_user_paper(
+                                               entry_id=user_paper_result["data"]["id"],
                                                user_id=current_user_id,
-                                               is_admin=False
+                                               update_data={"parseStatus": "completed"}
                                            )
                                            
                                            task_model.update_task_status(
@@ -3308,4 +3288,143 @@ def create_user_paper_from_pdf():
        
    except Exception as exc:
        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<entry_id>/content-list", methods=["GET"])
+@login_required
+def get_user_paper_content_list(entry_id):
+   """
+   用户获取个人论文的content_list.json文件内容
+   
+   返回数据示例:
+   {
+       "contentList": {...},  // content_list.json的内容
+       "attachment": {...}   // 附件信息
+   }
+   """
+   try:
+       # 首先获取用户论文详情，确保用户有权限
+       service = get_user_paper_service()
+       user_paper_result = service.get_user_paper_detail(
+           user_paper_id=entry_id,
+           user_id=g.current_user["user_id"]
+       )
+       
+       if user_paper_result["code"] != BusinessCode.SUCCESS:
+           if user_paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+               return bad_request_response(user_paper_result["message"])
+           elif user_paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+               from flask import jsonify
+               return jsonify({
+                   "code": ResponseCode.FORBIDDEN,
+                   "message": user_paper_result["message"],
+                   "data": None
+               }), ResponseCode.FORBIDDEN
+           else:
+               return bad_request_response(user_paper_result["message"])
+       
+       user_paper = user_paper_result["data"]
+       attachments = user_paper.get("attachments", {})
+       
+       # 检查是否有content_list文件
+       if not attachments.get("content_list") or not attachments["content_list"].get("url"):
+           return bad_request_response("论文没有content_list文件")
+       
+       content_list_url = attachments["content_list"]["url"]
+       
+       # 从七牛云获取content_list.json内容
+       from ..services.qiniuService import get_qiniu_service
+       qiniu_service = get_qiniu_service()
+       
+       try:
+           content_list_content = qiniu_service.fetch_file_content(content_list_url)
+           if not content_list_content["success"]:
+               return bad_request_response(f"获取content_list文件失败: {content_list_content['error']}")
+           
+           return success_response({
+               "contentList": content_list_content["content"],
+               "attachment": attachments["content_list"]
+           }, "成功获取content_list文件")
+           
+       except Exception as e:
+           return internal_error_response(f"获取content_list文件异常: {str(e)}")
+       
+   except Exception as exc:
+       return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/<entry_id>/pdf-content", methods=["GET"])
+@login_required
+def get_user_paper_pdf_content_proxy(entry_id):
+   """
+   用户获取个人论文PDF文件内容（以base64格式返回）
+   
+   返回数据示例:
+   {
+       "pdfContent": "base64编码的PDF内容",
+       "attachment": {...}   // PDF附件信息
+   }
+   """
+   try:
+       # 首先获取用户论文详情，确保用户有权限
+       service = get_user_paper_service()
+       user_paper_result = service.get_user_paper_detail(
+           user_paper_id=entry_id,
+           user_id=g.current_user["user_id"]
+       )
+       
+       if user_paper_result["code"] != BusinessCode.SUCCESS:
+           if user_paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
+               return bad_request_response(user_paper_result["message"])
+           elif user_paper_result["code"] == BusinessCode.PERMISSION_DENIED:
+               from flask import jsonify
+               return jsonify({
+                   "code": ResponseCode.FORBIDDEN,
+                   "message": user_paper_result["message"],
+                   "data": None
+               }), ResponseCode.FORBIDDEN
+           else:
+               return bad_request_response(user_paper_result["message"])
+       
+       user_paper = user_paper_result["data"]
+       attachments = user_paper.get("attachments", {})
+       
+       # 检查是否有PDF文件
+       if not attachments.get("pdf") or not attachments["pdf"].get("url"):
+           return bad_request_response("论文没有PDF文件")
+       
+       pdf_url = attachments["pdf"]["url"]
+       
+       # 从七牛云获取PDF文件内容
+       from ..services.qiniuService import get_qiniu_service
+       qiniu_service = get_qiniu_service()
+       
+       try:
+           logger.info(f"开始获取用户论文PDF文件内容...")
+           logger.info(f"PDF URL: {pdf_url}")
+           
+           # 直接使用数据库中的URL获取PDF文件内容
+           pdf_content = qiniu_service.fetch_file_content(pdf_url)
+           logger.info(f"七牛云返回结果: {pdf_content}")
+           
+           if not pdf_content["success"]:
+               logger.error(f"获取PDF文件失败: {pdf_content['error']}")
+               return bad_request_response(f"获取PDF文件失败: {pdf_content['error']}")
+           
+           logger.info(f"成功获取PDF内容，大小: {pdf_content.get('size', 0)} 字节")
+           return success_response({
+               "pdfContent": pdf_content["content"],
+               "attachment": attachments["pdf"]
+           }, "成功获取PDF文件")
+           
+       except Exception as e:
+           logger.error(f"获取PDF文件异常: {str(e)}")
+           import traceback
+           logger.error(f"异常详情: {traceback.format_exc()}")
+           return internal_error_response(f"获取PDF文件异常: {str(e)}")
+       
+   except Exception as exc:
+       return internal_error_response(f"服务器错误: {exc}")
+
+
 

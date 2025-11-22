@@ -159,22 +159,35 @@ class PaperReferenceService:
         将解析后的参考文献添加到论文中，只保存原始文本，不进行重复检测
         """
         try:
-            from ..models.paper import PaperModel
-            paper_model = PaperModel()
-            
-            # 检查论文是否存在及权限
-            paper = paper_model.find_by_id(paper_id)
-            if not paper:
-                return self._wrap_failure(None, "论文不存在", BusinessCode.PAPER_NOT_FOUND)
+            # 根据是否是用户论文选择不同的模型
+            if is_user_paper:
+                from ..models.userPaper import UserPaperModel
+                paper_model = UserPaperModel()
+                
+                # 检查用户论文是否存在及权限
+                paper = paper_model.find_by_id(paper_id)
+                if not paper:
+                    return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+                
+                # 检查用户权限
+                if paper["userId"] != user_id:
+                    return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
+            else:
+                from ..models.paper import PaperModel
+                paper_model = PaperModel()
+                
+                # 检查论文是否存在及权限
+                paper = paper_model.find_by_id(paper_id)
+                if not paper:
+                    return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
 
-            # 管理员只能操作公开的论文
-            if is_admin and not paper.get("isPublic", False):
-                return self._wrap_failure(None, "管理员只能操作公开的论文", BusinessCode.PERMISSION_DENIED)
+                # 管理员只能操作公开的论文
+                if is_admin and not paper.get("isPublic", False):
+                    return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "管理员只能操作公开的论文")
 
-            # 修改权限检查逻辑：如果是个人论文库中的操作，允许用户修改
-            # 只有在非个人论文库操作且非管理员的情况下，才检查创建者
-            if not is_user_paper and not is_admin and paper["createdBy"] != user_id:
-                return self._wrap_failure(None, "无权修改此论文", BusinessCode.PERMISSION_DENIED)
+                # 只有在非个人论文库操作且非管理员的情况下，才检查创建者
+                if not is_admin and paper["createdBy"] != user_id:
+                    return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
             # 获取当前参考文献列表
             current_references = paper.get("references", [])
@@ -185,17 +198,11 @@ class PaperReferenceService:
             # 处理参考文献：直接添加，不进行重复检测
             added_references = []
             
-            print(f"\n[参考文献处理] 开始处理{len(sorted_references)}条参考文献")
-            print(f"[参考文献处理] 当前已有{len(current_references)}条参考文献")
-            
             for ref in sorted_references:
                 ref_index = ref.get("index")
                 
-                print(f"\n[参考文献处理] 处理参考文献 #{ref_index}")
-                
                 # 现在所有参考文献都应该有索引，不再跳过
                 if ref_index is None:
-                    print(f"[参考文献处理] 警告：参考文献索引为None，使用默认值")
                     ref_index = 0
                 
                 ref_id = f"ref-{ref_index}"
@@ -219,7 +226,6 @@ class PaperReferenceService:
                 # 移除空值字段
                 new_ref = {k: v for k, v in new_ref.items() if v is not None}
                 
-                print(f"[参考文献处理] 添加新参考文献")
                 added_references.append(new_ref)
                 current_references.append(new_ref)
             
@@ -229,9 +235,15 @@ class PaperReferenceService:
                 result_message = f"成功添加{len(added_references)}条参考文献"
                 
                 # 获取更新后的论文数据
-                from ..models.section import get_section_model
-                section_model = get_section_model()
-                updated_paper = paper_model.find_paper_with_sections(paper_id)
+                if is_user_paper:
+                    # 对于用户论文，使用find_by_id获取更新后的数据（已包含sections）
+                    updated_paper = paper_model.find_by_id(paper_id)
+                else:
+                    # 对于普通论文，使用find_paper_with_sections获取完整数据
+                    from ..models.section import get_section_model
+                    section_model = get_section_model()
+                    updated_paper = paper_model.find_paper_with_sections(paper_id)
+                
                 return self._wrap_success(
                     result_message,
                     {
@@ -326,16 +338,12 @@ class PaperReferenceService:
             return raw[:50].strip() + ('...' if len(raw) > 50 else '')
 
         def parse_one(raw: str, idx: Optional[int]) -> Tuple[Optional[Dict[str, Any]], Optional[Dict[str, Any]]]:
-            print(f"\n[解析开始] 处理参考文献 #{idx}: '{raw[:100]}...'")
-            
             # 提取标题
             title = extract_title(raw)
-            print(f"[解析过程] 提取的标题: '{title}'")
             
             # 提取年份
             year_match = re.search(r'(19|20|21)\d{2}', raw)
             year = int(year_match.group()) if year_match else None
-            print(f"[解析过程] 提取的年份: {year}")
             
             # 创建参考文献记录
             rec = {
@@ -363,17 +371,14 @@ class PaperReferenceService:
                 rec['is_incomplete'] = True
                 rec['title'] = f'【解析错误】{error_message}'
                 err = {'index': idx, 'raw': raw.strip(), 'message': error_message}
-                print(f"[解析错误] {error_message}")
                 return rec, err
             
-            print(f"[解析成功] 标题: {rec.get('title', '')}, 年份: {rec.get('year', '')}")
             return rec, None
 
         refs: List[Dict[str, Any]] = []
         errors: List[Dict[str, Any]] = []
         
         entries = split_entries(text)
-        print(f"\n[参考文献解析] 开始解析{len(entries)}条参考文献")
         
         for idx, raw in entries:
             rec, err = parse_one(raw, idx)
@@ -383,12 +388,6 @@ class PaperReferenceService:
                     errors.append(err)
             elif err:
                 errors.append(err)
-
-        print(f"\n[参考文献解析] 解析完成: 成功{len(refs)}条，失败{len(errors)}条")
-        if errors:
-            print(f"[参考文献解析] 解析错误列表:")
-            for err in errors:
-                print(f"  - 索引{err.get('index')}: {err.get('message')}")
         
         return {
             'references': refs,

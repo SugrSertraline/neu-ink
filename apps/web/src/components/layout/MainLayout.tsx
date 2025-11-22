@@ -44,20 +44,37 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
   } = useTabStore();
 
   useEffect(() => {
+    // 初始化所有带有 data-glow 属性的元素的 CSS 变量
+    const initGlowElements = () => {
+      const glowElements = document.querySelectorAll<HTMLElement>('[data-glow="true"]');
+      glowElements.forEach(element => {
+        // 如果还没有设置这些变量，则设置默认值
+        if (!element.style.getPropertyValue('--cursor-x')) {
+          element.style.setProperty('--cursor-x', '50%');
+        }
+        if (!element.style.getPropertyValue('--cursor-y')) {
+          element.style.setProperty('--cursor-y', '50%');
+        }
+      });
+    };
+
+    // 初始化
+    initGlowElements();
+
     const handlePointerMove = (event: PointerEvent) => {
-  document.documentElement.style.setProperty('--cursor-x', `${event.clientX}px`);
-  document.documentElement.style.setProperty('--cursor-y', `${event.clientY}px`);
+      document.documentElement.style.setProperty('--cursor-x', `${event.clientX}px`);
+      document.documentElement.style.setProperty('--cursor-y', `${event.clientY}px`);
 
-  const path = event.composedPath();
-  for (const target of path) {
-    if (!(target instanceof HTMLElement)) continue;
-    if (target.dataset.glow !== 'true') continue;
+      const path = event.composedPath();
+      for (const target of path) {
+        if (!(target instanceof HTMLElement)) continue;
+        if (target.dataset.glow !== 'true') continue;
 
-    const rect = target.getBoundingClientRect();
-    target.style.setProperty('--cursor-x', `${event.clientX - rect.left}px`);
-    target.style.setProperty('--cursor-y', `${event.clientY - rect.top}px`);
-  }
-};
+        const rect = target.getBoundingClientRect();
+        target.style.setProperty('--cursor-x', `${event.clientX - rect.left}px`);
+        target.style.setProperty('--cursor-y', `${event.clientY - rect.top}px`);
+      }
+    };
 
     window.addEventListener('pointermove', handlePointerMove, { passive: true });
     return () => window.removeEventListener('pointermove', handlePointerMove);

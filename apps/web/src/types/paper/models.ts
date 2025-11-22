@@ -72,6 +72,12 @@ export interface PaperAttachments {
     size: number;
     uploadedAt: string;
   };
+  content_list?: {
+    url: string;
+    key: string;
+    size: number;
+    uploadedAt: string;
+  };
 }
 
 // —— 公共论文（Paper Collection） ——
