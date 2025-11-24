@@ -125,35 +125,6 @@ export interface CreatePaperFromMetadataRequest {
   };
 }
 
-// —— 请求：更新个人论文 ——
-export interface UpdateUserPaperRequest {
-  // 支持扁平化结构，可以直接传递论文内容字段
-  metadata?: Partial<UserPaper['metadata']>;
-  abstract?: Partial<UserPaper['abstract']>;
-  keywords?: Partial<UserPaper['keywords']>;
-  sections?: Partial<UserPaper['sections']>;
-  references?: Partial<UserPaper['references']>;
-  attachments?: Partial<UserPaper['attachments']>;
-  
-  // 兼容旧的 paperData 结构（用于向后兼容）
-  paperData?: {
-    metadata?: any;
-    abstract?: any;
-    keywords?: any;
-    references?: any;
-    attachments?: any;
-  };
-  
-  // 其他 UserPaper 字段
-  customTags?: string[];
-  readingStatus?: 'unread' | 'reading' | 'finished';
-  priority?: 'high' | 'medium' | 'low';
-  readingPosition?: string | null;
-  totalReadingTime?: number;
-  lastReadTime?: string | null;
-  remarks?: string | null;
-}
-
 // —— 请求：更新阅读进度 ——
 export interface UpdateReadingProgressRequest {
   readingPosition?: string | null;  // blockId
@@ -193,6 +164,7 @@ export interface AddBlockFromTextToSectionRequest {
 export interface AddBlockFromTextToSectionResult {
   tempBlockId?: string;  // 临时进度block的ID
   sectionId: string;
+  parseId?: string;    // 解析任务ID
   message?: string;
 }
 
@@ -231,7 +203,6 @@ export interface AddBlockToSectionRequest {
 
 // —— 响应：直接添加block结果 ——
 export interface AddBlockToSectionResult {
-  paper: Paper;
   addedBlock: import('./content').BlockContent;
   blockId: string;  // 后端创建的真实block ID
   sectionId: string;
@@ -245,8 +216,8 @@ export interface UpdateSectionRequest {
 
 // —— 响应：更新section结果 ——
 export interface UpdateSectionResult {
-  paper: Paper;
   updatedSection: any;
+  sectionId: string;
 }
 
 // —— 响应：删除section结果 ——
@@ -263,18 +234,19 @@ export interface UpdateBlockRequest {
 
 // —— 响应：更新block结果 ——
 export interface UpdateBlockResult {
-  paper: Paper;
   updatedBlock: any;
+  blockId: string;
+  sectionId: string;
 }
 
 // —— 响应：删除block结果 ——
 export interface DeleteBlockResult {
   deletedBlockId: string;
+  sectionId: string;
 }
 
 // —— 响应：添加section结果 ——
 export interface AddSectionResult {
-  paper: Paper;
   addedSection: any;
   addedSectionId: string;
   parentSectionId?: string | null;

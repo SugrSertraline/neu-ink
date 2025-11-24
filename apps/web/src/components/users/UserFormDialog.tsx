@@ -101,7 +101,8 @@ export default function UserFormDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white/72 backdrop-blur-3xl rounded-2xl border border-white/60 shadow-[0_20px_54px_rgba(15,23,42,0.16)] w-full max-w-md mx-4" data-glow="true">
+      <div className="relative bg-white/72 backdrop-blur-3xl rounded-2xl border border-white/60 shadow-[0_20px_54px_rgba(15,23,42,0.16)] w-full max-w-md mx-4" // data-glow="true"
+>
         <div className="flex items-center justify-between p-6 border-b border-white/30">
           <h2 className="text-lg font-semibold text-slate-900">{title}</h2>
           <Button
@@ -210,7 +211,7 @@ export default function UserFormDialog({
               type="submit"
               disabled={isSubmitting}
               className="bg-linear-to-r from-[#28418A] to-[#3F66B0] text-white shadow-[0_12px_30px_rgba(40,65,138,0.32)] hover:shadow-[0_14px_32px_rgba(40,65,138,0.38)] hover:scale-[1.01] transition-all duration-250 border-0"
-              data-glow="true"
+              // data-glow="true"
             >
               {isSubmitting ? '提交中...' : '确认'}
             </Button>

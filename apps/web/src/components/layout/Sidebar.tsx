@@ -169,7 +169,7 @@ export default function Sidebar({
           // 在组件挂载前，使用固定宽度避免水合错误
           !isMounted ? 'w-60 px-4 py-5' : (isCollapsed ? 'w-16 px-2 py-5' : 'w-60 px-4 py-5')
         )}
-        data-glow="true"
+        // data-glow="true"
       >
       <div
         className={cn(
@@ -177,7 +177,7 @@ export default function Sidebar({
           // 在组件挂载前，使用固定样式避免水合错误
           !isMounted ? 'px-2.5' : (isCollapsed ? 'justify-center px-2' : 'px-2.5')
         )}
-        data-glow="true"
+        // data-glow="true"
       >
         <div className={cn('flex items-center', !isMounted ? 'gap-2' : (isCollapsed ? '' : 'gap-2'))}>
           <div className="h-10 w-10 rounded-full flex items-center justify-center shrink-0">

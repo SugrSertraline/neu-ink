@@ -72,9 +72,9 @@ class PaperTranslationService:
                 update_data = {
                     "metadata": updated_paper.get("metadata", {}),
                     "abstract": updated_paper.get("abstract", {}),
-                    "sections": updated_paper.get("sections", []),
                     "translationStatus": updated_paper.get("translationStatus", {})
                 }
+                # 不再更新sections字段，因为sections应该通过sectionIds管理
                 
                 if self.paper_model.update(paper_id, update_data):
                     return self._wrap_success(
@@ -646,7 +646,7 @@ class PaperTranslationService:
                 })
             else:
                 # 迁移所有论文
-                all_papers = list(self.paper_model.collection.find({}, {"_id": 0, "id": 1, "metadata": 1, "sections": 1}))
+                all_papers = list(self.paper_model.collection.find({}, {"_id": 0, "id": 1, "metadata": 1}))
                 total_updated = 0
                 migrated_papers = 0
                 
@@ -718,9 +718,11 @@ class PaperTranslationService:
             
             updated_sections.append(updated_section)
         
-        # 更新sections
+        # 不再更新sections字段，因为sections应该通过sectionIds管理
+        # 如果需要更新sections，应该通过section模型单独操作
         if sections_updated:
-            self.paper_model.update_direct(paper_id, {"$set": {"sections": updated_sections}})
+            # 这里可以添加日志记录，但不直接更新sections字段
+            pass
         
         return updated_count
 

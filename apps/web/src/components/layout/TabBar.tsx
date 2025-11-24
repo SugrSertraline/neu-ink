@@ -416,7 +416,7 @@ function TabBarContent({
                                 ? 'bg-white/34 text-white hover:bg-white/48 hover:text-white border-white/50'
                                 : 'bg-white/48 hover:bg-white/70 hover:text-slate-600 text-slate-400 border-white/40 opacity-0 group-hover/tab:opacity-100',
                             )}
-                            data-glow="true"
+                            // data-glow="true"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>

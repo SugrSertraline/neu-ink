@@ -1,7 +1,7 @@
 // apps/web/src/lib/hooks/usePaperLoader.ts
 import { useEffect, useMemo, useState } from 'react';
 import { BusinessCode, ResponseCode } from '@/types/api';
-import type { Paper, ParseStatus, UserPaper } from '@/types/paper';
+import type { Paper, ParseStatus, UserPaper, Section } from '@/types/paper';
 import type { ViewerSource } from '@/types/paper/viewer';
 import {
   adminPaperService,
@@ -32,9 +32,33 @@ function pickParseStatus(userPaper: UserPaper): ParseStatus {
 }
 
 function normalizeUserPaper(userPaper: UserPaper): { paper: Paper; meta: UserPaperMeta } {
-  const { sections, ...meta } = userPaper;
   const sourcePaperId = pickSourcePaperId(userPaper);
   const parseStatus = pickParseStatus(userPaper);
+
+  // 后端现在总是返回 sections 数据
+  const paperSections = userPaper.sections || [];
+
+  const meta: UserPaperMeta = {
+    id: userPaper.id,
+    userId: userPaper.userId,
+    sourcePaperId: userPaper.sourcePaperId,
+    metadata: userPaper.metadata,
+    abstract: userPaper.abstract,
+    keywords: userPaper.keywords,
+    sections: userPaper.sections,
+    references: userPaper.references,
+    attachments: userPaper.attachments,
+    customTags: userPaper.customTags,
+    readingStatus: userPaper.readingStatus,
+    priority: userPaper.priority,
+    readingPosition: userPaper.readingPosition,
+    totalReadingTime: userPaper.totalReadingTime,
+    lastReadTime: userPaper.lastReadTime,
+    remarks: userPaper.remarks,
+    addedAt: userPaper.addedAt,
+    updatedAt: userPaper.updatedAt,
+    noteCount: userPaper.noteCount,
+  };
 
   return {
     paper: {
@@ -44,7 +68,7 @@ function normalizeUserPaper(userPaper: UserPaper): { paper: Paper; meta: UserPap
       metadata: userPaper.metadata,
       abstract: userPaper.abstract,
       keywords: userPaper.keywords ?? [],
-      sections: sections || [],  // 直接使用根级别的 sections，如果为空则使用空数组
+      sections: paperSections,
       references: userPaper.references,
       attachments: ensureAttachments(userPaper.attachments),
       parseStatus,

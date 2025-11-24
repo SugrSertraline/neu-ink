@@ -204,13 +204,13 @@ export default function PaperCard({
   const ty = useSpring(useTransform(my, [0, 1], [-6, 6]), spring); // translateY
 
   // 初始化 CSS 变量
-  React.useEffect(() => {
-    const el = document.querySelector('[data-glow="true"]') as HTMLElement;
-    if (el && !el.style.getPropertyValue('--cursor-x')) {
-      el.style.setProperty('--cursor-x', '50%');
-      el.style.setProperty('--cursor-y', '50%');
-    }
-  }, []);
+  // React.useEffect(() => {
+  //   const el = document.querySelector('[data-glow="true"]') as HTMLElement;
+  //   if (el && !el.style.getPropertyValue('--cursor-x')) {
+  //     el.style.setProperty('--cursor-x', '50%');
+  //     el.style.setProperty('--cursor-y', '50%');
+  //   }
+  // }, []);
 
   const handleMouseMove: React.MouseEventHandler<HTMLDivElement> = (e) => {
     const el = e.currentTarget as HTMLDivElement;
@@ -221,16 +221,16 @@ export default function PaperCard({
     const py = y / rect.height;
     mx.set(px);
     my.set(py);
-    el.style.setProperty('--cursor-x', `${x}px`);
-    el.style.setProperty('--cursor-y', `${y}px`);
+    // el.style.setProperty('--cursor-x', `${x}px`);
+    // el.style.setProperty('--cursor-y', `${y}px`);
   };
 
   const handleMouseLeave: React.MouseEventHandler<HTMLDivElement> = (e) => {
     const el = e.currentTarget as HTMLDivElement;
     mx.set(0.5);
     my.set(0.5);
-    el.style.setProperty('--cursor-x', `50%`);
-    el.style.setProperty('--cursor-y', `50%`);
+    // el.style.setProperty('--cursor-x', `50%`);
+    // el.style.setProperty('--cursor-y', `50%`);
   };
 
   return (

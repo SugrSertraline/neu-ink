@@ -7,7 +7,7 @@ from typing import Dict, Any, List, Optional, Tuple
 from ..services.db import get_db
 from ..utils.common import generate_id, get_current_time
 from ..config.constants import Collections
-from .section import get_section_model
+from .section import get_section_model, find_sections_by_ids
 
 
 class PaperModel:
@@ -48,7 +48,13 @@ class PaperModel:
             "keywords": paper_data.get("keywords", []),
             "sectionIds": paper_data.get("sectionIds", []),
             "references": paper_data.get("references", []),
-            "attachments": paper_data.get("attachments", {}),
+            "attachments": paper_data.get("attachments", {
+                "pdf": None,
+                "markdown": None,
+                "content_list": None,
+                "model": None,
+                "layout": None
+            }),
             "parseStatus": paper_data.get(
                 "parseStatus",
                 {
@@ -122,42 +128,27 @@ class PaperModel:
 
     def find_public_paper_by_id(self, paper_id: str) -> Optional[Dict[str, Any]]:
         """
-        查询公开论文详情
+        查询公开论文详情，默认包含sections内容
+        
+        Args:
+            paper_id: 论文ID
+        
+        Returns:
+            论文数据，包含完整的sections内容
         """
         query = {"id": paper_id, "isPublic": True}
         paper = self.collection.find_one(query, self._full_document_projection())
         
         if not paper:
             return None
-            
-        # 获取sections数据，按照sectionIds的顺序
-        section_model = get_section_model()
-        try:
-            # 先获取所有sections
-            all_sections = section_model.find_by_paper_id(paper_id)
-            
-            # 按照paper中sectionIds的顺序重新排序sections
-            section_ids = paper.get("sectionIds", [])
-            ordered_sections = []
-            
-            # 创建section ID到section的映射
-            section_map = {section["id"]: section for section in all_sections}
-            
-            # 按照sectionIds的顺序添加sections
-            for section_id in section_ids:
-                if section_id in section_map:
-                    ordered_sections.append(section_map[section_id])
-            
-            # 添加可能存在但不在sectionIds中的sections（保持原有顺序）
-            for section in all_sections:
-                if section["id"] not in section_ids:
-                    ordered_sections.append(section)
-        except Exception as e:
-            # 如果排序失败，使用原始sections
-            ordered_sections = section_model.find_by_paper_id(paper_id)
+             
+        # 默认从sectionIds查询sections并添加到返回结果中
+        if "sectionIds" in paper and paper["sectionIds"]:
+            sections = find_sections_by_ids(paper["sectionIds"])
+            paper["sections"] = sections
+        else:
+            paper["sections"] = []
         
-        # 将排序后的sections数据添加到paper中
-        paper["sections"] = ordered_sections
         return paper
 
     def find_admin_papers(
@@ -400,6 +391,7 @@ class PaperModel:
             "metadata": 1,
             "createdAt": 1,
             "updatedAt": 1,
+            "attachments": 1,
         }
         if include_score:
             projection["score"] = {"$meta": "textScore"}
@@ -428,78 +420,44 @@ class PaperModel:
         return projection
 
     def find_admin_paper_by_id(self, paper_id: str) -> Optional[Dict[str, Any]]:
-        """管理员获取论文详情；可以查看所有论文（公开和私有的）"""
+        """
+        管理员获取论文详情；可以查看所有论文（公开和私有的），默认包含sections内容
+        
+        Args:
+            paper_id: 论文ID
+        
+        Returns:
+            论文数据，包含完整的sections内容
+        """
         paper = self.collection.find_one({"id": paper_id}, self._full_document_projection())
         if not paper:
             return None
         
-        # 获取sections数据，按照sectionIds的顺序
-        section_model = get_section_model()
-        try:
-            # 先获取所有sections
-            all_sections = section_model.find_by_paper_id(paper_id)
-            
-            # 按照paper中sectionIds的顺序重新排序sections
-            section_ids = paper.get("sectionIds", [])
-            ordered_sections = []
-            
-            # 创建section ID到section的映射
-            section_map = {section["id"]: section for section in all_sections}
-            
-            # 按照sectionIds的顺序添加sections
-            for section_id in section_ids:
-                if section_id in section_map:
-                    ordered_sections.append(section_map[section_id])
-            
-            # 添加可能存在但不在sectionIds中的sections（保持原有顺序）
-            for section in all_sections:
-                if section["id"] not in section_ids:
-                    ordered_sections.append(section)
-        except Exception as e:
-            # 如果排序失败，使用原始sections
-            ordered_sections = section_model.find_by_paper_id(paper_id)
+        # 默认从sectionIds查询sections并添加到返回结果中
+        if "sectionIds" in paper and paper["sectionIds"]:
+            sections = find_sections_by_ids(paper["sectionIds"])
+            paper["sections"] = sections
+        else:
+            paper["sections"] = []
         
-        # 将排序后的sections数据添加到paper中
-        paper["sections"] = ordered_sections
         return paper
 
     def find_paper_with_sections(self, paper_id: str) -> Optional[Dict[str, Any]]:
         """
         查找论文并包含完整的sections数据
-        这个方法用于向后兼容，确保上层接口不需要改变
+        注意：此方法已弃用，请使用find_public_paper_by_id()或find_admin_paper_by_id()
         """
         paper = self.find_by_id(paper_id)
         if not paper:
             return None
         
-        # 获取sections数据，按照sectionIds的顺序
-        section_model = get_section_model()
-        try:
-            # 先获取所有sections
-            all_sections = section_model.find_by_paper_id(paper_id)
-            
-            # 按照paper中sectionIds的顺序重新排序sections
-            section_ids = paper.get("sectionIds", [])
-            ordered_sections = []
-            
-            # 创建section ID到section的映射
-            section_map = {section["id"]: section for section in all_sections}
-            
-            # 按照sectionIds的顺序添加sections
-            for section_id in section_ids:
-                if section_id in section_map:
-                    ordered_sections.append(section_map[section_id])
-            
-            # 添加可能存在但不在sectionIds中的sections（保持原有顺序）
-            for section in all_sections:
-                if section["id"] not in section_ids:
-                    ordered_sections.append(section)
-        except Exception as e:
-            # 如果排序失败，使用原始sections
-            ordered_sections = section_model.find_by_paper_id(paper_id)
+        # 从sectionIds查询sections
+        if "sectionIds" in paper and paper["sectionIds"]:
+            sections = find_sections_by_ids(paper["sectionIds"])
+            paper["sections"] = sections
+        else:
+            paper["sections"] = []
         
-        # 将排序后的sections数据添加到paper中
-        paper["sections"] = ordered_sections
         return paper
 
     def add_section_id(self, paper_id: str, section_id: str) -> bool:
@@ -559,20 +517,34 @@ class PaperModel:
         paper = self.find_by_id(paper_id)
         if not paper:
             return False
-            
+        
         # 获取当前的sectionIds
         section_ids = paper.get("sectionIds", [])
+        
+        # 添加调试日志
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"add_section_id_at_position - paper_id: {paper_id}, section_id: {section_id}, position: {position}, current_section_ids: {section_ids}")
         
         # 确定插入位置
         if position == -1 or position >= len(section_ids):
             # 在末尾添加
             section_ids.append(section_id)
+            logger.info(f"在末尾添加section - final_section_ids: {section_ids}")
         elif position == 0:
             # 在最顶部插入
             section_ids.insert(0, section_id)
-        else:
-            # 在指定位置插入
+            logger.info(f"在顶部插入section - final_section_ids: {section_ids}")
+        elif position > 0:
+            # 在指定位置插入（确保position是正数）
             section_ids.insert(position, section_id)
+            logger.info(f"在位置{position}插入section - final_section_ids: {section_ids}")
+        else:
+            # position是负数但不是-1，默认添加到末尾
+            section_ids.append(section_id)
+            logger.info(f"position为负数但不是-1，默认添加到末尾 - final_section_ids: {section_ids}")
         
         # 更新论文的sectionIds
-        return self.update_section_ids(paper_id, section_ids)
+        result = self.update_section_ids(paper_id, section_ids)
+        logger.info(f"update_section_ids结果: {result}")
+        return result

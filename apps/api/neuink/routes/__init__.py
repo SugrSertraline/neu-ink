@@ -7,13 +7,12 @@ from .user_papers import bp as user_papers_bp
 from .upload import bp as upload_bp
 from .parse_results import bp as parse_results_bp, user_bp as user_parse_results_bp
 
+
 def init_app(app: Flask, prefix: str) -> None:
     """注册论文相关蓝图"""
     app.register_blueprint(public_papers_bp, url_prefix=f"{prefix}/public/papers")
-    # 先注册 parse_results_bp，确保更具体的路由先被匹配
     app.register_blueprint(parse_results_bp, url_prefix=f"{prefix}/admin/papers")
     app.register_blueprint(admin_papers_bp, url_prefix=f"{prefix}/admin/papers")
     app.register_blueprint(user_papers_bp, url_prefix=f"{prefix}/user/papers")
-    # 注册用户论文库的解析结果蓝图
     app.register_blueprint(user_parse_results_bp, url_prefix=f"{prefix}/user/papers")
     app.register_blueprint(upload_bp, url_prefix=f"{prefix}/upload")

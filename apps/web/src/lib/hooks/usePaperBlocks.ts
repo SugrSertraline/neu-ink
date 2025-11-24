@@ -370,42 +370,50 @@ export function usePaperBlocks(
           return { success: false, error: '找不到要更新的block' };
         }
         
-        // 构建更新数据，只包含block的字段
+        // 构建更新数据，只包含UpdateBlockRequest中定义的字段
         const updateData: any = {
           type: targetBlock.type,
         };
         
-        // 根据block类型添加相应字段
+        // 根据UpdateBlockRequest类型定义，只包含这些字段
         if ('content' in targetBlock && targetBlock.content !== undefined) {
           updateData.content = targetBlock.content;
         }
         
+        // 对于其他字段，我们可以将它们放在metadata中
+        const metadata: any = {};
+        
         if ('src' in targetBlock && targetBlock.src !== undefined) {
-          updateData.src = targetBlock.src;
+          metadata.src = targetBlock.src;
         }
         
         if ('alt' in targetBlock && targetBlock.alt !== undefined) {
-          updateData.alt = targetBlock.alt;
+          metadata.alt = targetBlock.alt;
         }
         
         if ('width' in targetBlock && targetBlock.width !== undefined) {
-          updateData.width = targetBlock.width;
+          metadata.width = targetBlock.width;
         }
         
         if ('height' in targetBlock && targetBlock.height !== undefined) {
-          updateData.height = targetBlock.height;
+          metadata.height = targetBlock.height;
         }
         
         if ('caption' in targetBlock && targetBlock.caption !== undefined) {
-          updateData.caption = targetBlock.caption;
+          metadata.caption = targetBlock.caption;
         }
         
         if ('description' in targetBlock && targetBlock.description !== undefined) {
-          updateData.description = targetBlock.description;
+          metadata.description = targetBlock.description;
         }
         
         if ('uploadedFilename' in targetBlock && targetBlock.uploadedFilename !== undefined) {
-          updateData.uploadedFilename = targetBlock.uploadedFilename;
+          metadata.uploadedFilename = targetBlock.uploadedFilename;
+        }
+        
+        // 只有当metadata有内容时才添加
+        if (Object.keys(metadata).length > 0) {
+          updateData.metadata = metadata;
         }
         
         // 调用block更新API而不是更新整个论文

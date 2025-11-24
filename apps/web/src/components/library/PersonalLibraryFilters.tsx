@@ -77,18 +77,20 @@ export default function PersonalLibraryFilters({
   return (
     <div className="w-full space-y-4">
       <div className="flex w-full flex-col gap-4 md:flex-row">
-        <div className="relative min-w-0 flex-1" data-glow="true">
+        <div className="relative min-w-0 flex-1" // data-glow="true"
+>
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6675a3]" />
           <Input
             placeholder="搜索论文标题、作者或期刊…"
             value={searchTerm}
             onChange={event => onSearchChange(event.target.value)}
             className="h-11 w-full rounded-xl border border-white/70 bg-white/80 pl-10 text-sm text-slate-700 shadow-[0_12px_34px_rgba(40,65,138,0.16)] transition-all focus-visible:ring-2 focus-visible:ring-[#4769b8]/35 focus-visible:ring-offset-1 focus-visible:ring-offset-white"
-            data-glow="true"
+            // data-glow="true"
           />
         </div>
 
-        <div className="flex min-w-0 flex-wrap gap-2" data-glow="true">
+        <div className="flex min-w-0 flex-wrap gap-2" // data-glow="true"
+>
           <Select value={filterReadingStatus} onValueChange={onReadingStatusChange}>
             <SelectTrigger className={glowTrigger}>
               <SelectValue placeholder="选择阅读状态" />
@@ -131,7 +133,7 @@ export default function PersonalLibraryFilters({
 
           {hasActiveFilters && (
             <Button
-              data-glow="true"
+              // data-glow="true"
               variant="outline"
               onClick={onResetFilters}
               className={`${glowButtonGhost} h-10 gap-2 px-4 text-sm text-slate-600 hover:text-slate-900`}
@@ -182,7 +184,7 @@ function GlowBadge({
     <Badge
       variant="outline"
       className="group inline-flex items-center gap-1 rounded-full border-white/70 bg-white/80 text-xs text-[#28418A] shadow-[0_10px_26px_rgba(40,65,138,0.18)] backdrop-blur-xl"
-      data-glow="true"
+      // data-glow="true"
     >
       {children}
       <X

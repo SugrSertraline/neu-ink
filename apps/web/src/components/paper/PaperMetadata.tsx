@@ -12,7 +12,6 @@ import {
   User,
 } from 'lucide-react';
 import type { PaperMetadata } from '@/types/paper';
-import { MetadataContextMenu } from '@/components/paper/PaperContextMenus';
 import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
 import AbstractAndKeywords from './AbstractAndKeywords';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -241,15 +240,13 @@ export default function PaperMetadata({
 
   return (
     <div className="space-y-8" data-metadata={dataMetadata}>
-      <MetadataContextMenu onEdit={allowEdit ? onEditRequest : undefined}>
-        <div data-metadata-region="true">
-          <MetadataDisplay
-            metadata={metadata}
-            allowEdit={allowEdit}
-            onEditRequest={onEditRequest}
-          />
-        </div>
-      </MetadataContextMenu>
+      <div data-metadata-region="true">
+        <MetadataDisplay
+          metadata={metadata}
+          allowEdit={allowEdit}
+          onEditRequest={onEditRequest}
+        />
+      </div>
       
       {/* 摘要和关键词部分保持不变，也可以进一步美化 */}
       <AbstractAndKeywords

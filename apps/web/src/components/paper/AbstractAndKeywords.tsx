@@ -3,7 +3,6 @@
 import { FileText, Tag, Globe } from 'lucide-react';
 import type { Paper } from '@/types/paper';
 import clsx from 'clsx';
-import { AbstractAndKeywordsContextMenu } from './PaperContextMenus';
 import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
 import { Badge } from '@/components/ui/badge';
 
@@ -36,9 +35,7 @@ const divider = 'border-b border-white/70';
 const chipBase = 'rounded-full px-2 py-1 text-xs border border-white/70 bg-white/80 text-[#28418A]';
 
 const editButton =
-  'cursor-pointer rounded-xl bg-[#3a4f9e]/90 hover:bg-[#304690]/95 ' +
-  'shadow-[0_12px_30px_rgba(40,65,138,0.24)] border border-white/70 text-white ' +
-  'px-3 py-1 text-xs font-medium';
+  'cursor-pointer rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow hover:bg-blue-700';
 
 export default function AbstractAndKeywords({
   abstract,
@@ -64,17 +61,16 @@ export default function AbstractAndKeywords({
   if (!shouldRenderAbstract && !hasKeywords) return null;
 
   return (
-    <AbstractAndKeywordsContextMenu onEdit={allowEdit ? onEditRequest : undefined}>
-      <section
-        data-abstract={dataAbstract}
-        className={clsx(
-          'relative overflow-hidden group',
-          glowPanel,
-          // 背景柔光层
-          'before:content-[""] before:pointer-events-none before:absolute before:-inset-24 before:-z-10 before:bg-white/40 before:blur-3xl',
-          className,
-        )}
-      >
+    <section
+      data-abstract={dataAbstract}
+      className={clsx(
+        'relative overflow-hidden group',
+        glowPanel,
+        // 背景柔光层
+        'before:content-[""] before:pointer-events-none before:absolute before:-inset-24 before:-z-10 before:bg-white/40 before:blur-3xl',
+        className,
+      )}
+    >
         {/* 头部 */}
         <div className={clsx('mb-5 flex items-center gap-3 pb-4', divider)}>
           <div className={headerChip}>
@@ -167,6 +163,5 @@ export default function AbstractAndKeywords({
           )}
         </div>
       </section>
-    </AbstractAndKeywordsContextMenu>
   );
 }

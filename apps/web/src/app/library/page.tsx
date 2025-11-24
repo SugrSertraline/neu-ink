@@ -23,7 +23,7 @@ function PersonalLibraryGuard({
   return (
     <div
       className="flex h-full flex-col items-center justify-center bg-linear-to-br from-[#eef2ff]/75 via-white/80 to-[#dbe4ff]/70"
-      data-glow="true"
+      // data-glow="true"
     >
       <div className="mx-6 max-w-lg rounded-2xl border border-white/70 bg-white/80 p-8 text-center shadow-[0_20px_48px_rgba(28,45,96,0.16)] backdrop-blur-2xl">
         <div className="mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-linear-to-br from-[#28418A]/18 via-[#28418A]/12 to-[#28418A]/24 shadow-[0_12px_26px_rgba(40,65,138,0.22)]">
@@ -35,14 +35,14 @@ function PersonalLibraryGuard({
         </p>
         <div className="mt-6 flex flex-wrap justify-center gap-3">
           <Button
-            data-glow="true"
+            // data-glow="true"
             onClick={onLogin}
             className="rounded-xl border border-white/70 bg-linear-to-r from-[#28418A]/90 via-[#28418A]/86 to-[#28418A]/90 text-white shadow-[0_16px_38px_rgba(40,65,138,0.26)] hover:shadow-[0_18px_44px_rgba(40,65,138,0.34)]"
           >
             立即登录
           </Button>
           <Button
-            data-glow="true"
+            // data-glow="true"
             variant="outline"
             onClick={onSwitchPublic}
             className="rounded-xl border border-white/70 bg-white/75 text-[#28418A] backdrop-blur-xl hover:bg-white/90 hover:text-[#253873] hover:shadow-[0_12px_30px_rgba(40,65,138,0.18)]"
@@ -59,20 +59,20 @@ function PersonalLibraryPlaceholder({ username }: { username?: string | null }) 
   return (
     <div
       className="flex h-full flex-col bg-linear-to-br from-[#eef2ff]/70 via-white/80 to-[#dbe4ff]/70"
-      data-glow="true"
+      // data-glow="true"
     >
       <div className="border-b border-white/60 bg-white/75 px-8 py-7 shadow-[0_14px_34px_rgba(28,45,96,0.12)] backdrop-blur-xl">
         <div className="flex flex-wrap items-center gap-3">
           <span
             className="inline-flex items-center gap-2 rounded-full border border-white/70 bg-white/70 px-3.5 py-1 text-xs font-medium text-[#28418A] shadow-[0_12px_30px_rgba(40,65,138,0.2)] backdrop-blur-xl"
-            data-glow="true"
+            // data-glow="true"
           >
             <ShieldCheck className="h-4 w-4" />
             个人论文库 · 功能建设中
           </span>
           <span
             className="inline-flex items-center gap-2 rounded-full border border-white/60 bg-white/65 px-3.5 py-1 text-xs font-medium text-slate-600 backdrop-blur-lg"
-            data-glow="true"
+            // data-glow="true"
           >
             <User className="h-4 w-4" />
             当前账号：{username || '已登录用户'}
@@ -87,7 +87,7 @@ function PersonalLibraryPlaceholder({ username }: { username?: string | null }) 
       <div className="flex flex-1 items-center justify-center px-6">
         <div
           className="max-w-md rounded-2xl border border-dashed border-white/70 bg-white/75 p-10 text-center shadow-[0_18px_42px_rgba(28,45,96,0.14)] backdrop-blur-2xl"
-          data-glow="true"
+          // data-glow="true"
         >
           <BookOpen className="mx-auto mb-4 h-10 w-10 text-[#28418A]" />
           <h3 className="text-lg font-semibold text-slate-900">个人库即将上线</h3>

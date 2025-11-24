@@ -31,13 +31,14 @@ class QiniuService:
         # 初始化七牛云认证
         self.auth = Auth(self.access_key, self.secret_key)
     
-    def generate_upload_token(self, key: str, expires: int = 3600) -> str:
+    def generate_upload_token(self, key: str, expires: int = 3600, overwrite: bool = True) -> str:
         """
         生成七牛云上传凭证
         
         Args:
             key: 文件在七牛云中的存储路径
             expires: 凭证有效期（秒），默认1小时
+            overwrite: 是否覆盖已存在的文件，默认为True
             
         Returns:
             上传凭证字符串
@@ -45,6 +46,12 @@ class QiniuService:
         # 生成上传策略
         policy = QiniuConfig.UPLOAD_POLICY.copy()
         policy['expires'] = expires
+        
+        # 如果需要覆盖已存在的文件，设置scope为bucket:key
+        if overwrite:
+            policy['scope'] = f"{self.bucket_name}:{key}"
+        else:
+            policy['scope'] = self.bucket_name
         
         # 生成上传凭证
         token = self.auth.upload_token(self.bucket_name, key, expires, policy)
@@ -71,11 +78,19 @@ class QiniuService:
             
             # 如果提供了自定义文件名，则使用它；否则生成唯一文件名
             if filename is not None:
-                # 检查filename是否已经包含扩展名，避免重复添加
-                if not filename.endswith(file_extension):
-                    final_filename = f"{filename}{file_extension}"
-                else:
+                # 处理图片子目录的情况
+                if filename.startswith("images/"):
+                    # 如果filename已经包含images/前缀，直接使用
                     final_filename = filename
+                    # 检查是否需要添加扩展名
+                    if not final_filename.endswith(file_extension):
+                        final_filename = f"{filename}{file_extension}"
+                else:
+                    # 检查filename是否已经包含扩展名，避免重复添加
+                    if not filename.endswith(file_extension):
+                        final_filename = f"{filename}{file_extension}"
+                    else:
+                        final_filename = filename
             else:
                 timestamp = int(time.time())
                 unique_id = str(uuid.uuid4())[:8]
@@ -105,7 +120,7 @@ class QiniuService:
         # 组合完整路径
         return f"{prefix}{final_filename}"
     
-    def upload_file_data(self, file_data: bytes, file_extension: str, prefix: str = None, file_type: str = None, filename: str = None, paper_id: str = None) -> Dict[str, Any]:
+    def upload_file_data(self, file_data: bytes, file_extension: str, prefix: str = None, file_type: str = None, filename: str = None, paper_id: str = None, overwrite: bool = True) -> Dict[str, Any]:
         """
         上传文件数据到七牛云
         
@@ -116,6 +131,7 @@ class QiniuService:
             file_type: 文件类型（image, document, markdown, paper_image, unified_paper），用于获取对应前缀
             filename: 自定义文件名（不包含扩展名），如果提供则使用此文件名
             paper_id: 论文ID，用于统一目录结构
+            overwrite: 是否覆盖已存在的文件，默认为True
             
         Returns:
             上传结果，包含文件URL等信息
@@ -127,8 +143,8 @@ class QiniuService:
             # 获取MIME类型
             mime_type = self._get_content_type(file_extension)
             
-            # 生成上传凭证
-            token = self.generate_upload_token(key)
+            # 生成上传凭证，默认允许覆盖已存在的文件
+            token = self.generate_upload_token(key, overwrite=overwrite)
             
             # 上传文件数据，指定MIME类型
             ret, info = put_data(token, key, file_data, mime_type=mime_type)

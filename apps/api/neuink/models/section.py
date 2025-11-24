@@ -140,10 +140,20 @@ class SectionModel:
             self.collection.insert_many(sections)
         
         # 返回创建的章节列表（不包含MongoDB特定对象）
-        return [{"id": section["id"], "paperId": section["paperId"], 
+        return [{"id": section["id"], "paperId": section["paperId"],
                 "title": section["title"], "titleZh": section["titleZh"],
                 "content": section["content"], "createdAt": section["createdAt"],
                 "updatedAt": section["updatedAt"]} for section in sections]
+
+    def find_sections_by_ids(self, section_ids: List[str]) -> List[Dict[str, Any]]:
+        """
+        根据ID列表查找多个章节
+        """
+        if not section_ids:
+            return []
+        
+        sections = list(self.collection.find({"id": {"$in": section_ids}}, {"_id": 0}).sort("createdAt", 1))
+        return sections
 
 
 _section_model: Optional[SectionModel] = None
@@ -154,3 +164,11 @@ def get_section_model() -> SectionModel:
     if _section_model is None:
         _section_model = SectionModel()
     return _section_model
+
+
+def find_sections_by_ids(section_ids: List[str]) -> List[Dict[str, Any]]:
+    """
+    根据ID列表查找多个章节（独立函数）
+    """
+    model = get_section_model()
+    return model.find_sections_by_ids(section_ids)

@@ -176,7 +176,7 @@ export function usePublicLibraryController() {
       typeof paper.id === 'string' &&
       typeof paper.createdBy === 'string' &&
       typeof paper.metadata === 'object' &&
-      Array.isArray(paper.sections)
+      Array.isArray(paper.sections)  // sections 可能是空数组，但应该是数组类型
     );
   }
 

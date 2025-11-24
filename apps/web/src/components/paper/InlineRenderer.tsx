@@ -12,6 +12,7 @@ import type { InlineContent } from '@/types/paper';
 import type { Reference } from '@/types/paper';
 import katex from 'katex';
 import InlineMathSpan from './InlineMathSpan';
+import { BlockMath } from './BlockRenderer';
 
 interface InlineRendererProps {
   nodes: InlineContent[];
@@ -191,18 +192,7 @@ export default function InlineRenderer({
 
   // 预览内容生成（从 DOM 或 references 中提取）
   const renderEquationHTML = (latex: string) => {
-    try {
-      const html = katex.renderToString(latex, {
-        displayMode: true,
-        throwOnError: false,
-        trust: true,
-        strict: 'ignore',
-        output: 'html',
-      });
-      return <div dangerouslySetInnerHTML={{ __html: html }} />;
-    } catch {
-      return <code className="text-red-600 dark:text-red-400">{latex}</code>;
-    }
+    return <BlockMath math={latex} />;
   };
 
   const buildFigurePreview = (host: HTMLElement) => {
@@ -479,7 +469,11 @@ export default function InlineRenderer({
         }
 
         case 'inline-math':
-          return <InlineMathSpan key={key} latex={String((node as any).latex || '')} />;
+          // 检查是否为行内公式（不包含$$包围）
+          const latex = String((node as any).latex || '');
+          const isInlineMath = latex && !latex.trim().startsWith('$$') && !latex.trim().endsWith('$$');
+          return <InlineMathSpan key={key} latex={latex} />;
+        
 
         case 'citation': {
           const n = node as any;

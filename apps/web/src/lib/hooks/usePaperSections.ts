@@ -8,13 +8,29 @@ export function usePaperSections(
   setEditableDraft: React.Dispatch<React.SetStateAction<PaperContentModel | null>>,
   setHasUnsavedChanges: (value: boolean) => void
 ) {
-  const updateSections = useCallback(
+const updateSections = useCallback(
   (updater: (sections: Section[]) => { sections: Section[]; touched: boolean }) => {
     let didTouch = false;
 
     setEditableDraft(prev => {
-      if (!prev) return prev;
+      if (!prev) {
+        console.log('[usePaperSections.updateSections] prev is null, skip');
+        return prev;
+      }
+
+      console.log('[usePaperSections.updateSections] before', {
+        prevSectionsLength: prev.sections.length,
+        prevSectionsIds: prev.sections.map(s => s.id),
+      });
+
       const { sections, touched } = updater(prev.sections);
+
+      console.log('[usePaperSections.updateSections] after updater', {
+        nextSectionsLength: sections.length,
+        nextSectionsIds: sections.map(s => s.id),
+        touched,
+      });
+
       if (touched) {
         didTouch = true;
         return { ...prev, sections };
@@ -23,11 +39,13 @@ export function usePaperSections(
     });
 
     if (didTouch) {
+      console.log('[usePaperSections.updateSections] setHasUnsavedChanges(true)');
       setHasUnsavedChanges(true);
     }
   },
   [setEditableDraft, setHasUnsavedChanges]
 );
+
 
   // 轻量级章节操作 - 旧方法保留，但将改为本地操作
   const updateSectionTree = useCallback(
@@ -406,9 +424,14 @@ export function usePaperSections(
       );
 
       // 不再调用 handleSaveToServer，因为 handleSectionAddWithAPI 已经更新了数据库
-      // 如果 API 调用失败，可以考虑回滚本地更新
+      // 如果 API 调用失败，回滚本地更新
       if (!result.success) {
-        // 这里可以添加回滚逻辑，但暂时先让用户知道添加失败
+        // 回滚：移除刚才添加的临时section
+        updateSections(sections => {
+          const filteredSections = sections.filter(section => section.id !== newSection.id);
+          return { sections: filteredSections, touched: true };
+        });
+        
         toast.error('添加章节失败', {
           id: 'add-section',
           description: result.error
@@ -422,46 +445,19 @@ export function usePaperSections(
           // 找到最新添加的临时section并更新其ID
           updateSections(sections => {
             let touched = false;
-            
-            // 首先检查是否已经存在这个ID，如果有则跳过更新
-            const idAlreadyExists = sections.some(section => section.id === addedSectionId);
-            if (idAlreadyExists) {
-              return { sections, touched: false };
-            }
-            
-            // 找到需要更新的section
+           
+            // 找到需要更新的section（通过临时ID匹配）
             const updatedSections = sections.map(section => {
-              // 由于现在前后端都使用UUID格式，我们无法通过前缀区分临时ID
-              // 如果section没有ID，则匹配最新创建的section
-              if (!section.id) {
-                // 匹配最近创建的section（使用标题和内容匹配）
-                if (section.title === (newSection.title || '') && section.titleZh === (newSection.titleZh || '')) {
-                  touched = true;
-                  return {
-                    ...section,
-                    id: addedSectionId
-                  };
-                }
+              if (section.id === newSection.id) {
+                touched = true;
+                return {
+                  ...section,
+                  id: addedSectionId
+                };
               }
               return section;
             });
-            
-            // 如果没有找到匹配的section，更新最后一个临时section
-            if (!touched) {
-              const lastIndex = updatedSections.length - 1;
-              if (lastIndex >= 0) {
-                const lastSection = updatedSections[lastIndex];
-                // 由于现在前后端都使用UUID格式，我们无法通过前缀区分临时ID
-                if (!lastSection.id) {
-                  updatedSections[lastIndex] = {
-                    ...lastSection,
-                    id: addedSectionId
-                  };
-                  touched = true;
-                }
-              }
-            }
-            
+           
             return { sections: touched ? updatedSections : sections, touched };
           });
         }

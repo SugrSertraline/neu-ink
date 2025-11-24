@@ -78,6 +78,39 @@ export interface PaperAttachments {
     size: number;
     uploadedAt: string;
   };
+  model?: {
+    url: string;
+    key: string;
+    size: number;
+    uploadedAt: string;
+  };
+  layout?: {
+    url: string;
+    key: string;
+    size: number;
+    uploadedAt: string;
+  };
+}
+
+// —— 图片附件信息 ——
+export interface ImageAttachment {
+  filename: string;
+  url: string;
+  key: string;
+  size: number;
+  uploadedAt: string;
+}
+
+// —— 上传结果（包含图片信息） ——
+export interface UploadResult {
+  success: boolean;
+  markdown_content?: string;
+  attachments?: PaperAttachments;
+  uploaded_images?: ImageAttachment[];  // 图片信息单独返回，不保存到数据库
+  content_list_content?: string;
+  model_content?: string;
+  layout_content?: string;
+  error?: string;
 }
 
 // —— 公共论文（Paper Collection） ——
@@ -140,7 +173,7 @@ export interface UserPaper {
     zh?: string;
   };
   keywords?: string[];
-  sections?: Section[];              // 从 Section 集合加载
+  sections: Section[];                // 章节内容（后端现在总是返回）
   references: Reference[];
   attachments: PaperAttachments;
   

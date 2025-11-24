@@ -2,11 +2,16 @@
 UserPaper 数据模型
 处理个人论文库相关的数据库操作
 """
+import logging
 from typing import Dict, Any, List, Optional, Tuple
 
 from ..services.db import get_db
 from ..utils.common import generate_id, get_current_time
 from ..config.constants import Collections
+from .section import find_sections_by_ids
+
+# 初始化logger
+logger = logging.getLogger(__name__)
 
 
 class UserPaperModel:
@@ -68,7 +73,13 @@ class UserPaperModel:
             "abstract": user_paper_data.get("abstract"),
             "keywords": user_paper_data.get("keywords", []),
             "references": user_paper_data.get("references", []),
-            "attachments": user_paper_data.get("attachments", {}),
+            "attachments": user_paper_data.get("attachments", {
+                "pdf": None,
+                "markdown": None,
+                "content_list": None,
+                "model": None,
+                "layout": None
+            }),
             "sectionIds": user_paper_data.get("sectionIds", []),  # section ID列表
             "customTags": user_paper_data.get("customTags", []),
             "readingStatus": user_paper_data.get("readingStatus", "unread"),
@@ -87,27 +98,24 @@ class UserPaperModel:
 
     def find_by_id(self, user_paper_id: str) -> Optional[Dict[str, Any]]:
         """
-        根据ID查找个人论文（包含sections数据）
+        根据ID查找个人论文，默认包含sections内容
+        
+        Args:
+            user_paper_id: 个人论文ID
+        
+        Returns:
+            个人论文数据，包含完整的sections内容
         """
         user_paper = self.collection.find_one({"id": user_paper_id}, {"_id": 0})
         if not user_paper:
             return None
-            
-        # 加载sections数据
-        section_ids = user_paper.get("sectionIds", [])
-        if section_ids:
-            from .section import get_section_model
-            section_model = get_section_model()
-            
-            # 通过sectionIds加载sections数据
-            sections = []
-            for section_id in section_ids:
-                section = section_model.find_by_id(section_id)
-                if section:
-                    sections.append(section)
-            
-            # 将sections数据添加到user_paper中
+             
+        # 默认从sectionIds查询sections并添加到返回结果中
+        if "sectionIds" in user_paper and user_paper["sectionIds"]:
+            sections = find_sections_by_ids(user_paper["sectionIds"])
             user_paper["sections"] = sections
+        else:
+            user_paper["sections"] = []
         
         return user_paper
 
@@ -278,3 +286,43 @@ class UserPaperModel:
         if include_score:
             projection["score"] = {"$meta": "textScore"}
         return projection
+    
+    def add_references_to_paper(self, user_paper_id: str, references: List[Dict[str, Any]], user_id: str) -> bool:
+        """
+        添加参考文献到个人论文
+        
+        Args:
+            user_paper_id: 个人论文ID
+            references: 参考文献列表
+            user_id: 用户ID
+            
+        Returns:
+            是否成功
+        """
+        try:
+            # 获取个人论文
+            paper = self.find_by_id(user_paper_id)
+            if not paper:
+                return False
+            
+            # 验证权限
+            if paper.get("userId") != user_id:
+                return False
+            
+            # 按照ID排序参考文献
+            sorted_references = sorted(references, key=lambda x: int(x.get("id", "0")))
+            
+            # 更新论文的参考文献
+            update_data = {"references": sorted_references}
+            result = self.update(user_paper_id, update_data)
+            
+            if result:
+                logger.info(f"成功添加 {len(sorted_references)} 条参考文献到个人论文 {user_paper_id}")
+                return True
+            else:
+                logger.error(f"添加参考文献到个人论文失败: {user_paper_id}")
+                return False
+                
+        except Exception as e:
+            logger.error(f"添加参考文献到个人论文异常: {str(e)}")
+            return False

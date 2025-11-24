@@ -1,10 +1,12 @@
 // lib/utils/index.ts
-import { type ClassValue, clsx } from 'clsx';
-import { twMerge } from 'tailwind-merge';
 
-export function cn(...inputs: ClassValue[]) {
-  return twMerge(clsx(inputs));
-}
+// 导出其他工具函数
+export * from './apiHelpers';
+export * from './noteAdapters';
+export * from './paperHelpers';
+export * from './paperPageUtils';
+export * from './pdfBlockConverters';
+export * from './tableParser';
 
 /** 格式化日期 */
 export function formatDate(

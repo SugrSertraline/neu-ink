@@ -199,6 +199,7 @@ class UserPaperService:
         获取个人论文详情
         """
         try:
+            # 获取个人论文详情，默认包含sections数据
             user_paper = self.user_paper_model.find_by_id(user_paper_id)
             
             if not user_paper:
@@ -213,9 +214,6 @@ class UserPaperService:
                     BusinessCode.PERMISSION_DENIED,
                     "无权访问此论文"
                 )
-
-            # 加载sections数据
-            user_paper = self._load_sections_for_user_paper(user_paper)
 
             # 添加笔记信息
             notes, _ = self.note_model.find_by_user_paper(user_paper_id)
@@ -442,7 +440,7 @@ class UserPaperService:
             "metadata": public_paper.get("metadata", {}),
             "abstract": public_paper.get("abstract"),
             "keywords": public_paper.get("keywords", []),
-            "sections": sections,  # 使用加载的sections数据
+            "sections": [],  # 不再使用sections数据，改为空数组
             "references": public_paper.get("references", []),
             "attachments": public_paper.get("attachments", {}),
         }
@@ -484,30 +482,11 @@ class UserPaperService:
     def _load_sections_for_user_paper(self, user_paper: Dict[str, Any]) -> Dict[str, Any]:
         """
         为用户论文加载sections数据
+        注意：此方法已弃用，不再动态添加sections字段
+        请通过sectionIds自行获取sections数据
         """
-        if "sections" in user_paper:
-            # 如果已经有sections数据，直接返回
-            return user_paper
-            
-        # 从Section集合获取数据
-        from ..models.section import get_section_model
-        section_model = get_section_model()
-        
-        # 获取用户论文的sectionIds
-        section_ids = user_paper.get("sectionIds", [])
-        if not section_ids:
-            user_paper["sections"] = []
-            return user_paper
-        
-        # 通过sectionIds加载sections数据
-        sections = []
-        for section_id in section_ids:
-            section = section_model.find_by_id(section_id)
-            if section:
-                sections.append(section)
-        
-        # 将sections数据添加到user_paper中
-        user_paper["sections"] = sections
+        # 不再动态添加sections字段，只返回sectionIds
+        # 调用方需要通过sectionIds自行获取sections数据
         return user_paper
 
     def _wrap_error(self, message: str) -> Dict[str, Any]:
@@ -627,6 +606,63 @@ class UserPaperService:
             return 0
 
 _user_paper_service: Optional[UserPaperService] = None
+
+
+def add_references_to_paper(self, user_paper_id: str, references: List[Dict[str, Any]], user_id: str) -> Dict[str, Any]:
+        """
+        添加参考文献到个人论文
+        
+        Args:
+            user_paper_id: 个人论文ID
+            references: 参考文献列表
+            user_id: 用户ID
+            
+        Returns:
+            添加结果
+        """
+        try:
+            # 获取个人论文
+            paper = self.user_paper_model.find_by_id(user_paper_id)
+            if not paper:
+                return {
+                    "success": False,
+                    "message": "论文不存在"
+                }
+            
+            # 验证权限
+            if paper.get("userId") != user_id:
+                return {
+                    "success": False,
+                    "message": "无权限修改此论文"
+                }
+            
+            # 按照ID排序参考文献
+            sorted_references = sorted(references, key=lambda x: int(x.get("id", "0")))
+            
+            # 更新论文的参考文献
+            update_data = {"references": sorted_references}
+            result = self.user_paper_model.update(user_paper_id, update_data)
+            
+            if result:
+                return {
+                    "success": True,
+                    "message": f"成功添加 {len(sorted_references)} 条参考文献",
+                    "data": {
+                        "references": sorted_references,
+                        "paper": self.user_paper_model.find_by_id(user_paper_id)
+                    }
+                }
+            else:
+                return {
+                    "success": False,
+                    "message": "添加参考文献失败"
+                }
+                
+        except Exception as e:
+            return {
+                "success": False,
+                "message": f"添加参考文献异常: {str(e)}"
+            }
 
 
 def get_user_paper_service() -> UserPaperService:

@@ -15,6 +15,7 @@ from ..models.parsingSession import get_parsing_session_model
 from .paperContentService import PaperContentService
 from .paperTranslationService import PaperTranslationService
 from .paperMetadataService import get_paper_metadata_service
+from .referenceExtractorService import get_reference_extractor_service
 
 # 初始化logger
 logger = logging.getLogger(__name__)
@@ -69,18 +70,16 @@ class PaperService:
 
     def get_public_paper_detail(self, paper_id: str) -> Dict[str, Any]:
         try:
+            # 获取论文详情，默认包含sections数据
             paper = self.paper_model.find_public_paper_by_id(paper_id)
             if not paper:
                 return self._wrap_failure(
                     BusinessCode.PAPER_NOT_FOUND, "论文不存在或不可访问"
                 )
-            
-            # 获取sections数据
-            paper = self._load_sections_for_paper(paper)
-            
+           
             # 自动检查并补全翻译 - 已禁用
             # paper = self._auto_check_and_complete_translation(paper)
-            
+           
             return self._wrap_success("获取论文成功", paper)
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"获取论文失败: {exc}")
@@ -95,7 +94,7 @@ class PaperService:
             "metadata": paper.get("metadata", {}),
             "abstract": paper.get("abstract"),
             "keywords": paper.get("keywords", []),
-            "sections": paper.get("sections", []),
+            "sections": paper.get("sections", []),  # 现在返回完整的sections数据
             "references": paper.get("references", []),
             "attachments": paper.get("attachments", {}),
         }
@@ -139,12 +138,10 @@ class PaperService:
             return self._wrap_error(f"获取论文列表失败: {exc}")
 
     def get_admin_paper_detail(self, paper_id: str, user_id: str) -> Dict[str, Any]:
+        # 获取论文详情，默认包含sections数据
         paper = self.paper_model.find_admin_paper_by_id(paper_id)
         if not paper:
             return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
-        
-        # 获取sections数据
-        paper = self._load_sections_for_paper(paper)
         
         # 自动检查并补全翻译 - 已禁用
         # paper = self._auto_check_and_complete_translation(paper)
@@ -240,7 +237,7 @@ class PaperService:
                 "metadata": metadata,
                 "abstract": abstract,
                 "keywords": parsed_data.get("keywords", []),
-                "sections": parsed_data.get("sections", []),  # 解析出来的章节结构
+                "sections": [],  # 不再使用sections数据，改为空数组
                 "references": parsed_data.get("references", []),
                 # attachments 一般由上传流程填，这里可以不管
             }
@@ -248,6 +245,37 @@ class PaperService:
             return self._wrap_success("解析成功", paper_data)
         except Exception as e:
             return self._wrap_error(f"从文本解析论文失败: {e}")
+    
+    def extract_references_from_content_list(self, content_list_path: str) -> Dict[str, Any]:
+        """
+        从content_list.json文件中提取参考文献信息
+        
+        Args:
+            content_list_path: content_list.json文件路径
+            
+        Returns:
+            提取结果，包含参考文献列表
+        """
+        try:
+            reference_extractor = get_reference_extractor_service()
+            result = reference_extractor.extract_references_from_content_list(content_list_path)
+            
+            if result["success"]:
+                return self._wrap_success(
+                    f"成功提取 {len(result['references'])} 条参考文献",
+                    {
+                        "references": result["references"],
+                        "extraction_info": {
+                            "total_blocks": result.get("total_blocks", 0),
+                            "reference_blocks": result.get("reference_blocks", 0)
+                        }
+                    }
+                )
+            else:
+                return self._wrap_error(result.get("error", "提取参考文献失败"))
+                
+        except Exception as exc:
+            return self._wrap_error(f"提取参考文献失败: {exc}")
 
     def create_paper_from_text(self, text: str, creator_id: str, is_public: bool = True) -> Dict[str, Any]:
         """
@@ -1250,19 +1278,11 @@ class PaperService:
     def _load_sections_for_paper(self, paper: Dict[str, Any]) -> Dict[str, Any]:
         """
         为论文加载sections数据
-        这个方法确保向后兼容，使上层接口不需要改变
+        注意：此方法已弃用，不再动态添加sections字段
+        请通过sectionIds自行获取sections数据
         """
-        if "sections" in paper:
-            # 如果已经有sections数据，直接返回
-            return paper
-            
-        # 从Section集合获取数据
-        from ..models.section import get_section_model
-        section_model = get_section_model()
-        sections = section_model.find_by_paper_id(paper["id"])
-        
-        # 将sections数据添加到paper中
-        paper["sections"] = sections
+        # 不再动态添加sections字段，只返回sectionIds
+        # 调用方需要通过sectionIds自行获取sections数据
         return paper
 
     def _delete_paper_attachments(self, paper: Dict[str, Any]) -> int:

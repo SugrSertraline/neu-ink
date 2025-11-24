@@ -112,18 +112,20 @@ export default function LibraryFilters({
   return (
     <div className="w-full space-y-4">
       <div className="flex w-full flex-col gap-4 md:flex-row">
-        <div className="relative min-w-0 flex-1" data-glow="true">
+        <div className="relative min-w-0 flex-1" // data-glow="true"
+>
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[#6675a3]" />
           <Input
             placeholder="搜索标题、作者、期刊..."
             value={searchTerm}
             onChange={event => onSearchChange(event.target.value)}
             className="h-11 w-full rounded-xl border border-white/70 bg-white/80 pl-10 text-sm text-slate-700 shadow-[0_12px_34px_rgba(40,65,138,0.16)] transition-all focus-visible:ring-2 focus-visible:ring-[#4769b8]/35 focus-visible:ring-offset-1 focus-visible:ring-offset-white"
-            data-glow="true"
+            // data-glow="true"
           />
         </div>
 
-        <div className="flex min-w-0 flex-wrap gap-2" data-glow="true">
+        <div className="flex min-w-0 flex-wrap gap-2" // data-glow="true"
+>
           <Select value={filterPriority} onValueChange={onPriorityChange}>
             <SelectTrigger className={glowTrigger}>
               <SelectValue placeholder="选择优先级" />
@@ -151,7 +153,7 @@ export default function LibraryFilters({
           </Select>
 
           <Button
-            data-glow="true"
+            // data-glow="true"
             onClick={onToggleAdvancedFilter}
             className={cn(
               'h-10 gap-2 px-4 text-sm transition-all',
@@ -165,7 +167,7 @@ export default function LibraryFilters({
 
           {hasActiveFilters && (
             <Button
-              data-glow="true"
+              // data-glow="true"
               variant="outline"
               onClick={onResetFilters}
               className={`${glowButtonGhost} h-10 gap-2 px-4 text-sm text-slate-600 hover:text-slate-900`}
@@ -180,7 +182,7 @@ export default function LibraryFilters({
       {showAdvancedFilter && (
         <div
           className="rounded-2xl border border-white/70 bg-white/82 p-5 shadow-[0_18px_42px_rgba(28,45,96,0.14)] backdrop-blur-2xl"
-          data-glow="true"
+          // data-glow="true"
         >
           <div className="mb-4 flex items-center justify-between">
             <h3 className="text-sm font-medium text-slate-800">高级筛选</h3>
@@ -189,7 +191,7 @@ export default function LibraryFilters({
               size="sm"
               onClick={onToggleAdvancedFilter}
               className="h-8 w-8 rounded-xl border border-white/70 bg-white/80 shadow-[0_12px_28px_rgba(40,65,138,0.12)] hover:bg-white/90"
-              data-glow="true"
+              // data-glow="true"
             >
               <X className="h-4 w-4 text-[#28418A]" />
             </Button>
@@ -288,7 +290,8 @@ function AdvancedSelect({
   children: React.ReactNode;
 }) {
   return (
-    <div className="space-y-2" data-glow="true">
+    <div className="space-y-2" // data-glow="true"
+>
       <label className="text-xs font-medium text-slate-600">{label}</label>
       <Select value={value} onValueChange={onValueChange}>
         <SelectTrigger className={`${glowTrigger} h-11`}>
@@ -313,7 +316,7 @@ function GlowBadge({
     <Badge
       variant="outline"
       className="group inline-flex items-center gap-1 rounded-full border-white/70 bg-white/80 text-xs text-[#28418A] shadow-[0_10px_26px_rgba(40,65,138,0.18)] backdrop-blur-xl"
-      data-glow="true"
+      // data-glow="true"
     >
       {children}
       <X

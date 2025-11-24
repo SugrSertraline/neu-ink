@@ -3,6 +3,9 @@
 // 内容类型
 export * from './content';
 
+// PDF 解析块类型
+export * from './pdfBlocks';
+
 // 数据模型
 export * from './models';
 

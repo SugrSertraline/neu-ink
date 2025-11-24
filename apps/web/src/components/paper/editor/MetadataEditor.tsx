@@ -329,14 +329,9 @@ export default function MetadataEditor({
       try {
         const { metadata, abstract, keywords } = verdict.result;
         
-        // 调用用户论文更新接口
-        await userPaperService.updateUserPaper(userPaperId, {
-          metadata,
-          abstract,
-          keywords,
-        });
-        
-        setLastAutoSaveTime(new Date());
+        // 由于整个论文更新接口已被移除，显示提示信息
+        setAutoSaveError('元数据自动保存功能已移除，请手动保存');
+        setIsAutoSaving(false);
       } catch (err) {
         const message = err instanceof Error ? err.message : '自动保存失败';
         setAutoSaveError(message);

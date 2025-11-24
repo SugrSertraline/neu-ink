@@ -313,22 +313,10 @@ export default function MetadataEditorDialog({
     if (!autoSave || !userPaperId) return;
     const verdict = validateForm(form);
     if (!verdict.ok || !verdict.result) return;
-    setIsAutoSaving(true);
-    setAutoSaveError(null);
-    try {
-      const { metadata: m, abstract: ab, keywords: kw } = verdict.result;
-      await userPaperService.updateUserPaper(userPaperId, {
-        metadata: m,
-        abstract: ab,
-        keywords: kw,
-      });
-      setLastAutoSaveTime(new Date());
-    } catch (err) {
-      const message = err instanceof Error ? err.message : '自动保存失败';
-      setAutoSaveError(message);
-    } finally {
-      setIsAutoSaving(false);
-    }
+    
+    // 由于整个论文更新接口已被移除，显示提示信息
+    setAutoSaveError('元数据自动保存功能已移除，请手动保存');
+    setIsAutoSaving(false);
   }, [form, autoSave, userPaperId]);
 
   const debouncedAutoSave = useCallback(() => {

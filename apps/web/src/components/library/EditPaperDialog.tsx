@@ -123,18 +123,11 @@ export default function EditPaperDialog({
         customTags,
       };
 
-      const result = await userPaperService.updateUserPaper(
-        paper.personalMeta.userPaperId,
-        updateData
-      );
-
-      if (!isSuccess(result)) {
-        throw new Error(result.bizMessage || result.topMessage || '更新失败');
-      }
-
-      toast.success('论文信息已更新');
+      // 由于整个论文更新接口已被移除，显示提示信息
+      toast.error('更新功能已变更', {
+        description: '论文信息更新功能已被移除，请使用具体的更新功能'
+      });
       onOpenChange(false);
-      onSuccess?.();
     } catch (error) {
       const message = error instanceof Error ? error.message : '网络错误';
       toast.error(`更新失败：${message}`);

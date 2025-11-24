@@ -226,7 +226,7 @@ export default function UsersPage() {
         <Button
           onClick={() => setIsCreateDialogOpen(true)}
           className="flex items-center gap-2 bg-linear-to-r from-[#28418A] to-[#3F66B0] text-white shadow-[0_12px_30px_rgba(40,65,138,0.32)] hover:shadow-[0_14px_32px_rgba(40,65,138,0.38)] hover:scale-[1.01] transition-all duration-250 border-0"
-          data-glow="true"
+          // data-glow="true"
         >
           <Plus className="h-4 w-4" />
           新增用户
@@ -264,7 +264,8 @@ export default function UsersPage() {
       </div>
 
       {/* 用户列表 */}
-      <div className="rounded-2xl border border-white/60 bg-white/72 backdrop-blur-3xl shadow-[0_20px_54px_rgba(15,23,42,0.16)] overflow-hidden" data-glow="true">
+      <div className="rounded-2xl border border-white/60 bg-white/72 backdrop-blur-3xl shadow-[0_20px_54px_rgba(15,23,42,0.16)] overflow-hidden" // data-glow="true"
+>
         <div className="overflow-x-auto">
           <table className="min-w-full divide-y divide-white/30">
             <thead className="bg-white/55 backdrop-blur-xl">
@@ -307,7 +308,7 @@ export default function UsersPage() {
                       <Button
                         onClick={() => setIsCreateDialogOpen(true)}
                         className="mt-2 bg-linear-to-r from-[#28418A] to-[#3F66B0] text-white shadow-[0_12px_30px_rgba(40,65,138,0.32)] hover:shadow-[0_14px_32px_rgba(40,65,138,0.38)] hover:scale-[1.01] transition-all duration-250 border-0"
-                        data-glow="true"
+                        // data-glow="true"
                       >
                         <Plus className="h-4 w-4 mr-2" />
                         创建第一个用户
@@ -343,8 +344,8 @@ export default function UsersPage() {
                       >
                         <SelectTrigger className={`w-32 backdrop-blur-xl bg-white/55 border border-white/45 shadow-[0_8px_22px_rgba(40,65,138,0.14)] hover:bg-white/78 transition-all duration-250 ${
                           user.role === 'admin'
-                            ? 'bg-gradient-to-r from-[#28418A]/20 to-[#3F66B0]/20 text-[#28418A]'
-                            : 'bg-gradient-to-r from-[#3F66B0]/20 to-[#6CAAD6]/20 text-[#3F66B0]'
+                            ? 'bg-linear-to-r from-[#28418A]/20 to-[#3F66B0]/20 text-[#28418A]'
+                            : 'bg-linear-to-r from-[#3F66B0]/20 to-[#6CAAD6]/20 text-[#3F66B0]'
                         }`}>
                           <SelectValue />
                         </SelectTrigger>
@@ -415,7 +416,7 @@ export default function UsersPage() {
                       className={cn(
                         'cursor-pointer backdrop-blur-xl border border-white/45 shadow-[0_8px_22px_rgba(40,65,138,0.14)] hover:bg-white/78 hover:shadow-[0_12px_32px_rgba(40,65,138,0.16)] transition-all duration-250',
                         page === pagination.page
-                          ? 'bg-gradient-to-r from-[#28418A]/20 to-[#3F66B0]/20 text-[#28418A] border-[#28418A]/30'
+                          ? 'bg-linear-to-r from-[#28418A]/20 to-[#3F66B0]/20 text-[#28418A] border-[#28418A]/30'
                           : 'bg-white/55 text-slate-700'
                       )}
                     >

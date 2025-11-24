@@ -359,7 +359,8 @@ function TextForm({
   return (
     <div className="space-y-4">
       <h3 className="text-lg font-medium text-slate-900">从文本创建</h3>
-      <label className="block space-y-2" data-glow="true">
+      <label className="block space-y-2" // data-glow="true"
+>
         <span className="text-sm font-medium text-slate-700">原始文本 *</span>
         <textarea
           placeholder="将论文的元数据或整段文本粘贴到这里（可包含标题、作者、期刊、DOI、摘要等）"
@@ -385,7 +386,8 @@ function Field({
   ...props
 }: React.ComponentProps<typeof Input> & { label: string; helper?: string }) {
   return (
-    <label className="block space-y-2" data-glow="true">
+    <label className="block space-y-2" // data-glow="true"
+>
       <span className="text-sm font-medium text-slate-700">{label}</span>
       <Input
         {...props}
@@ -410,7 +412,8 @@ function SelectField({
   options: { value: string; label: string }[];
 }) {
   return (
-    <label className="block space-y-2" data-glow="true">
+    <label className="block space-y-2" // data-glow="true"
+>
       <span className="text-sm font-medium text-slate-700">{label}</span>
       <select
         {...props}

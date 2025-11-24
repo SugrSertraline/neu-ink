@@ -26,6 +26,7 @@ interface PaperReferencesProps {
   onReferenceOpenLink?: (url: string, reference: Reference) => void;
   onReferenceAdd?: () => void;
   onParseReferences?: () => void;
+  onSaveReferences?: () => void;
   'data-references'?: string;
 }
 
@@ -54,6 +55,7 @@ export default function PaperReferences({
   onReferenceOpenLink,
   onReferenceAdd,
   onParseReferences,
+  onSaveReferences,
   'data-references': dataReferences,
 }: PaperReferencesProps) {
   const handleMouseEnter = useCallback(
@@ -212,14 +214,22 @@ export default function PaperReferences({
 
   const section = (
     <section aria-labelledby="paper-references-heading" className="mt-10" data-references={dataReferences}>
-      <header className="mb-3">
+      <header className="mb-3 flex items-center justify-between">
         <h2
           id="paper-references-heading"
           className="text-base font-semibold text-gray-900 dark:text-slate-100"
         >
           {title}
         </h2>
-        <div className="h-px bg-gray-200 dark:bg-slate-700" />
+        {onSaveReferences && (
+          <button
+            onClick={onSaveReferences}
+            className="rounded-md bg-blue-600 px-3 py-1.5 text-sm font-medium text-white transition-colors hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 dark:bg-blue-500 dark:hover:bg-blue-600"
+          >
+            保存参考文献
+          </button>
+        )}
+        <div className="h-px bg-gray-200 dark:bg-slate-700 flex-1" />
       </header>
       {renderContent()}
     </section>

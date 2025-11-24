@@ -140,8 +140,9 @@ export default function AbstractAndKeywordsEditorDialog({
     setAutoSaveError(null);
     try {
       const { abstract, keywords } = verdict.result;
-      await userPaperService.updateUserPaper(userPaperId, { abstract, keywords });
-      setLastAutoSaveTime(new Date());
+      // 由于整个论文更新接口已被移除，显示提示信息
+      setAutoSaveError('摘要和关键词自动保存功能已移除，请手动保存');
+      setIsAutoSaving(false);
     } catch (e: any) {
       setAutoSaveError(e?.message || '自动保存失败');
     } finally {

@@ -30,7 +30,8 @@ export default function DeleteUserDialog({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center">
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm" onClick={onClose} />
-      <div className="relative bg-white/72 backdrop-blur-3xl rounded-2xl border border-white/60 shadow-[0_20px_54px_rgba(15,23,42,0.16)] w-full max-w-md mx-4" data-glow="true">
+      <div className="relative bg-white/72 backdrop-blur-3xl rounded-2xl border border-white/60 shadow-[0_20px_54px_rgba(15,23,42,0.16)] w-full max-w-md mx-4" // data-glow="true"
+>
         <div className="flex items-center justify-between p-6 border-b border-white/30">
           <h2 className="text-lg font-semibold text-slate-900">删除用户</h2>
           <Button
@@ -81,8 +82,8 @@ export default function DeleteUserDialog({
             <Button
               variant="destructive"
               onClick={handleConfirm}
-              className="bg-gradient-to-r from-red-600 to-red-700 text-white shadow-[0_12px_30px_rgba(220,38,38,0.32)] hover:shadow-[0_14px_32px_rgba(220,38,38,0.38)] hover:scale-[1.01] transition-all duration-250 border-0"
-              data-glow="true"
+              className="bg-linear-to-r from-red-600 to-red-700 text-white shadow-[0_12px_30px_rgba(220,38,38,0.32)] hover:shadow-[0_14px_32px_rgba(220,38,38,0.38)] hover:scale-[1.01] transition-all duration-250 border-0"
+              // data-glow="true"
             >
               确认删除
             </Button>

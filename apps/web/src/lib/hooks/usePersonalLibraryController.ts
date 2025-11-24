@@ -94,7 +94,7 @@ function normalizeUserPaperToPaper(userPaper: UserPaper): Paper {
     metadata: userPaper.metadata ?? { title: '未命名论文', authors: [], tags: [] },
     abstract: userPaper.abstract,
     keywords: userPaper.keywords ?? [],
-    sections: userPaper.sections ?? [],
+    sections: userPaper.sections,  // 后端现在总是返回 sections
     references: userPaper.references ?? [],
     attachments: userPaper.attachments ?? {},
     parseStatus: PERSONAL_PARSE_STATUS,
@@ -220,10 +220,11 @@ export function usePersonalLibraryController() {
         try {
           // 如果当前阅读状态不是"reading"，则自动切换为"reading"
           if (personalMeta.readingStatus !== 'reading') {
-            const updateResult = await userPaperService.updateUserPaper(routePaperId, {
-              readingStatus: 'reading',
+            const updateResult = await userPaperService.updateReadingProgress(routePaperId, {
+              readingPosition: personalMeta.userPaperId, // 使用当前论文ID作为阅读位置
+              readingTime: 0, // 不增加阅读时间，只更新状态
             });
-            
+           
             if (!isSuccess(updateResult)) {
               // 静默失败，不影响用户体验
             } else {

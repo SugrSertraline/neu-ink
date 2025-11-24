@@ -16,7 +16,6 @@ import BlockRenderer from './BlockRenderer';
 import BlockEditor from './editor/BlockEditor';
 import InlineTextParserEditor from './editor/InlineTextParserEditor';
 import ParsedBlocksConfirmDialog from './ParsedBlocksConfirmDialog';
-import ParseResultsManager from './ParseResultsManager';
 import {
   SectionContextMenu,
   BlockContextMenu,
@@ -43,49 +42,153 @@ interface PaperContentProps {
   references?: Reference[];
   lang: Lang;
   searchQuery: string;
+
   activeBlockId: string | null;
   selectedBlockId?: string | null;
   setActiveBlockId: (id: string | null) => void;
   onBlockClick?: (blockId: string) => void;
+
   contentRef: React.RefObject<HTMLDivElement | null>;
   setSearchResults: (results: string[]) => void;
   setCurrentSearchIndex: (index: number) => void;
-  onSectionTitleUpdate?: (sectionId: string, title: { en: string; zh: string }, paperId?: string, userPaperId?: string | null, isPersonalOwner?: boolean, onSaveToServer?: () => Promise<void>) => void;
+
+  onSectionTitleUpdate?: (
+    sectionId: string,
+    title: { en: string; zh: string },
+    paperId?: string,
+    userPaperId?: string | null,
+    isPersonalOwner?: boolean,
+    onSaveToServer?: (blockId: string, sectionId: string) => Promise<void>,
+  ) => void;
+
   onSectionInsert?: (
     targetSectionId: string | null,
     position: 'above' | 'below',
     parentSectionId: string | null,
   ) => void;
+
   onSectionMove?: (
     sectionId: string,
     direction: 'up' | 'down',
     parentSectionId: string | null,
   ) => void;
+
   onSectionDelete?: (sectionId: string) => void;
+
   onSectionAddBlock?: (sectionId: string, type: BlockContent['type']) => void;
+
   onBlockUpdate?: (blockId: string, block: BlockContent) => void;
   onBlockDuplicate?: (blockId: string) => void;
   onBlockDelete?: (blockId: string) => void;
   onBlockInsert?: (blockId: string, position: 'above' | 'below') => void;
   onBlockMove?: (blockId: string, direction: 'up' | 'down') => void;
-  onBlockAppendSubsection?: (blockId: string, paperId: string, userPaperId: string | null, isPersonalOwner: boolean, onSaveToServer?: () => Promise<void>) => void;
+
+  onBlockAppendSubsection?: (
+    blockId: string,
+    paperId: string,
+    userPaperId: string | null,
+    isPersonalOwner: boolean,
+    onSaveToServer?: (blockId: string, sectionId: string) => Promise<void>,
+  ) => void;
+
+  onAddBlockAsSection?: (sectionData: {
+    id: string;
+    title: string;
+    titleZh: string;
+    content: any[];
+  }) => void;
+
+  onAddHeadingToSection?: (
+    sectionId: string,
+    position: 'start' | 'end',
+    headingBlock: any,
+  ) => void;
+
+  onAddParagraphToSection?: (
+    sectionId: string,
+    position: 'start' | 'end',
+    paragraphBlock: any,
+  ) => void;
+
+  onAddOrderedListToSection?: (
+    sectionId: string,
+    position: 'start' | 'end',
+    orderedListBlock: any,
+  ) => void;
+
+  onAddUnorderedListToSection?: (
+    sectionId: string,
+    position: 'start' | 'end',
+    unorderedListBlock: any,
+  ) => void;
+
+  /** 新增的公式块插入到 Section */
+  onAddMathToSection?: (
+    sectionId: string,
+    position: 'start' | 'end',
+    mathBlock: any,
+  ) => void;
+
+  onAddFigureToSection?: (
+    sectionId: string,
+    position: 'start' | 'end',
+    figureBlock: any,
+  ) => void;
+
+  onAddTableToSection?: (
+    sectionId: string,
+    position: 'start' | 'end',
+    tableBlock: any,
+  ) => void;
+
+  onCreateSectionWithHeading?: (
+    title: string,
+    titleZh: string,
+    headingBlock: any,
+  ) => void;
+
   onBlockAddComponent?: (blockId: string, type: BlockContent['type']) => void;
-  onParseTextAdd?: (sectionId: string, text: string, afterBlockId?: string) => Promise<{
+
+  onParseTextAdd?: (
+    sectionId: string,
+    text: string,
+    afterBlockId?: string,
+  ) => Promise<{
     success: boolean;
     blocks?: BlockContent[];
     error?: string;
   }>;
-  onParseTextComplete?: (sectionId: string, blocks: BlockContent[], afterBlockId?: string, paperData?: any) => void; // 新增回调函数
+
+  // 解析完成后把生成的 blocks 写入
+  onParseTextComplete?: (
+    sectionId: string,
+    blocks: BlockContent[],
+    afterBlockId?: string,
+    paperData?: any,
+  ) => void;
+
   onStartTextParse?: (sectionId: string) => void;
-  onSaveToServer?: () => Promise<void>;
+
+  onSaveToServer?: (blockId: string, sectionId: string) => Promise<void>;
+
   /** ParseProgressModal 需要的回调 */
   onParseComplete?: (result: any) => void;
+
   /** 笔记相关 */
   notesByBlock?: Record<string, any[]>;
+
   isPersonalOwner?: boolean;
   paperId?: string;
   userPaperId?: string | null;
-  updateSections?: (updater: (sections: Section[]) => { sections: Section[]; touched: boolean }) => void;
+
+  updateSections?: (
+    updater: (
+      sections: Section[],
+    ) => {
+      sections: Section[];
+      touched: boolean;
+    },
+  ) => void;
 }
 
 type ContentBlock = HeadingBlock | ParagraphBlock | QuoteBlock;
@@ -121,6 +224,15 @@ export default function PaperContent({
   onBlockMove,
   onBlockAppendSubsection,
   onBlockAddComponent,
+  onAddBlockAsSection,
+  onAddHeadingToSection,
+  onAddParagraphToSection,
+  onAddOrderedListToSection,
+  onAddUnorderedListToSection,
+  onAddMathToSection,
+  onAddFigureToSection,
+  onAddTableToSection,
+  onCreateSectionWithHeading,
   onParseTextAdd,
   onParseTextComplete,
   onSaveToServer,
@@ -370,7 +482,14 @@ export default function PaperContent({
   const handleSectionRenameConfirm = useCallback(
     (sectionId: string, title: { en: string; zh: string }) => {
       // 直接使用后端期望的格式
-      onSectionTitleUpdate?.(sectionId, title, paperId, userPaperId, isPersonalOwner, onSaveToServer);
+      onSectionTitleUpdate?.(sectionId, title, paperId, userPaperId, isPersonalOwner, async () => {
+        if (onSaveToServer) {
+          // 对于 section 标题更新，我们需要一个特殊的处理，因为它不涉及特定的 block
+          // 这里我们可以传递一个特殊的 block ID 或者修改 API 来处理 section 更新
+          // 暂时使用一个临时的 block ID
+          await onSaveToServer('section-title', sectionId);
+        }
+      });
       setRenamingSectionId(null);
       setHasUnsavedChanges(false);
     },
@@ -552,7 +671,11 @@ export default function PaperContent({
         
         // 保存到服务器
         if (onSaveToServer) {
-          onSaveToServer();
+          // 对于解析结果，我们需要一个特殊的处理，因为它不涉及特定的 block
+          // 这里我们可以传递一个特殊的 block ID 或者修改 API 来处理这种情况
+          onSaveToServer('parse-result', targetSection.id).catch(err => {
+            console.error('保存解析结果失败:', err);
+          });
         }
       } else {
         // 如果找不到对应的section，提示用户
@@ -673,7 +796,11 @@ export default function PaperContent({
       
       // 保存到服务器
       if (onSaveToServer) {
-        await onSaveToServer();
+        // 对于解析结果，我们需要一个特殊的处理，因为它不涉及特定的 block
+        // 这里我们可以传递一个特殊的 block ID 或者修改 API 来处理这种情况
+        onSaveToServer('parse-result', sectionId).catch(err => {
+          console.error('保存解析结果失败:', err);
+        });
       }
     } catch (error) {
       toast.error('保存失败,请重试');
@@ -734,6 +861,33 @@ export default function PaperContent({
       toast.error('翻译失败，请重试');
     }
   }, [handleSectionEditStart, paperId, userPaperId, isPersonalOwner, onSaveToServer]);
+
+  // 处理block快速翻译功能
+  // 注意：这个函数现在只是传递给BlockRenderer，实际的翻译逻辑在BlockRenderer中处理
+  const handleBlockQuickTranslate = useCallback(async (block: BlockContent) => {
+    // 这个函数现在只是占位符，实际翻译逻辑在BlockRenderer中处理
+    // 保留这个函数是为了保持接口兼容性
+    console.log('Block快速翻译被调用，但实际处理在BlockRenderer中');
+  }, []);
+
+  // 处理从PdfBlockHoverCard传递过来的"添加为章节"功能
+  const handleAddBlockAsSection = useCallback(async (sectionData: { id: string; title: string; titleZh: string; content: any[] }) => {
+    if (!onAddBlockAsSection) {
+      toast.error('添加章节功能不可用');
+      return;
+    }
+
+    try {
+      // 乐观更新：立即调用父组件回调更新UI
+      onAddBlockAsSection(sectionData);
+      
+      // 显示成功消息（乐观更新的成功）
+      toast.success('章节添加成功');
+    } catch (error) {
+      console.error('添加章节失败:', error);
+      toast.error('添加章节失败，请重试');
+    }
+  }, [onAddBlockAsSection]);
 
   // 处理ParseProgressBlock的onCompleted回调
   const handleParseProgressComplete = useCallback((result: any) => {
@@ -996,7 +1150,11 @@ export default function PaperContent({
                   canMoveDown={blockIndex < (section.content?.length ?? 0) - 1}
                   references={references}
                   allSections={sections}
-                  onSaveToServer={onSaveToServer}
+                  onSaveToServer={async (blockId, sectionId) => {
+                    if (onSaveToServer) {
+                      await onSaveToServer(blockId, sectionId);
+                    }
+                  }}
                 />
               ) : (
                 <BlockRenderer
@@ -1011,7 +1169,11 @@ export default function PaperContent({
                   contentRef={contentRef}
                   references={references}
                   onBlockUpdate={updatedBlock => onBlockUpdate?.(block.id, updatedBlock)}
-                  onSaveToServer={onSaveToServer}
+                  onSaveToServer={async (blockId, sectionId) => {
+                    if (onSaveToServer) {
+                      await onSaveToServer(blockId, sectionId);
+                    }
+                  }}
                   notesCount={notesByBlock[block.id]?.length || 0}
                   isPersonalOwner={isPersonalOwner}
                   paperId={paperId}
@@ -1019,8 +1181,17 @@ export default function PaperContent({
                   onParseComplete={handleParseProgressComplete}
                   onParsePreview={handleParsePreview}
                   userPaperId={userPaperId}
-                  // ★ 新增：传递进度数据给loading block
                   streamProgressData={streamProgressData}
+                  onAddBlockAsSection={onAddBlockAsSection}
+                  onAddHeadingToSection={onAddHeadingToSection}
+                  onAddParagraphToSection={onAddParagraphToSection}
+                  onAddOrderedListToSection={onAddOrderedListToSection}
+                  onAddUnorderedListToSection={onAddUnorderedListToSection}
+                  onAddMathToSection={onAddMathToSection}
+                  onAddFigureToSection={onAddFigureToSection}
+                  onAddTableToSection={onAddTableToSection}
+                  onCreateSectionWithHeading={onCreateSectionWithHeading}
+                  allSections={sections}
                 />
               );
 
@@ -1111,6 +1282,10 @@ export default function PaperContent({
                     <BlockContextMenu
                       sectionId={numberedSection.id}
                       sectionTitle={String(numberedSection.title || numberedSection.titleZh || '未命名章节')}
+                      block={block}
+                      paperId={paperId}
+                      userPaperId={userPaperId}
+                      isUserPaper={isPersonalOwner}
                       onEdit={
                         canEditContent
                           ? () => {
@@ -1127,11 +1302,16 @@ export default function PaperContent({
                         canEditContent ? type => onBlockAddComponent?.(block.id, type) : undefined
                       }
                       onStartTextParse={canEditContent ? () => handleStartBlockTextParse(numberedSection.id, block.id) : undefined}
+                      onQuickTranslate={canEditContent ? () => {
+                        // 快速翻译逻辑现在在 BlockContextMenu 中处理
+                        console.log('快速翻译被点击，逻辑在 BlockContextMenu 中处理');
+                      } : undefined}
                       onAddSectionBelow={
                         canEditContent && onSectionInsert
                           ? () => onSectionInsert(numberedSection.id, 'below', null)
                           : undefined
                       }
+                      onBlockUpdate={canEditContent ? (updatedBlock) => onBlockUpdate?.(block.id, updatedBlock) : undefined}
                       onDelete={
                         canEditContent
                           ? async () => {

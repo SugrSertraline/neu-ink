@@ -11,6 +11,9 @@ import React, {
 } from 'react';
 import { createPortal } from 'react-dom';
 import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
+import { useEditingState } from '@/stores/useEditingState';
+import { toast } from 'sonner';
+import { translationService } from '@/lib/services/translation';
 import type { BlockContent } from '@/types/paper';
 
 type MenuAction = () => void | Promise<void>;
@@ -541,6 +544,10 @@ interface BlockContextMenuProps {
   children: React.ReactNode;
   sectionId: string;
   sectionTitle: string;
+  block: BlockContent;
+  paperId?: string;
+  userPaperId?: string | null;
+  isUserPaper?: boolean;
   onEdit?: MenuAction;
   onInsertAbove?: MenuAction;
   onInsertBelow?: MenuAction;
@@ -550,13 +557,19 @@ interface BlockContextMenuProps {
   onDelete?: MenuAction;
   onAddComponentAfter?: (type: BlockContent['type']) => void;
   onStartTextParse?: MenuAction;
+  onQuickTranslate?: MenuAction;
   onAddSectionBelow?: MenuAction;
+  onBlockUpdate?: (block: BlockContent) => void;
 }
 
 export function BlockContextMenu({
   children,
   sectionId,
   sectionTitle,
+  block,
+  paperId,
+  userPaperId,
+  isUserPaper = false,
   onEdit,
   onInsertAbove,
   onInsertBelow,
@@ -566,9 +579,102 @@ export function BlockContextMenu({
   onDelete,
   onAddComponentAfter,
   onStartTextParse,
+  onQuickTranslate,
   onAddSectionBelow,
+  onBlockUpdate,
 }: BlockContextMenuProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
+  const { switchToEdit } = useEditingState();
+
+  const cloneBlock = (b: BlockContent): BlockContent => JSON.parse(JSON.stringify(b));
+
+  const handleQuickTranslate = useCallback(async () => {
+    if (!paperId && !userPaperId) {
+      toast.error('缺少论文ID，无法翻译');
+      return;
+    }
+
+    // 检查block类型是否支持翻译
+    const supportedTypes = ['heading', 'paragraph', 'figure', 'table', 'ordered-list', 'unordered-list', 'quote'];
+    if (!supportedTypes.includes(block.type)) {
+      toast.error(`不支持的block类型: ${block.type}`);
+      return;
+    }
+
+    // 检查编辑权限
+    if (!canEditContent) {
+      toast.error('没有编辑权限，无法翻译');
+      return;
+    }
+
+    try {
+      toast.loading('正在翻译中...', { id: 'translate-block' });
+      
+      let response;
+      if (isUserPaper) {
+        // 用户论文翻译
+        response = await translationService.translateUserPaperBlock(userPaperId!, {
+          block: block,
+          model: 'glm-4.6',
+          temperature: 0.1,
+          maxTokens: 100000
+        });
+      } else {
+        // 管理员论文翻译
+        response = await translationService.translateAdminBlock(paperId!, {
+          block: block,
+          model: 'glm-4.6',
+          temperature: 0.1,
+          maxTokens: 100000
+        });
+      }
+
+      // 处理翻译结果
+      if (response && response.translatedBlock) {
+        const translatedBlock = response.translatedBlock;
+        const originalBlock = block as any;
+        
+        // 检查是否有content属性（排除MathBlock等没有content的block类型）
+        if ('content' in translatedBlock && translatedBlock.content) {
+          const contentBlock = translatedBlock as any;
+          
+          // 根据用户提供的翻译结果，后端已经正确返回了包含en和zh的内容
+          // 我们只需要确保en字段保持原始内容，zh字段使用翻译结果
+          const updatedBlock = {
+            ...translatedBlock,
+            content: {
+              ...contentBlock.content,
+              en: originalBlock.content?.en || [] // 保持原始英文内容
+            }
+          };
+          
+          // 现在进入编辑状态并更新block
+          const switched = await switchToEdit(block.id, {
+            onRequestSave: ({ currentId }) => {
+              // 保存逻辑会在父组件中处理
+            },
+          });
+          
+          if (switched) {
+            // 更新block内容
+            if (onBlockUpdate) {
+              onBlockUpdate(updatedBlock);
+            }
+            toast.success('翻译完成', { id: 'translate-block' });
+          } else {
+            toast.error('无法进入编辑状态', { id: 'translate-block' });
+          }
+        } else {
+          toast.error('该block类型不支持翻译内容', { id: 'translate-block' });
+        }
+      } else {
+        toast.error('翻译失败，请稍后重试', { id: 'translate-block' });
+      }
+    } catch (error) {
+      console.error('翻译错误:', error);
+      toast.error(`翻译失败: ${error instanceof Error ? error.message : '未知错误'}`, { id: 'translate-block' });
+    }
+  }, [block, isUserPaper, paperId, userPaperId, canEditContent, switchToEdit, onBlockUpdate]);
 
   if (!canEditContent) return <>{children}</>;
 
@@ -622,6 +728,14 @@ export function BlockContextMenu({
         kind: 'item',
         label: '📝 通过文本解析添加',
         onSelect: onStartTextParse,
+      });
+    }
+    
+    if (onQuickTranslate) {
+      entries.push({
+        kind: 'item',
+        label: '🌐 快速翻译',
+        onSelect: handleQuickTranslate,
       });
     }
   }

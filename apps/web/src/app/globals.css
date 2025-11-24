@@ -433,6 +433,139 @@
   -ms-user-select: text;
 }
 
+/* 表格样式 - 自适应容器宽度，无横向滚动 */
+.table-wrapper table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 0.75rem;
+  line-height: 1.3;
+  background-color: white;
+  border-radius: 0.5rem;
+  overflow: hidden;
+  table-layout: auto; /* 允许浏览器自动调整列宽 */
+}
+
+.table-wrapper th,
+.table-wrapper td {
+  border: 1px solid #d1d5db;
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+  word-wrap: break-word;
+  word-break: break-word; /* 强制长单词换行 */
+  white-space: normal; /* 允许文本换行 */
+  max-width: none; /* 移除最大宽度限制 */
+}
+
+.table-wrapper th {
+  background-color: #f9fafb;
+  font-weight: 600;
+  color: #374151;
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  font-size: 0.7rem; /* 表头字体更小 */
+  padding: 5px 6px; /* 表头内边距更小 */
+}
+
+.table-wrapper tr:nth-child(even) {
+  background-color: #f9fafb;
+}
+
+.table-wrapper tr:hover {
+  background-color: #f3f4f6;
+}
+
+.table-wrapper caption {
+  caption-side: bottom;
+  padding-top: 8px;
+  font-size: 0.8rem;
+  color: #6b7280;
+  text-align: center;
+  font-style: italic;
+}
+
+/* 暗色模式下的表格样式 */
+.dark .table-wrapper table {
+  background-color: #1f2937;
+  color: #f9fafb;
+}
+
+.dark .table-wrapper th,
+.dark .table-wrapper td {
+  border-color: #4b5563;
+  color: #f9fafb;
+}
+
+.dark .table-wrapper th {
+  background-color: #374151;
+  color: #f9fafb;
+}
+
+.dark .table-wrapper tr:nth-child(even) {
+  background-color: #374151;
+}
+
+.dark .table-wrapper tr:hover {
+  background-color: #4b5563;
+}
+
+.dark .table-wrapper caption {
+  color: #9ca3af;
+}
+
+/* 表格响应式处理 - 针对不同屏幕尺寸调整字体 */
+@media (max-width: 1024px) {
+  .table-wrapper table {
+    font-size: 0.7rem;
+    line-height: 1.2;
+  }
+  
+  .table-wrapper th,
+  .table-wrapper td {
+    padding: 4px 6px;
+  }
+  
+  .table-wrapper th {
+    font-size: 0.65rem;
+    padding: 3px 4px;
+  }
+}
+
+@media (max-width: 768px) {
+  .table-wrapper table {
+    font-size: 0.65rem;
+    line-height: 1.1;
+  }
+  
+  .table-wrapper th,
+  .table-wrapper td {
+    padding: 3px 4px;
+  }
+  
+  .table-wrapper th {
+    font-size: 0.6rem;
+    padding: 2px 3px;
+  }
+}
+
+@media (max-width: 480px) {
+  .table-wrapper table {
+    font-size: 0.6rem;
+    line-height: 1.0;
+  }
+  
+  .table-wrapper th,
+  .table-wrapper td {
+    padding: 2px 3px;
+  }
+  
+  .table-wrapper th {
+    font-size: 0.55rem;
+    padding: 2px;
+  }
+}
+
 .prose * {
   user-select: text;
   -webkit-user-select: text;

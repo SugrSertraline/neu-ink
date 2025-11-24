@@ -227,6 +227,7 @@ class PaperContentService:
                 }
             
             # 确定插入位置，直接使用前端提供的值
+            # position为-1时表示添加到末尾，这是正确的行为
             if position is None:
                 position = -1
             
@@ -243,11 +244,17 @@ class PaperContentService:
                 return self._wrap_error("创建章节失败")
             
             # 更新论文的sectionIds，考虑插入位置
+            # 确保position参数正确传递，-1表示添加到末尾
+            # 添加调试日志
+            logger.info(f"添加章节 - paper_id: {paper_id}, section_id: {created_section['id']}, position: {position}")
+            
             if is_user_paper:
                 # 对于个人论文库，需要特殊处理sectionIds的更新
-                success = self._add_section_id_to_user_paper(paper_id, created_section["id"], position)
+                success = self._add_section_id_to_user_paper(paper_id, created_section["id"], position if position is not None else -1)
             else:
-                success = self.paper_model.add_section_id_at_position(paper_id, created_section["id"], position)
+                success = self.paper_model.add_section_id_at_position(paper_id, created_section["id"], position if position is not None else -1)
+            
+            logger.info(f"添加章节结果 - success: {success}")
             
             if success:
                 # 获取更新后的论文数据
@@ -263,8 +270,8 @@ class PaperContentService:
                         "addedSection": created_section,
                         "addedSectionId": created_section["id"],
                         "parentSectionId": parent_section_id,
-                        "position": position,
-                        "paper": updated_paper  # 添加完整的论文数据
+                        "position": position
+                        # 移除完整的论文数据，减少传输量
                     }
                 )
             else:
@@ -348,8 +355,8 @@ class PaperContentService:
                     "章节更新成功",
                     {
                         "updatedSection": updated_section,
-                        "sectionId": section_id,
-                        "paper": updated_paper  # 添加完整的论文数据
+                        "sectionId": section_id
+                        # 移除完整的论文数据，减少传输量
                     }
                 )
             else:
@@ -416,8 +423,8 @@ class PaperContentService:
                         updated_paper = self.paper_model.find_paper_with_sections(paper_id)
                     
                     return self._wrap_success("章节删除成功", {
-                        "deletedSectionId": section_id,
-                        "paper": updated_paper  # 添加完整的论文数据，保持一致性
+                        "deletedSectionId": section_id
+                        # 移除完整的论文数据，减少传输量
                     })
                 else:
                     return self._wrap_error("更新论文失败")
@@ -538,8 +545,8 @@ class PaperContentService:
                     f"成功向section添加了{len(new_blocks)}个blocks",
                     {
                         "addedBlocks": new_blocks,
-                        "sectionId": section_id,
-                        "paper": updated_paper  # 添加完整的论文数据
+                        "sectionId": section_id
+                        # 移除完整的论文数据，减少传输量
                     }
                 )
             else:
@@ -626,8 +633,8 @@ class PaperContentService:
                     {
                         "updatedBlock": target_block,
                         "blockId": target_block["id"],
-                        "sectionId": section_id,
-                        "paper": updated_paper  # 添加完整的论文数据
+                        "sectionId": section_id
+                        # 移除完整的论文数据，减少传输量
                     }
                 )
             else:
@@ -705,8 +712,8 @@ class PaperContentService:
                 
                 return self._wrap_success("block删除成功", {
                     "deletedBlockId": block_id,
-                    "sectionId": section_id,
-                    "paper": updated_paper  # 添加完整的论文数据
+                    "sectionId": section_id
+                    # 移除完整的论文数据，减少传输量
                 })
             else:
                 return self._wrap_error("更新章节失败")
@@ -804,8 +811,11 @@ class PaperContentService:
                 new_block["url"] = block_data["url"]
                 new_block["alt"] = block_data.get("alt", "")
             elif block_data.get("type") == "table":
-                new_block["headers"] = block_data.get("headers", ["Column 1", "Column 2"])
-                new_block["rows"] = block_data.get("rows", [[]])
+                # 新版表格数据结构：支持 caption 和 content 字段
+                # caption 应该包含 en 和 zh 两个语言版本
+                # content 是 HTML 字符串
+                new_block["caption"] = block_data.get("caption", {})
+                new_block["content"] = block_data.get("content", "<table><tr><td>空表格</td></tr></table>")
             elif block_data.get("type") in ["ordered-list", "unordered-list"]:
                 new_block["items"] = block_data.get("items", [
                     {
@@ -868,8 +878,8 @@ class PaperContentService:
                     {
                         "addedBlock": new_block,
                         "blockId": new_block["id"],
-                        "sectionId": section_id,
-                        "paper": updated_paper  # 添加完整的论文数据
+                        "sectionId": section_id
+                        # 移除完整的论文数据，减少传输量
                     }
                 )
             else:
@@ -1042,6 +1052,7 @@ class PaperContentService:
                     "tempBlockId": temp_block_id,
                     "sectionId": section_id,
                     "parseId": parse_id  # 新增：这一次解析的ParseBlocks ID
+                    # 移除完整的论文数据，减少传输量
                 }
             )
 
@@ -1251,9 +1262,12 @@ class PaperContentService:
             elif position == 0:
                 # 在最顶部插入
                 section_ids.insert(0, section_id)
-            else:
-                # 在指定位置插入
+            elif position > 0:
+                # 在指定位置插入（确保position是正数）
                 section_ids.insert(position, section_id)
+            else:
+                # position是负数但不是-1，默认添加到末尾
+                section_ids.append(section_id)
             
             # 更新个人论文的sectionIds
             return user_paper_model.update(user_paper_id, {"sectionIds": section_ids})

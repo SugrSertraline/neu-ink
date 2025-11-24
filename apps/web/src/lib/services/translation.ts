@@ -1,6 +1,7 @@
 // 翻译服务
 import { apiClient } from '@/lib/http';
 import { callAndNormalize, isSuccess } from '@/lib/http/normalize';
+import type { BlockContent } from '@/types/paper';
 
 export interface TranslationRequest {
   text: string;
@@ -12,6 +13,21 @@ export interface TranslationRequest {
 export interface TranslationResponse {
   originalText: string;
   translatedText: string;
+  model: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface BlockTranslationRequest {
+  block: BlockContent;
+  model?: string;
+  temperature?: number;
+  maxTokens?: number;
+}
+
+export interface BlockTranslationResponse {
+  originalBlock: BlockContent;
+  translatedBlock: BlockContent;
   model: string;
   temperature?: number;
   maxTokens?: number;
@@ -34,6 +50,36 @@ class TranslationService {
   async quickTranslation(request: TranslationRequest): Promise<TranslationResponse> {
     const normalized = await callAndNormalize<TranslationResponse>(
       apiClient.post<TranslationResponse>('/translation/quick', request)
+    );
+    
+    if (!isSuccess(normalized)) {
+      throw new Error(normalized.bizMessage || '翻译失败');
+    }
+    
+    return normalized.data;
+  }
+
+  /**
+   * 翻译block（管理员论文）
+   */
+  async translateAdminBlock(paperId: string, request: BlockTranslationRequest): Promise<BlockTranslationResponse> {
+    const normalized = await callAndNormalize<BlockTranslationResponse>(
+      apiClient.post<BlockTranslationResponse>(`/admin/papers/${paperId}/translate-block`, request)
+    );
+    
+    if (!isSuccess(normalized)) {
+      throw new Error(normalized.bizMessage || '翻译失败');
+    }
+    
+    return normalized.data;
+  }
+
+  /**
+   * 翻译block（用户论文）
+   */
+  async translateUserPaperBlock(entryId: string, request: BlockTranslationRequest): Promise<BlockTranslationResponse> {
+    const normalized = await callAndNormalize<BlockTranslationResponse>(
+      apiClient.post<BlockTranslationResponse>(`/user/papers/${entryId}/translate-block`, request)
     );
     
     if (!isSuccess(normalized)) {

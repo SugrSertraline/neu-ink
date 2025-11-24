@@ -20,8 +20,11 @@ import {
   RefreshCw,
   Download,
 } from 'lucide-react';
+import AttachmentPreview from './AttachmentPreview';
+import { PdfBlockHoverCard } from './PdfBlockHoverCard';
 import { userPaperService, adminPaperService } from '@/lib/services/paper';
 import type { PaperAttachments } from '@/types/paper/models';
+import type { PdfContentBlock, PdfAllBlock } from '@/types/paper/pdfBlocks';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
@@ -47,25 +50,20 @@ interface PaperAttachmentsDrawerProps {
   attachments: PaperAttachments;
   onAttachmentsChange: (attachments: PaperAttachments) => void;
   onSaveToServer: (data?: any) => Promise<void>;
+  onSectionAdded?: () => void; // 新增：章节添加后的回调
+  onAddBlockAsSection?: (sectionData: { id: string; title: string; titleZh: string; content: any[] }) => void;
+  onAddHeadingToSection?: (sectionId: string, position: 'start' | 'end', headingBlock: any) => void;
+  onAddParagraphToSection?: (sectionId: string, position: 'start' | 'end', paragraphBlock: any) => void;
+  onAddOrderedListToSection?: (sectionId: string, position: 'start' | 'end', orderedListBlock: any) => void;
+  onAddUnorderedListToSection?: (sectionId: string, position: 'start' | 'end', unorderedListBlock: any) => void;
+  onAddMathToSection?: (sectionId: string, position: 'start' | 'end', mathBlock: any) => void;
+  onAddFigureToSection?: (sectionId: string, position: 'start' | 'end', figureBlock: any) => void;
+  onAddTableToSection?: (sectionId: string, position: 'start' | 'end', tableBlock: any) => void;
+  sections?: any[]; // 新增：章节列表
 }
 
-// content_list.json 的内容块
-interface ContentBlock {
-  type: 'image' | 'table' | 'text' | 'equation';
-  bbox: [number, number, number, number]; // [x0, y0, x1, y1] 映射到 0-1000
-  page_idx: number; // 从 0 开始
-
-  text?: string;
-  text_level?: number;
-
-  img_path?: string;
-  image_caption?: string[];
-  image_footnote?: string[];
-
-  table_caption?: string[];
-  table_footnote?: string[];
-  table_body?: string;
-}
+// content_list.json 的内容块（使用新的 PDF 块类型）
+type ContentBlock = PdfAllBlock; // 使用 PdfAllBlock 以支持所有类型
 
 interface PdfViewerProps {
   url: string;
@@ -73,9 +71,21 @@ interface PdfViewerProps {
   userPaperId?: string | null;
   isAdmin?: boolean;
   isPersonalOwner?: boolean;
+  paperId?: string; // 添加 paperId 参数
 
   // 来自 content_list.json 的块
   contentList?: ContentBlock[];
+  // 新增：章节添加后的回调
+  onSectionAdded?: () => void;
+  onAddBlockAsSection?: (sectionData: { id: string; title: string; titleZh: string; content: any[] }) => void;
+  onAddHeadingToSection?: (sectionId: string, position: 'start' | 'end', headingBlock: any) => void;
+  onAddParagraphToSection?: (sectionId: string, position: 'start' | 'end', paragraphBlock: any) => void;
+  onAddOrderedListToSection?: (sectionId: string, position: 'start' | 'end', orderedListBlock: any) => void;
+  onAddUnorderedListToSection?: (sectionId: string, position: 'start' | 'end', unorderedListBlock: any) => void;
+  onAddMathToSection?: (sectionId: string, position: 'start' | 'end', mathBlock: any) => void;
+  onAddFigureToSection?: (sectionId: string, position: 'start' | 'end', figureBlock: any) => void;
+  onAddTableToSection?: (sectionId: string, position: 'start' | 'end', tableBlock: any) => void;
+  sections?: any[]; // 新增：章节列表
 }
 
 interface SidePanelProps {
@@ -126,7 +136,7 @@ function SidePanel({ open, onClose, children, className }: SidePanelProps) {
   const panel = (
     <div
       className={cn(
-        'fixed inset-0 z-[999] flex justify-end',
+        'fixed inset-0 z-999 flex justify-end',
         'transition-[visibility] duration-300',
         open ? 'visible' : 'invisible',
         !open && 'pointer-events-none',
@@ -171,6 +181,17 @@ function PdfViewer({
   isAdmin = false,
   isPersonalOwner = false,
   contentList,
+  paperId,
+  onSectionAdded,
+  onAddBlockAsSection,
+  onAddHeadingToSection,
+  onAddParagraphToSection,
+  onAddOrderedListToSection,
+  onAddUnorderedListToSection,
+  onAddMathToSection,
+  onAddFigureToSection,
+  onAddTableToSection,
+  sections = [],
 }: PdfViewerProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [numPages, setNumPages] = useState(0);
@@ -230,7 +251,7 @@ function PdfViewer({
     return () => {
       isMountedRef.current = false;
       cancelAllRenderTasks();
-      destroyPdf().catch(() => {});
+      destroyPdf().catch(() => { });
     };
   }, [cancelAllRenderTasks, destroyPdf]);
 
@@ -418,6 +439,17 @@ function PdfViewer({
     setZoom((z) => clampZoom(Number((z - 0.2).toFixed(2))));
   const zoomReset = () => setZoom(1);
 
+  // ===== 新增：处理添加为section的功能 =====
+  const handleAddAsSection = useCallback((sectionData: { id: string; title: string; titleZh: string; content: any[] }) => {
+    if (!onAddBlockAsSection) {
+      toast.error('添加章节功能不可用');
+      return;
+    }
+
+    // 直接交给上层（page.tsx）处理：乐观更新 + 调后端
+    onAddBlockAsSection(sectionData);
+  }, [onAddBlockAsSection]);
+
   // ===== 新增：统一组装 caption / footnote / table_body 的 tooltip 文本 =====
   const getBlockTooltip = (block: ContentBlock): string => {
     const joinLines = (lines?: string[]) =>
@@ -465,6 +497,12 @@ function PdfViewer({
       }
 
       return pieces.join('\n');
+    }
+
+    // 列表：处理 list 类型
+    if (block.type === 'list') {
+      const items = block.list_items || [];
+      return items.join('\n');
     }
 
     return '';
@@ -595,61 +633,57 @@ function PdfViewer({
                     const width = ((x1 - x0) / 1000) * 100;
                     const height = ((y1 - y0) / 1000) * 100;
 
-                    const tooltip = getBlockTooltip(block);
-
                     const isHeading =
-                      typeof block.text_level === 'number' &&
-                      block.text_level > 0;
+                      (block as any).text_level !== undefined &&
+                      typeof (block as any).text_level === 'number' &&
+                      (block as any).text_level > 0;
 
                     const baseColor =
                       block.type === 'image'
                         ? 'bg-amber-300/25 border-amber-400/80 hover:bg-amber-400/30'
                         : block.type === 'table'
-                        ? 'bg-emerald-300/25 border-emerald-400/80 hover:bg-emerald-400/30'
-                        : block.type === 'equation'
-                        ? 'bg-purple-300/25 border-purple-400/80 hover:bg-purple-400/30'
-                        : isHeading
-                        ? 'bg-sky-300/25 border-sky-500/80 hover:bg-sky-400/30'
-                        : 'bg-blue-300/15 border-blue-400/70 hover:bg-blue-400/25';
+                          ? 'bg-emerald-300/25 border-emerald-400/80 hover:bg-emerald-400/30'
+                          : block.type === 'equation'
+                            ? 'bg-purple-300/25 border-purple-400/80 hover:bg-purple-400/30'
+                            : block.type === 'list'
+                              ? 'bg-orange-300/25 border-orange-400/80 hover:bg-orange-400/30'
+                              : isHeading
+                                ? 'bg-sky-300/25 border-sky-500/80 hover:bg-sky-400/30'
+                                : 'bg-blue-300/15 border-blue-400/70 hover:bg-blue-400/25';
 
                     return (
-                      <div
+                      <PdfBlockHoverCard
                         key={`${pageIdx}-${i}`}
-                        className={cn(
-                          'absolute rounded-md border cursor-pointer transition-colors duration-150',
-                          'pointer-events-auto group',
-                          baseColor,
-                        )}
-                        style={{
-                          left: `${left}%`,
-                          top: `${top}%`,
-                          width: `${width}%`,
-                          height: `${height}%`,
-                        }}
-                        title={tooltip || undefined}
+                        block={block}
+                        onAddAsSection={handleAddAsSection}
+                        onAddHeadingToSection={onAddHeadingToSection}
+                        onAddParagraphToSection={onAddParagraphToSection}
+                        onAddOrderedListToSection={onAddOrderedListToSection}
+                        onAddUnorderedListToSection={onAddUnorderedListToSection}
+                        onAddMathToSection={onAddMathToSection}
+                        onAddFigureToSection={onAddFigureToSection}
+                        onAddTableToSection={onAddTableToSection}
+                        paperId={paperId}
+                        userPaperId={userPaperId}
+                        isPersonalOwner={isPersonalOwner}
+                        sections={sections}
                       >
-                        {/* hover 小角标（类型） */}
-                        <div className="pointer-events-none absolute right-0 top-0 translate-x-full -translate-y-full bg-slate-900 text-[10px] text-white px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 whitespace-nowrap shadow">
-                          {block.type}
-                          {block.text_level ? ` · H${block.text_level}` : ''}
-                        </div>
-
-                        {/* caption 预览：caption / footnote / table_body 的简要内容 */}
-                        {tooltip && (
-                          <div
-                            className={cn(
-                              'pointer-events-none absolute left-0 bottom-0 m-0.5',
-                              'max-w-[80%] overflow-hidden rounded bg-white/85 px-1.5 py-0.5',
-                              'text-[10px] leading-tight text-slate-900 shadow-sm',
-                              // 若项目已启用 line-clamp 插件，会生效；否则只是普通样式
-                              'line-clamp-2',
-                            )}
-                          >
-                            {tooltip}
-                          </div>
-                        )}
-                      </div>
+                        <div
+                          className={cn(
+                            'absolute rounded-md border transition-colors duration-150',
+                            'pointer-events-auto',
+                            baseColor,
+                          )}
+                          style={{
+                            left: `${left}%`,
+                            top: `${top}%`,
+                            width: `${width}%`,
+                            height: `${height}%`,
+                          }}
+                        />
+                      </PdfBlockHoverCard>
                     );
+
                   })}
                 </div>
               </div>
@@ -673,6 +707,16 @@ export function PaperAttachmentsDrawer({
   isAdmin = false,
   attachments,
   onAttachmentsChange,
+  onSectionAdded,
+  onAddBlockAsSection,
+  onAddHeadingToSection,
+  onAddParagraphToSection,
+  onAddOrderedListToSection,
+  onAddUnorderedListToSection,
+  onAddMathToSection,
+  onAddFigureToSection,
+  onAddTableToSection,
+  sections = [],
 }: PaperAttachmentsDrawerProps) {
   const [isUploading, setIsUploading] = useState(false);
 
@@ -736,172 +780,50 @@ export function PaperAttachmentsDrawer({
 
   const canEdit = isPersonalOwner || isAdmin;
 
-  // ===== PDF解析相关函数 =====
-  const handleParsePdfToMarkdown = async () => {
-    if (!attachments.pdf?.url) {
-      toast.error('没有找到PDF文件，无法解析');
-      return;
-    }
-    if (attachments.markdown) {
-      toast.error('已有Markdown文件，无需重复解析');
-      return;
-    }
-
-    setIsParsing(true);
-    setParsingProgress(0);
-    setParsingMessage('正在提交PDF解析任务...');
-
-    try {
-      let result;
-      if (isPersonalOwner && userPaperId) {
-        result = await userPaperService.parsePdfToMarkdown(userPaperId, false);
-      } else {
-        result = await adminPaperService.parsePdfToMarkdown(paperId, false);
-      }
-
-      if (result.bizCode === 0) {
-        setParsingTaskId(result.data.taskId);
-        setParsingMessage('PDF解析任务已提交，请点击"查看解析进度"获取最新状态');
-        toast.success('PDF解析任务已提交，请点击"查看解析进度"获取最新状态');
-      } else {
-        setIsParsing(false);
-        toast.error(result.bizMessage || 'PDF解析任务提交失败');
-      }
-    } catch (error) {
-      console.error('PDF解析任务提交异常:', error);
-      setIsParsing(false);
-      toast.error('PDF解析任务提交失败，请检查网络连接');
-    }
-  };
-
+  // ===== PDF解析进度检查函数 =====
   const handleCheckParsingProgress = async () => {
-    if (!parsingTaskId) {
-      try {
-        let tasksResult;
-        if (isPersonalOwner && userPaperId) {
-          tasksResult = await userPaperService.getPdfParseTasks(userPaperId);
-        } else {
-          tasksResult = await adminPaperService.getPdfParseTasks(paperId);
-        }
-
-        if (tasksResult.bizCode === 0 && tasksResult.data.tasks) {
-          const latestTask = tasksResult.data.tasks[0];
-          if (latestTask) {
-            setParsingTaskId(latestTask.taskId);
-            setParsingProgress(latestTask.progress || 0);
-            setParsingMessage(latestTask.message || '获取任务状态中...');
-            setIsParsing(true);
-
-            if (latestTask.message) toast.info(latestTask.message);
-          } else {
-            toast.error('没有找到解析任务');
-            return;
-          }
-        } else {
-          toast.error(tasksResult.bizMessage || '获取解析任务列表失败');
-          return;
-        }
-      } catch (error) {
-        console.error('获取解析任务列表失败:', error);
-        toast.error('获取解析任务列表失败');
-        return;
-      }
-    }
-
-    try {
-      let result;
-      if (isPersonalOwner && userPaperId) {
-        result = await userPaperService.getPdfParseTaskStatus(
-          userPaperId,
-          parsingTaskId!,
-        );
-      } else {
-        result = await adminPaperService.getPdfParseTaskStatus(
-          paperId,
-          parsingTaskId!,
-        );
-      }
-
-      if (result.bizCode === 0) {
-        const taskData = result.data;
-        setParsingProgress(taskData.progress);
-        setParsingMessage(taskData.message);
-
-        if (taskData.message) toast.info(taskData.message);
-
-        if (taskData.status === 'completed') {
-          setIsParsing(false);
-          toast.success('PDF解析完成，Markdown文件已生成');
-
-          if (taskData.markdownAttachment) {
-            onAttachmentsChange({
-              ...attachments,
-              markdown: taskData.markdownAttachment,
-            });
-          }
-
-          setTimeout(() => {
-            setParsingTaskId(null);
-            setParsingProgress(0);
-            setParsingMessage('');
-          }, 3000);
-        } else if (taskData.status === 'failed') {
-          setIsParsing(false);
-          toast.error(`PDF解析失败: ${taskData.message}`);
-
-          setTimeout(() => {
-            setParsingTaskId(null);
-            setParsingProgress(0);
-            setParsingMessage('');
-          }, 3000);
-        }
-      } else {
-        toast.error(result.bizMessage || '获取解析状态失败');
-      }
-    } catch (error) {
-      console.error('查询解析进度异常:', error);
-      toast.error('查询解析进度失败，请检查网络连接');
-    }
+    // 由于后端已移除PDF解析接口，这里只显示提示信息
+    toast.info('PDF解析功能已集成到上传流程中，上传PDF后会自动解析');
   };
 
-  // 进入抽屉时检查进行中的解析任务
-  useEffect(() => {
-    if (attachments.markdown || isParsing) return;
+  // 进入抽屉时不再检查进行中的解析任务
+  // useEffect(() => {
+  //   if (attachments.markdown || isParsing) return;
 
-    const checkExistingTasks = async () => {
-      try {
-        let tasksResult;
-        if (isPersonalOwner && userPaperId) {
-          tasksResult = await userPaperService.getPdfParseTasks(userPaperId);
-        } else {
-          tasksResult = await adminPaperService.getPdfParseTasks(paperId);
-        }
+  //   const checkExistingTasks = async () => {
+  //     try {
+  //       let tasksResult;
+  //       if (isPersonalOwner && userPaperId) {
+  //         tasksResult = await userPaperService.getPdfParseTasks(userPaperId);
+  //       } else {
+  //         tasksResult = await adminPaperService.getPdfParseTasks(paperId);
+  //       }
 
-        if (tasksResult.bizCode === 0 && tasksResult.data.tasks) {
-          const existingTask = tasksResult.data.tasks.find(
-            (task: any) =>
-              task.status === 'pending' || task.status === 'processing',
-          );
+  //       if (tasksResult.bizCode === 0 && tasksResult.data.tasks) {
+  //         const existingTask = tasksResult.data.tasks.find(
+  //           (task: any) =>
+  //             task.status === 'pending' || task.status === 'processing',
+  //         );
 
-          if (existingTask) {
-            setParsingTaskId(existingTask.taskId);
-            setParsingProgress(existingTask.progress || 0);
-            setParsingMessage(
-              existingTask.message || '检测到进行中的PDF解析任务',
-            );
-            setIsParsing(true);
-            toast.success(
-              '检测到进行中的PDF解析任务，可点击"查看解析进度"获取最新状态',
-            );
-          }
-        }
-      } catch (error) {
-        console.error('检查现有解析任务失败:', error);
-      }
-    };
+  //         if (existingTask) {
+  //           setParsingTaskId(existingTask.taskId);
+  //           setParsingProgress(existingTask.progress || 0);
+  //           setParsingMessage(
+  //             existingTask.message || '检测到进行中的PDF解析任务',
+  //           );
+  //           setIsParsing(true);
+  //           toast.success(
+  //             '检测到进行中的PDF解析任务，可点击"查看解析进度"获取最新状态',
+  //           );
+  //         }
+  //       }
+  //     } catch (error) {
+  //       console.error('检查现有解析任务失败:', error);
+  //     }
+  //   };
 
-    checkExistingTasks();
-  }, [paperId, userPaperId, isPersonalOwner, attachments.markdown, isParsing]);
+  //   checkExistingTasks();
+  // }, [paperId, userPaperId, isPersonalOwner, attachments.markdown, isParsing]);
 
   // ===== 上传/删除 =====
   const handlePdfUpload = async (
@@ -952,62 +874,6 @@ export function PaperAttachmentsDrawer({
     }
   };
 
-  const handleMarkdownUpload = async (
-    event: React.ChangeEvent<HTMLInputElement>,
-  ) => {
-    const file = event.target.files?.[0];
-    if (!file) return;
-
-    const fileName = file.name.toLowerCase();
-    const isMarkdownFile =
-      fileName.endsWith('.md') ||
-      fileName.endsWith('.markdown') ||
-      file.type === 'text/markdown' ||
-      file.type === 'text/plain';
-
-    if (!isMarkdownFile) {
-      toast.error('请选择Markdown文件(.md或.markdown)');
-      return;
-    }
-
-    setIsUploading(true);
-    try {
-      let result;
-      if (isPersonalOwner && userPaperId) {
-        result = await userPaperService.uploadUserPaperMarkdown(
-          userPaperId,
-          file,
-        );
-      } else {
-        result = await adminPaperService.uploadAdminPaperMarkdown(
-          paperId,
-          file,
-        );
-      }
-
-      if (result.bizCode === 0) {
-        onAttachmentsChange({
-          ...attachments,
-          markdown: {
-            url: result.data.url,
-            key: result.data.key,
-            size: result.data.size,
-            uploadedAt: result.data.uploadedAt,
-          },
-        });
-        toast.success('Markdown文件上传成功');
-      } else {
-        toast.error(result.bizMessage || 'Markdown文件上传失败');
-      }
-    } catch (error) {
-      console.error('Markdown上传异常:', error);
-      toast.error('Markdown文件上传失败，请检查网络连接或文件格式');
-    } finally {
-      setIsUploading(false);
-      event.target.value = '';
-    }
-  };
-
   const handleRemovePdf = async () => {
     setIsUploading(true);
     try {
@@ -1035,36 +901,6 @@ export function PaperAttachmentsDrawer({
     }
   };
 
-  const handleRemoveMarkdown = async () => {
-    setIsUploading(true);
-    try {
-      let result;
-      if (isPersonalOwner && userPaperId) {
-        result = await userPaperService.deleteUserPaperAttachment(
-          userPaperId,
-          'markdown',
-        );
-      } else {
-        result = await adminPaperService.deletePaperAttachment(
-          paperId,
-          'markdown',
-        );
-      }
-
-      if (result.bizCode === 0) {
-        onAttachmentsChange({ ...attachments, markdown: undefined });
-        toast.success('Markdown文件已移除');
-      } else {
-        toast.error(result.bizMessage || 'Markdown删除失败');
-      }
-    } catch (error) {
-      console.error('Markdown删除失败:', error);
-      toast.error('Markdown删除失败');
-    } finally {
-      setIsUploading(false);
-    }
-  };
-
   const formatFileSize = (bytes: number) => {
     if (!bytes) return '0 Bytes';
     const k = 1024;
@@ -1085,14 +921,6 @@ export function PaperAttachmentsDrawer({
         disabled={isUploading}
         className="hidden"
         id="pdf-upload"
-      />
-      <input
-        type="file"
-        accept=".md,.markdown"
-        onChange={handleMarkdownUpload}
-        disabled={isUploading}
-        className="hidden"
-        id="markdown-upload"
       />
 
       {/* Header */}
@@ -1139,21 +967,30 @@ export function PaperAttachmentsDrawer({
 
             {attachments.pdf ? (
               <div className="flex flex-wrap gap-2">
-                <Button
-                  asChild
-                  size="sm"
-                  className="rounded-xl"
-                  variant="secondary"
+                <AttachmentPreview
+                  attachmentUrl={attachments.pdf.url}
+                  attachmentType="pdf"
+                  paperId={paperId}
+                  userPaperId={userPaperId}
+                  isAdmin={isAdmin}
+                  isPersonalOwner={isPersonalOwner}
                 >
-                  <a
-                    href={attachments.pdf.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <Button
+                    asChild
+                    size="sm"
+                    className="rounded-xl"
+                    variant="secondary"
                   >
-                    <Download className="h-4 w-4 mr-1" />
-                    下载 PDF
-                  </a>
-                </Button>
+                    <a
+                      href={attachments.pdf.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <Download className="h-4 w-4 mr-1" />
+                      下载 PDF
+                    </a>
+                  </Button>
+                </AttachmentPreview>
 
                 {canEdit && (
                   <>
@@ -1213,7 +1050,7 @@ export function PaperAttachmentsDrawer({
             )}
           </div>
 
-          {/* Markdown Card */}
+          {/* Markdown Card - 只显示，不允许上传和删除 */}
           <div className="rounded-2xl border border-slate-100 bg-white/80 p-4 shadow-sm">
             <div className="flex items-center justify-between mb-2">
               <div className="flex items-center gap-2">
@@ -1237,97 +1074,39 @@ export function PaperAttachmentsDrawer({
 
             {attachments.markdown ? (
               <div className="flex flex-wrap gap-2">
-                <Button
-                  asChild
-                  size="sm"
-                  className="rounded-xl"
-                  variant="secondary"
+                <AttachmentPreview
+                  attachmentUrl={attachments.markdown.url}
+                  attachmentType="markdown"
+                  paperId={paperId}
+                  userPaperId={userPaperId}
+                  isAdmin={isAdmin}
+                  isPersonalOwner={isPersonalOwner}
                 >
-                  <a
-                    href={attachments.markdown.url}
-                    download
-                    target="_blank"
-                    rel="noopener noreferrer"
+                  <Button
+                    asChild
+                    size="sm"
+                    className="rounded-xl"
+                    variant="secondary"
                   >
-                    <Download className="h-4 w-4 mr-1" />
-                    下载 Markdown
-                  </a>
-                </Button>
-
-                {canEdit && (
-                  <>
-                    <Button
-                      size="sm"
-                      onClick={() =>
-                        (
-                          document.getElementById(
-                            'markdown-upload',
-                          ) as HTMLInputElement | null
-                        )?.click()
-                      }
-                      disabled={isUploading || isParsing}
-                      className="rounded-xl bg-[#3050A5] text-white hover:bg-[#28418A]"
+                    <a
+                      href={attachments.markdown.url}
+                      download
+                      target="_blank"
+                      rel="noopener noreferrer"
                     >
-                      <Upload className="h-4 w-4 mr-1" />
-                      重新上传
-                    </Button>
-
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={handleRemoveMarkdown}
-                      disabled={isUploading || isParsing}
-                      className="rounded-xl border border-[#FECACA] bg-[#FDF2F2]/90 text-[#B91C1C] hover:bg-[#FEE2E2] hover:text-[#991B1B]"
-                    >
-                      <Trash2 className="h-4 w-4 mr-1" />
-                      删除
-                    </Button>
-                  </>
-                )}
+                      <Download className="h-4 w-4 mr-1" />
+                      下载 Markdown
+                    </a>
+                  </Button>
+                </AttachmentPreview>
               </div>
             ) : (
               <div className="flex items-center gap-2">
-                {canEdit ? (
-                  <Button
-                    size="sm"
-                    onClick={() =>
-                      (
-                        document.getElementById(
-                          'markdown-upload',
-                        ) as HTMLInputElement | null
-                      )?.click()
-                    }
-                    disabled={isUploading || isParsing}
-                    className="rounded-xl bg-[#3050A5] text-white hover:bg-[#28418A]"
-                  >
-                    <Upload className="h-4 w-4 mr-1" />
-                    上传 Markdown
-                  </Button>
-                ) : (
-                  <span className="text-xs text-slate-500">无上传权限</span>
-                )}
+                <span className="text-xs text-slate-500">上传PDF后自动生成Markdown</span>
               </div>
             )}
           </div>
         </div>
-
-        {/* 解析按钮 */}
-        {canEdit && attachments.pdf && !attachments.markdown && !isParsing && (
-          <div className="mt-3 flex items-center justify-between rounded-xl border border-emerald-100 bg-emerald-50/80 p-3">
-            <div className="text-xs text-emerald-800">
-              你已上传 PDF，但还没有 Markdown，可直接从 PDF 自动解析生成。
-            </div>
-            <Button
-              size="sm"
-              onClick={handleParsePdfToMarkdown}
-              disabled={isUploading}
-              className="rounded-xl bg-emerald-600 text-white hover:bg-emerald-700"
-            >
-              <FileText className="h-4 w-4 mr-1" />
-              通过PDF解析生成Markdown
-            </Button>
-          </div>
-        )}
 
         {/* 解析进度 */}
         {isParsing && parsingTaskId && (
@@ -1386,7 +1165,18 @@ export function PaperAttachmentsDrawer({
               userPaperId={userPaperId}
               isAdmin={isAdmin}
               isPersonalOwner={isPersonalOwner}
+              paperId={paperId}
               contentList={contentList || undefined}
+              onSectionAdded={onSectionAdded}
+              onAddBlockAsSection={onAddBlockAsSection}
+              onAddHeadingToSection={onAddHeadingToSection}
+              onAddParagraphToSection={onAddParagraphToSection}
+              onAddOrderedListToSection={onAddOrderedListToSection}
+              onAddUnorderedListToSection={onAddUnorderedListToSection}
+              onAddMathToSection={onAddMathToSection}
+              onAddFigureToSection={onAddFigureToSection}
+              onAddTableToSection={onAddTableToSection}
+              sections={sections}
             />
           </div>
         ) : (

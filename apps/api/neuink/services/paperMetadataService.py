@@ -200,7 +200,7 @@ class PaperMetadataService:
                 "metadata": metadata,
                 "abstract": abstract,
                 "keywords": parsed_data.get("keywords", []),
-                "sections": [],  # 空的章节列表
+                "sections": [],  # 空的章节列表（不再使用）
                 "references": [],  # 空的参考文献列表
                 "attachments": {},  # 空的附件
                 "translationStatus": {
@@ -306,7 +306,7 @@ class PaperMetadataService:
                 "metadata": metadata,
                 "abstract": abstract,
                 "keywords": metadata.get("keywords", []),
-                "sections": [],  # 空的章节列表
+                "sections": [],  # 空的章节列表（不再使用）
                 "references": [],  # 空的参考文献列表
                 "attachments": {},  # 空的附件
                 "translationStatus": {

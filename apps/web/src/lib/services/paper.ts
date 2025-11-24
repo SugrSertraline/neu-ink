@@ -28,7 +28,6 @@ import {
   UpdatePaperVisibilityRequest,
   UpdatePaperVisibilityResult,
   UpdateReadingProgressRequest,
-  UpdateUserPaperRequest,
   UserPaper,
   UserPaperFilters,
   UserPaperListData,
@@ -45,23 +44,7 @@ import {
 } from '@/types/paper/index';
 import { apiClient, callAndNormalize } from '../http';
 import type { UnifiedResult } from '@/types/api';
-
-
-// —— 参数拼接工具 —— //
-function buildSearchParams(params: Record<string, any>): string {
-  const searchParams = new URLSearchParams();
-  Object.entries(params).forEach(([key, value]) => {
-    if (value !== undefined && value !== null && value !== '') {
-      if (Array.isArray(value)) {
-        value.forEach(v => searchParams.append(key, String(v)));
-      } else {
-        searchParams.append(key, String(value));
-      }
-    }
-  });
-  const qs = searchParams.toString();
-  return qs ? `?${qs}` : '';
-}
+import { buildSearchParams } from '../utils/index';
 
 // —— 公共论文库服务 —— //
 export const publicPaperService = {
@@ -72,7 +55,7 @@ export const publicPaperService = {
     filters: PublicPaperFilters = {}
   ): Promise<UnifiedResult<PaperListData>> {
     return callAndNormalize<PaperListData>(
-      apiClient.get(`/public/papers${buildSearchParams(filters)}`)
+      apiClient.get(`/public/papers${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
     );
   },
 
@@ -104,7 +87,7 @@ export const userPaperService = {
     filters: UserPaperFilters = {}
   ): Promise<UnifiedResult<UserPaperListData>> {
     return callAndNormalize<UserPaperListData>(
-      apiClient.get(`/user/papers${buildSearchParams(filters)}`)
+      apiClient.get(`/user/papers${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
     );
   },
 
@@ -123,18 +106,6 @@ export const userPaperService = {
   getUserPaperDetail(userPaperId: string): Promise<UnifiedResult<UserPaper>> {
     return callAndNormalize<UserPaper>(
       apiClient.get(`/user/papers/${userPaperId}`)
-    );
-  },
-
-  /**
-   * 更新个人论文
-   */
-  updateUserPaper(
-    userPaperId: string,
-    data: UpdateUserPaperRequest
-  ): Promise<UnifiedResult<UserPaper>> {
-    return callAndNormalize<UserPaper>(
-      apiClient.put(`/user/papers/${userPaperId}`, data)
     );
   },
 
@@ -299,6 +270,18 @@ export const userPaperService = {
   },
 
   /**
+   * 更新个人论文的参考文献
+   */
+  updateUserPaperReferences(
+    userPaperId: string,
+    references: any[]
+  ): Promise<UnifiedResult<{ references: any[]; totalReferences: number; paper: any }>> {
+    return callAndNormalize<{ references: any[]; totalReferences: number; paper: any }>(
+      apiClient.put(`/user/papers/${userPaperId}/references`, { references })
+    );
+  },
+
+  /**
    * 检查指定加载块的解析状态
    */
   checkBlockParsingStatus(
@@ -411,74 +394,6 @@ export const userPaperService = {
      );
   },
 
-  /**
-   * 上传个人论文Markdown附件
-   */
-  uploadUserPaperMarkdown(
-     userPaperId: string,
-     file: File
-   ): Promise<UnifiedResult<{ url: string; key: string; size: number; uploadedAt: string }>> {
-     const formData = new FormData();
-     formData.append('file', file);
-     formData.append('type', 'markdown');
-    
-     return callAndNormalize<{ url: string; key: string; size: number; uploadedAt: string }>(
-       apiClient.upload(`/user/papers/${userPaperId}/upload-markdown`, formData)
-     );
-  },
-
-  /**
-   * 通过PDF解析生成Markdown
-   */
-  parsePdfToMarkdown(
-     userPaperId: string,
-     autoUpload: boolean = true
-  ): Promise<UnifiedResult<{ taskId: string; message: string }>> {
-    return callAndNormalize<{ taskId: string; message: string }>(
-      apiClient.post(`/user/papers/${userPaperId}/parse-pdf-to-markdown`, { autoUpload })
-    );
-  },
-
-  /**
-   * 获取PDF解析任务状态
-   */
-  getPdfParseTaskStatus(
-     userPaperId: string,
-     taskId: string
-  ): Promise<UnifiedResult<{
-    taskId: string;
-    status: string;
-    progress: number;
-    message: string;
-    markdownContent?: string;
-    markdownAttachment?: any;
-    createdAt: string;
-    updatedAt: string;
-  }>> {
-    return callAndNormalize<{
-    taskId: string;
-    status: string;
-    progress: number;
-    message: string;
-    markdownContent?: string;
-    markdownAttachment?: any;
-    createdAt: string;
-    updatedAt: string;
-  }>(
-      apiClient.get(`/user/papers/${userPaperId}/pdf-parse-tasks/${taskId}`)
-    );
-  },
-
-  /**
-   * 获取用户论文的所有PDF解析任务
-   */
-  getPdfParseTasks(
-     userPaperId: string
-  ): Promise<UnifiedResult<{ tasks: any[] }>> {
-    return callAndNormalize<{ tasks: any[] }>(
-      apiClient.get(`/user/papers/${userPaperId}/pdf-parse-tasks`)
-    );
-  },
 
   /**
    * 通过PDF创建个人论文
@@ -535,6 +450,17 @@ export const userPaperService = {
       apiClient.get(`/user/papers/${userPaperId}/pdf-content`)
     );
   },
+
+ /**
+  * 获取用户论文的Markdown文件内容（base64格式）
+  */
+ getUserPaperMarkdownContent(
+   userPaperId: string
+ ): Promise<UnifiedResult<{ markdownContent: string; attachment: any }>> {
+   return callAndNormalize<{ markdownContent: string; attachment: any }>(
+     apiClient.get(`/user/papers/${userPaperId}/markdown-content`)
+   );
+ },
 };
 
 // —— 笔记服务 —— //
@@ -556,7 +482,7 @@ export const noteService = {
     filters: NoteFilters = {}
   ): Promise<UnifiedResult<NoteListData>> {
     return callAndNormalize<NoteListData>(
-      apiClient.get(`/notes/paper/${userPaperId}${buildSearchParams(filters)}`)
+      apiClient.get(`/notes/paper/${userPaperId}${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
     );
   },
 
@@ -577,7 +503,7 @@ export const noteService = {
    */
   getUserNotes(filters: NoteFilters = {}): Promise<UnifiedResult<NoteListData>> {
     return callAndNormalize<NoteListData>(
-      apiClient.get(`/notes/user${buildSearchParams(filters)}`)
+      apiClient.get(`/notes/user${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
     );
   },
 
@@ -589,7 +515,7 @@ export const noteService = {
     filters: Omit<NoteFilters, 'keyword'> = {}
   ): Promise<UnifiedResult<NoteListData>> {
     return callAndNormalize<NoteListData>(
-      apiClient.get(`/notes/search${buildSearchParams({ keyword, ...filters })}`)
+      apiClient.get(`/notes/search${buildSearchParams({ keyword, ...filters }) ? '?' + buildSearchParams({ keyword, ...filters }) : ''}`)
     );
   },
 
@@ -636,7 +562,7 @@ export const adminPaperService = {
     } = {}
   ): Promise<UnifiedResult<PaperListData>> {
     return callAndNormalize<PaperListData>(
-      apiClient.get(`/admin/papers${buildSearchParams(filters)}`)
+      apiClient.get(`/admin/papers${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
     );
   },
 
@@ -646,18 +572,6 @@ export const adminPaperService = {
   createPaper(data: Partial<Paper>): Promise<UnifiedResult<Paper>> {
     return callAndNormalize<Paper>(
       apiClient.post('/admin/papers', data)
-    );
-  },
-
-  /**
-   * 更新论文
-   */
-  updatePaper(
-    paperId: string, 
-    data: Partial<Paper>
-  ): Promise<UnifiedResult<Paper>> {
-    return callAndNormalize<Paper>(
-      apiClient.put(`/admin/papers/${paperId}`, data)
     );
   },
 
@@ -951,74 +865,6 @@ export const adminPaperService = {
      );
   },
 
-  /**
-   * 上传管理员论文Markdown附件
-   */
-  uploadAdminPaperMarkdown(
-    paperId: string,
-    file: File
-  ): Promise<UnifiedResult<{ url: string; key: string; size: number; uploadedAt: string }>> {
-    const formData = new FormData();
-    formData.append('file', file);
-    formData.append('type', 'markdown');
-    
-    return callAndNormalize<{ url: string; key: string; size: number; uploadedAt: string }>(
-       apiClient.upload(`/admin/papers/${paperId}/upload-markdown`, formData)
-     );
-  },
-
-  /**
-   * 通过PDF解析生成Markdown
-   */
-  parsePdfToMarkdown(
-     paperId: string,
-     autoUpload: boolean = true
-  ): Promise<UnifiedResult<{ taskId: string; message: string }>> {
-    return callAndNormalize<{ taskId: string; message: string }>(
-      apiClient.post(`/admin/papers/${paperId}/parse-pdf-to-markdown`, { autoUpload })
-    );
-  },
-
-  /**
-   * 获取PDF解析任务状态
-   */
-  getPdfParseTaskStatus(
-     paperId: string,
-     taskId: string
-  ): Promise<UnifiedResult<{
-    taskId: string;
-    status: string;
-    progress: number;
-    message: string;
-    markdownContent?: string;
-    markdownAttachment?: any;
-    createdAt: string;
-    updatedAt: string;
-  }>> {
-    return callAndNormalize<{
-    taskId: string;
-    status: string;
-    progress: number;
-    message: string;
-    markdownContent?: string;
-    markdownAttachment?: any;
-    createdAt: string;
-    updatedAt: string;
-  }>(
-      apiClient.get(`/admin/papers/${paperId}/pdf-parse-tasks/${taskId}`)
-    );
-  },
-
-  /**
-   * 获取论文的所有PDF解析任务
-   */
-  getPdfParseTasks(
-     paperId: string
-  ): Promise<UnifiedResult<{ tasks: any[] }>> {
-    return callAndNormalize<{ tasks: any[] }>(
-      apiClient.get(`/admin/papers/${paperId}/pdf-parse-tasks`)
-    );
-  },
 
   /**
    * 通过PDF创建管理员论文
@@ -1051,6 +897,17 @@ export const adminPaperService = {
    return callAndNormalize<{ pdfContent: string; attachment: any }>(
      apiClient.get(`/admin/papers/${paperId}/pdf-content`)
    );
+  },
+
+  /**
+   * 获取管理员论文的Markdown文件内容（base64格式）
+   */
+  getAdminPaperMarkdownContent(
+   paperId: string
+  ): Promise<UnifiedResult<{ markdownContent: string; attachment: any }>> {
+   return callAndNormalize<{ markdownContent: string; attachment: any }>(
+      apiClient.get(`/admin/papers/${paperId}/markdown-content`)
+    );
   },
 };
 

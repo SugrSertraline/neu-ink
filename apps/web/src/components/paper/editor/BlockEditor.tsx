@@ -5,7 +5,7 @@ import { useEditingState } from '@/stores/useEditingState';
 import { toast } from 'sonner';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { uploadImage, uploadPaperImage } from '@/lib/services/upload';
-import { parseHtmlTable, validateHtmlTable } from '@/lib/utils/tableParser';
+import { validateHtmlTable } from '@/lib/utils/tableParser';
 import type {
   BlockContent,
   Reference,
@@ -20,8 +20,6 @@ import type {
   OrderedListBlock,
   UnorderedListBlock,
   QuoteBlock,
-  TableCell,
-  TableRow,
 } from '@/types/paper';
 import InlineEditor from './InlineEditor';
 import {
@@ -1220,66 +1218,35 @@ function TableEditor({
   lang: 'en' | 'zh' | 'both';
   onSaveToServer?: (blockId: string, sectionId: string) => Promise<void>;
 }) {
-  const [editMode, setEditMode] = useState<'json' | 'html'>('html');
-  const [htmlInput, setHtmlInput] = useState('');
   const [htmlError, setHtmlError] = useState<string | null>(null);
   const { clearEditing } = useEditingState();
 
+  // 本地HTML内容状态
+  const [localContent, setLocalContent] = useState(block.content || '');
 
-  const handleHtmlParse = async () => {
-    if (!htmlInput.trim()) {
-      setHtmlError('请输入HTML表格代码');
-      return;
-    }
+  // 当外部block变化时同步
+  useEffect(() => {
+    setLocalContent(block.content || '');
+  }, [block.content]);
 
-    const validation = validateHtmlTable(htmlInput);
-    if (!validation.isValid) {
-      setHtmlError(validation.error || 'HTML表格代码无效');
-      return;
-    }
-
-    try {
-      const tableData = parseHtmlTable(htmlInput);
-      onChange({
-        ...block,
-        headers: tableData.headers,
-        rows: tableData.rows || []
-      });
-      setHtmlError(null);
-      toast.success('HTML表格解析成功，正在自动保存...');
-      
-      // 自动保存并退出编辑状态
-      if (onSaveToServer) {
-        try {
-          // 查找 block 所属的 section
-          let targetSectionId: string | null = null;
-          for (const section of allSections || []) {
-            const foundBlock = section.content?.find(b => b.id === block.id);
-            if (foundBlock) {
-              targetSectionId = section.id;
-              break;
-            }
-          }
-          
-          if (targetSectionId) {
-            await onSaveToServer(block.id, targetSectionId);
-          } else {
-            throw new Error('无法找到内容块所属的章节');
-          }
-          
-          toast.success('HTML表格解析并保存成功');
-          // 保存成功后，触发完成编辑
-          clearEditing();
-        } catch (error) {
-          const message = error instanceof Error ? error.message : '保存失败，请稍后重试';
-          toast.error('保存失败', { description: message });
-        }
+  const handleContentChange = (newContent: string) => {
+    setLocalContent(newContent);
+    setHtmlError(null);
+    
+    // 验证HTML表格代码
+    if (newContent.trim()) {
+      const validation = validateHtmlTable(newContent);
+      if (!validation.isValid) {
+        setHtmlError(validation.error || 'HTML表格代码无效');
+        return;
       }
-    } catch (error) {
-      const message = error instanceof Error ? error.message : '解析失败';
-      setHtmlError(message);
-      toast.error('HTML表格解析失败', { description: message });
     }
+    
+    // 更新block内容
+    onChange({
+      ...block,
+      content: newContent,
+    });
   };
 
   return (
@@ -1319,104 +1286,37 @@ function TableEditor({
         label="表格标题 (中文)"
       />
 
-      {/* 编辑模式选择 */}
-      <div className="flex gap-2 mb-4">
-        <button
-          type="button"
-          onClick={() => setEditMode('json')}
-          className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-            editMode === 'json'
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          JSON 编辑
-        </button>
-        <button
-          type="button"
-          onClick={() => setEditMode('html')}
-          className={`px-4 py-2 rounded text-sm font-medium transition-colors ${
-            editMode === 'html'
-              ? 'bg-blue-600 text-white'
-              : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-          }`}
-        >
-          HTML 导入
-        </button>
-      </div>
-
-      {/* JSON 编辑模式 */}
-      {editMode === 'json' && (
+      {/* HTML表格内容编辑 */}
+      <div className="space-y-4">
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">
-            表格数据 (JSON):
+            HTML 表格代码:
           </label>
           <textarea
-            value={JSON.stringify(
-              {
-                headers: block.headers,
-                rows: block.rows,
-                align: block.align,
-              },
-              null,
-              2
-            )}
-            onChange={(event) => {
-              try {
-                const data = JSON.parse(event.target.value) as Pick<
-                  TableBlock,
-                  'headers' | 'rows' | 'align'
-                >;
-                onChange({ ...block, ...data });
-              } catch {
-                /** 静默忽略解析错误 */
-              }
-            }}
-            className="w-full h-48 px-3 py-2 border border-gray-300 rounded font-mono text-xs"
+            value={localContent}
+            onChange={(e) => handleContentChange(e.target.value)}
+            placeholder={'请输入表格的HTML代码，例如:\n<table>\n  <tr>\n    <th>列1</th>\n    <th>列2</th>\n  </tr>\n  <tr>\n    <td>数据1</td>\n    <td>数据2</td>\n  </tr>\n</table>'}
+            className="w-full h-64 px-3 py-2 border border-gray-300 rounded font-mono text-sm"
           />
         </div>
-      )}
 
-      {/* HTML 导入模式 */}
-      {editMode === 'html' && (
-        <div className="space-y-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              HTML 表格代码:
-            </label>
-            <textarea
-              value={htmlInput}
-              onChange={(e) => setHtmlInput(e.target.value)}
-              placeholder={'请输入表格的HTML代码...'}
-              className="w-full h-48 px-3 py-2 border border-gray-300 rounded font-mono text-sm"
-            />
+        {htmlError && (
+          <div className="p-3 bg-red-50 border border-red-200 rounded text-red-600 text-sm">
+            {htmlError}
           </div>
+        )}
 
-          {htmlError && (
-            <div className="p-3 bg-red-50 border border-red-200 rounded text-red-600 text-sm">
-              {htmlError}
-            </div>
-          )}
 
-          <button
-            type="button"
-            onClick={handleHtmlParse}
-            className="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-          >
-            解析 HTML 表格
-          </button>
-
-          <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded">
-            <p className="font-medium mb-1">使用说明:</p>
-            <ul className="list-disc list-inside space-y-1">
-              <li>支持标准HTML表格代码，包括table、tr、td、th标签</li>
-              <li>支持colspan和rowspan属性创建复杂表格</li>
-              <li>th标签会被识别为表头单元格</li>
-              <li>解析后将替换当前表格数据</li>
-            </ul>
-          </div>
+        <div className="text-xs text-gray-500 bg-gray-50 p-3 rounded">
+          <p className="font-medium mb-1">使用说明:</p>
+          <ul className="list-disc list-inside space-y-1">
+            <li>直接输入完整的HTML表格代码</li>
+            <li>支持标准HTML表格标签：table、thead、tbody、tr、td、th</li>
+            <li>支持colspan和rowspan属性创建复杂表格</li>
+            <li>支持style属性自定义样式</li>
+          </ul>
         </div>
-      )}
+      </div>
     </div>
   );
 }
