@@ -4,11 +4,11 @@ import React from 'react';
 import { LogOut } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/store/auth';
 import MainLayout from '@/components/layout/MainLayout';
 
 export default function SettingsPage() {
-  const { logout } = useAuth();
+  const { logout } = useAuthStore();
 
   return (
     <div className="h-full overflow-auto bg-gray-50 dark:bg-gray-900">

@@ -183,12 +183,22 @@ export default function PaperHeader({
           {onOpenAttachments && (
             <button
               type="button"
-              onClick={onOpenAttachments}
+              onClick={(e) => {
+                console.log('附件按钮被点击了', e);
+                console.log('onOpenAttachments 函数:', onOpenAttachments);
+                console.log('hasAttachments:', hasAttachments);
+                if (onOpenAttachments) {
+                  onOpenAttachments();
+                }
+              }}
               className="inline-flex items-center gap-1 rounded-full border border-white/40 bg-white/40 px-4 py-1.5 text-sm text-slate-800 shadow-[0_10px_28px_rgba(15,23,42,0.16)] backdrop-blur-xl transition hover:bg-white/65 hover:shadow-[0_16px_40px_rgba(15,23,42,0.18)] disabled:cursor-not-allowed disabled:opacity-60 dark:border-slate-700/40 dark:bg-slate-800/40 dark:text-slate-100 dark:hover:bg-slate-700/55"
               title="管理附件"
             >
               <Paperclip className="h-4 w-4" />
               附件
+              {!hasAttachments && (
+                <span className="ml-1 text-xs opacity-70">(空)</span>
+              )}
             </button>
           )}
           

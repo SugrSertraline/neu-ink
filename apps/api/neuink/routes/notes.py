@@ -1,318 +1,304 @@
-"""
-笔记管理接口
-处理用户笔记的增删改查
-"""
-from flask import Blueprint, request, g
+# neuink/api/routes/notes.py
+import logging
+from flask import request, g, Blueprint
 
-from ..services.noteService import get_note_service
-from ..utils.auth import login_required
-from ..utils.common import (
+from neuink.models.context import create_paper_context
+from neuink.services.noteService import get_note_service
+from neuink.services.paperService import get_paper_service
+from neuink.services.userPaperService import get_user_paper_service
+from neuink.utils.auth import login_required
+from neuink.utils.common import (
     success_response,
     bad_request_response,
     internal_error_response,
     validate_required_fields,
 )
-from ..config.constants import BusinessCode
+from neuink.config.constants import BusinessCode
 
+logger = logging.getLogger(__name__)
+
+# 创建蓝图
 bp = Blueprint("notes", __name__)
 
 
 def _parse_pagination_args():
     """统一分页参数解析"""
     page = int(request.args.get("page", 1))
-    page_size = min(int(request.args.get("pageSize", 50)), 100)
+    page_size = min(int(request.args.get("pageSize", 20)), 100)
     return page, page_size
 
 
-@bp.route("", methods=["POST"])
+def _parse_sort_args():
+    """统一排序参数解析"""
+    sort_by = request.args.get("sortBy", "createdAt")
+    sort_order = request.args.get("sortOrder", "desc")
+    return sort_by, sort_order
+
+
+# ==================== 用户论文笔记操作 ====================
+
+@bp.route("/user/<entry_id>", methods=["GET"])
 @login_required
-def create_note():
+def get_user_paper_notes(entry_id):
     """
-    创建笔记
-    
-    请求体示例:
-    {
-        "userPaperId": "user_paper_123",
-        "blockId": "block_456",
-        "content": [
-            {
-                "type": "text",
-                "content": "这是我的笔记",
-                "style": {"bold": true, "color": "#ff0000"}
-            },
-            {
-                "type": "link",
-                "url": "https://example.com",
-                "children": [
-                    {"type": "text", "content": "参考链接"}
-                ]
-            }
-        ]
-    }
-    """
-    try:
-        data = request.get_json() or {}
-        
-        # 验证必需字段
-        required = ["userPaperId", "blockId", "content"]
-        error_msg = validate_required_fields(data, required)
-        if error_msg:
-            return bad_request_response(error_msg)
-        
-        # 验证 content 是数组
-        if not isinstance(data["content"], list):
-            return bad_request_response("content 必须是数组")
-
-        service = get_note_service()
-        result = service.create_note(
-            user_id=g.current_user["user_id"],
-            user_paper_id=data["userPaperId"],
-            block_id=data["blockId"],
-            content=data["content"],
-            plain_text=data.get("plainText"),
-            note_id=data.get("id"),  # 获取前端提供的ID
-        )
-
-        if result["code"] == BusinessCode.SUCCESS:
-            return success_response(result["data"], result["message"])
-        
-        # 确保错误信息被正确传递，使用200状态码但在响应体中包含业务错误码
-        error_message = result.get("message", "创建笔记失败")
-        return success_response(result["data"], error_message, result["code"])
-    
-    except Exception as exc:
-        return internal_error_response(f"服务器错误: {exc}")
-
-
-@bp.route("/paper/<user_paper_id>", methods=["GET"])
-@login_required
-def get_notes_by_paper(user_paper_id):
-    """
-    获取某篇论文的所有笔记
+    获取用户论文的所有笔记
     """
     try:
         page, page_size = _parse_pagination_args()
+        sort_by, sort_order = _parse_sort_args()
+        search = request.args.get("search")
+
+        # 先获取用户论文详情
+        user_paper_service = get_user_paper_service()
+        user_paper_result = user_paper_service.get_user_paper_detail(
+            user_paper_id=entry_id,
+            user_id=g.current_user["user_id"],
+        )
+
+        if user_paper_result["code"] != BusinessCode.SUCCESS:
+            return success_response(user_paper_result["data"], user_paper_result["message"], user_paper_result["code"])
+
+        user_paper = user_paper_result["data"]
+        if not user_paper:
+            return bad_request_response("论文数据不存在")
+
+        paper_id = user_paper.get("id")
+        if not paper_id:
+            return bad_request_response("无效的论文ID")
+
+        # 创建上下文
+        context = create_paper_context(
+            user_id=g.current_user["user_id"],
+            paper_type="user",
+            paper_id=paper_id,
+            user_paper_id=entry_id
+        )
 
         service = get_note_service()
         result = service.get_notes_by_paper(
-            user_id=g.current_user["user_id"],
-            user_paper_id=user_paper_id,
+            paper_id=paper_id,
+            context=context,
             page=page,
             page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            search=search
         )
 
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
-        
-        # 确保错误信息被正确传递，使用200状态码但在响应体中包含业务错误码
-        error_message = result.get("message", "获取笔记列表失败")
-        return success_response(result["data"], error_message, result["code"])
-    
-    except ValueError:
-        return bad_request_response("无效的参数格式")
+        return success_response(result["data"], result["message"], result["code"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
 
 
-@bp.route("/paper/<user_paper_id>/block/<block_id>", methods=["GET"])
+@bp.route("/user/<entry_id>", methods=["POST"])
 @login_required
-def get_notes_by_block(user_paper_id, block_id):
+def create_user_paper_note(entry_id):
     """
-    获取某个 block 的所有笔记
+    为用户论文创建笔记
     """
     try:
-        service = get_note_service()
-        result = service.get_notes_by_block(
+        data = request.get_json()
+        error_msg = validate_required_fields(data, ["blockId", "content"])
+        if error_msg:
+            return bad_request_response(error_msg)
+
+        # 验证用户论文是否存在且有权限
+        user_paper_service = get_user_paper_service()
+        user_paper_result = user_paper_service.get_user_paper_detail(
+            user_paper_id=entry_id,
             user_id=g.current_user["user_id"],
-            user_paper_id=user_paper_id,
-            block_id=block_id,
+        )
+
+        if user_paper_result["code"] != BusinessCode.SUCCESS:
+            return success_response(user_paper_result["data"], user_paper_result["message"], user_paper_result["code"])
+
+        user_paper = user_paper_result["data"]
+        if not user_paper:
+            return bad_request_response("论文数据不存在")
+
+        paper_id = user_paper.get("id")
+        if not paper_id:
+            return bad_request_response("无效的论文ID")
+
+        # 创建上下文
+        context = create_paper_context(
+            user_id=g.current_user["user_id"],
+            paper_type="user",
+            paper_id=paper_id,
+            user_paper_id=entry_id
+        )
+
+        service = get_note_service()
+        result = service.create_note(
+            paper_id=paper_id,
+            context=context,
+            block_id=data["blockId"],
+            content=data["content"]
         )
 
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
-        
-        # 确保错误信息被正确传递，使用200状态码但在响应体中包含业务错误码
-        error_message = result.get("message", "获取笔记失败")
-        return success_response(result["data"], error_message, result["code"])
-    
+        return success_response(result["data"], result["message"], result["code"])
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
 
 
-@bp.route("/user", methods=["GET"])
+@bp.route("/user/<entry_id>/<note_id>", methods=["PUT"])
 @login_required
-def get_user_notes():
+def update_user_paper_note(entry_id, note_id):
+    """
+    更新用户论文的笔记
+    """
+    try:
+        data = request.get_json()
+        if not data:
+            return bad_request_response("更新数据不能为空")
+
+        # 验证用户论文是否存在且有权限
+        user_paper_service = get_user_paper_service()
+        user_paper_result = user_paper_service.get_user_paper_detail(
+            user_paper_id=entry_id,
+            user_id=g.current_user["user_id"],
+        )
+
+        if user_paper_result["code"] != BusinessCode.SUCCESS:
+            return success_response(user_paper_result["data"], user_paper_result["message"], user_paper_result["code"])
+
+        user_paper = user_paper_result["data"]
+        if not user_paper:
+            return bad_request_response("论文数据不存在")
+
+        paper_id = user_paper.get("id")
+        if not paper_id:
+            return bad_request_response("无效的论文ID")
+
+        # 创建上下文
+        context = create_paper_context(
+            user_id=g.current_user["user_id"],
+            paper_type="user",
+            paper_id=paper_id,
+            user_paper_id=entry_id
+        )
+
+        service = get_note_service()
+        result = service.update_note(
+            note_id=note_id,
+            context=context,
+            update_data=data
+        )
+
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        return success_response(result["data"], result["message"], result["code"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/user/<entry_id>/<note_id>", methods=["DELETE"])
+@login_required
+def delete_user_paper_note(entry_id, note_id):
+    """
+    删除用户论文的笔记
+    """
+    try:
+        # 验证用户论文是否存在且有权限
+        user_paper_service = get_user_paper_service()
+        user_paper_result = user_paper_service.get_user_paper_detail(
+            user_paper_id=entry_id,
+            user_id=g.current_user["user_id"],
+        )
+
+        if user_paper_result["code"] != BusinessCode.SUCCESS:
+            return success_response(user_paper_result["data"], user_paper_result["message"], user_paper_result["code"])
+
+        user_paper = user_paper_result["data"]
+        if not user_paper:
+            return bad_request_response("论文数据不存在")
+
+        paper_id = user_paper.get("id")
+        if not paper_id:
+            return bad_request_response("无效的论文ID")
+
+        # 创建上下文
+        context = create_paper_context(
+            user_id=g.current_user["user_id"],
+            paper_type="user",
+            paper_id=paper_id,
+            user_paper_id=entry_id
+        )
+
+        service = get_note_service()
+        result = service.delete_note(
+            note_id=note_id,
+            context=context
+        )
+
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        return success_response(result["data"], result["message"], result["code"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+# ==================== 通用笔记操作 ====================
+
+@bp.route("/user/<note_id>", methods=["GET"])
+@login_required
+def get_note_detail(note_id):
+    """
+    获取笔记详情（仅限用户论文）
+    """
+    try:
+        # 创建上下文
+        context = create_paper_context(
+            user_id=g.current_user["user_id"],
+            paper_type="user"  # 仅支持用户论文笔记
+        )
+
+        service = get_note_service()
+        result = service.get_note_detail(
+            note_id=note_id,
+            context=context
+        )
+
+        if result["code"] == BusinessCode.SUCCESS:
+            return success_response(result["data"], result["message"])
+        return success_response(result["data"], result["message"], result["code"])
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/user/all", methods=["GET"])
+@login_required
+def get_user_all_notes():
     """
     获取用户的所有笔记（跨论文）
     """
     try:
         page, page_size = _parse_pagination_args()
+        sort_by, sort_order = _parse_sort_args()
+        search = request.args.get("search")
+
+        # 创建上下文
+        context = create_paper_context(
+            user_id=g.current_user["user_id"],
+            paper_type="user"
+        )
 
         service = get_note_service()
-        result = service.get_user_notes(
-            user_id=g.current_user["user_id"],
+        result = service.get_user_all_notes(
+            context=context,
             page=page,
             page_size=page_size,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            search=search
         )
 
         if result["code"] == BusinessCode.SUCCESS:
             return success_response(result["data"], result["message"])
-        
-        # 确保错误信息被正确传递，使用200状态码但在响应体中包含业务错误码
-        error_message = result.get("message", "获取用户笔记失败")
-        return success_response(result["data"], error_message, result["code"])
-    
-    except ValueError:
-        return bad_request_response("无效的参数格式")
-    except Exception as exc:
-        return internal_error_response(f"服务器错误: {exc}")
-
-
-@bp.route("/search", methods=["GET"])
-@login_required
-def search_notes():
-    """
-    搜索笔记内容
-    
-    查询参数:
-    - keyword: 搜索关键词（必需）
-    - page: 页码
-    - pageSize: 每页数量
-    """
-    try:
-        keyword = request.args.get("keyword")
-        if not keyword:
-            return bad_request_response("搜索关键词不能为空")
-        
-        page, page_size = _parse_pagination_args()
-
-        service = get_note_service()
-        result = service.search_notes(
-            user_id=g.current_user["user_id"],
-            keyword=keyword,
-            page=page,
-            page_size=page_size,
-        )
-
-        if result["code"] == BusinessCode.SUCCESS:
-            return success_response(result["data"], result["message"])
-        
-        # 确保错误信息被正确传递，使用200状态码但在响应体中包含业务错误码
-        error_message = result.get("message", "搜索笔记失败")
-        return success_response(result["data"], error_message, result["code"])
-    
-    except ValueError:
-        return bad_request_response("无效的参数格式")
-    except Exception as exc:
-        return internal_error_response(f"服务器错误: {exc}")
-
-
-@bp.route("/<note_id>", methods=["PUT"])
-@login_required
-def update_note(note_id):
-    """
-    更新笔记内容
-    
-    请求体示例:
-    {
-        "content": [
-            {
-                "type": "text",
-                "content": "更新后的笔记内容",
-                "style": {"bold": true}
-            }
-        ]
-    }
-    """
-    try:
-        data = request.get_json() or {}
-        
-        if not data:
-            return bad_request_response("更新数据不能为空")
-        
-        # 验证 content 格式
-        if "content" in data and not isinstance(data["content"], list):
-            return bad_request_response("content 必须是数组")
-
-        service = get_note_service()
-        # 确保包含 plainText 字段
-        update_data = data.copy()
-        if "plainText" in data:
-            update_data["plainText"] = data["plainText"]
-            
-        result = service.update_note(
-            note_id=note_id,
-            user_id=g.current_user["user_id"],
-            update_data=update_data,
-        )
-
-        if result["code"] == BusinessCode.SUCCESS:
-            return success_response(result["data"], result["message"])
-        
-        if result["code"] == BusinessCode.NOTE_NOT_FOUND:
-            return success_response(result["data"], result["message"], result["code"])
-        
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            return success_response(result["data"], result["message"], result["code"])
-        
-        # 确保错误信息被正确传递
-        error_message = result.get("message", "更新笔记失败")
-        return internal_error_response(error_message)
-    
-    except Exception as exc:
-        return internal_error_response(f"服务器错误: {exc}")
-
-
-@bp.route("/<note_id>", methods=["DELETE"])
-@login_required
-def delete_note(note_id):
-    """
-    删除笔记
-    """
-    try:
-        service = get_note_service()
-        result = service.delete_note(
-            note_id=note_id,
-            user_id=g.current_user["user_id"],
-        )
-
-        if result["code"] == BusinessCode.SUCCESS:
-            return success_response(result["data"], result["message"])
-        
-        if result["code"] == BusinessCode.NOTE_NOT_FOUND:
-            return success_response(result["data"], result["message"], result["code"])
-        
-        if result["code"] == BusinessCode.PERMISSION_DENIED:
-            # 确保错误信息被正确传递，使用200状态码但在响应体中包含业务错误码
-            error_message = result.get("message", "批量删除笔记失败")
-            return success_response(result["data"], error_message, result["code"])
-        
-        # 确保错误信息被正确传递
-        error_message = result.get("message", "删除笔记失败")
-        return internal_error_response(error_message)
-    
-    except Exception as exc:
-        return internal_error_response(f"服务器错误: {exc}")
-
-
-@bp.route("/paper/<user_paper_id>", methods=["DELETE"])
-@login_required
-def delete_notes_by_paper(user_paper_id):
-    """
-    删除某篇论文的所有笔记
-    """
-    try:
-        service = get_note_service()
-        result = service.delete_notes_by_paper(
-            user_paper_id=user_paper_id,
-            user_id=g.current_user["user_id"],
-        )
-
-        if result["code"] == BusinessCode.SUCCESS:
-            return success_response(result["data"], result["message"])
-        
-        # 使用200状态码但在响应体中包含业务错误码
         return success_response(result["data"], result["message"], result["code"])
-    
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")

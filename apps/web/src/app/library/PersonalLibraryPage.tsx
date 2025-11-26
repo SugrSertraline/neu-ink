@@ -4,7 +4,7 @@ import React from 'react';
 import { BookOpen, Tag, SlidersHorizontal, BookmarkMinus, Plus, Clock, Edit, Loader2, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/store/auth';
 import { Button } from '@/components/ui/button';
 import ViewModeSwitcher from '@/components/library/ViewModeSwitcher';
 import PaperCard from '@/components/library/PaperCard';
@@ -64,7 +64,7 @@ function buildCreatePayload(form: {
 }
 
 export default function PersonalLibraryPage() {
-  const { user } = useAuth();
+  const { user } = useAuthStore();
   const {
     items,
     loading,

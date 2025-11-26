@@ -8,7 +8,7 @@ import re
 import json
 import logging
 from typing import Dict, Any, Optional, List, Tuple
-from ..models.paper import PaperModel
+from ..models.adminPaper import AdminPaperModel
 from ..models.section import get_section_model
 from ..config.constants import BusinessCode
 from ..utils.llm_utils import get_llm_utils
@@ -37,7 +37,7 @@ def get_parsed_blocks_from_cache(temp_block_id: str) -> Optional[Dict[str, Any]]
 class PaperContentService:
     """Paper 内容操作服务类"""
 
-    def __init__(self, paper_model: PaperModel) -> None:
+    def __init__(self, paper_model: AdminPaperModel) -> None:
         self.paper_model = paper_model
         self.section_model = get_section_model()
 
@@ -377,61 +377,113 @@ class PaperContentService:
         删除指定章节
         """
         try:
+            logger.info(f"delete_section 开始 - paper_id: {paper_id}, section_id: {section_id}, user_id: {user_id}, is_admin: {is_admin}, is_user_paper: {is_user_paper}")
+            
             # 检查论文是否存在及权限
             # 对于个人论文库，需要特殊处理
             if is_user_paper:
-                # 个人论文库中的论文，直接通过section验证权限
-                paper = {"id": paper_id}  # 创建一个虚拟的paper对象用于后续验证
+                # 个人论文库中的论文，需要验证用户权限
+                logger.info(f"个人论文库模式，验证用户权限: {paper_id}, user_id: {user_id}")
+                
+                # 首先尝试在UserPaperModel中查找
+                from ..models.userPaper import UserPaperModel
+                user_paper_model = UserPaperModel()
+                user_paper = user_paper_model.find_by_id(paper_id)
+                
+                if user_paper:
+                    # 找到了用户论文，验证权限
+                    if user_paper.get("userId") != user_id:
+                        logger.error(f"用户权限不足 - user_paper userId: {user_paper.get('userId')}, user_id: {user_id}")
+                        return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
+                    
+                    # 创建一个虚拟的paper对象用于后续验证
+                    paper = {"id": paper_id}
+                    logger.info(f"个人论文库模式，权限验证通过")
+                else:
+                    # 如果在UserPaperModel中找不到，可能在AdminPaperModel中
+                    # 这种情况发生在用户直接访问公共论文时
+                    logger.info(f"在用户论文库中未找到，尝试在公共论文库中查找: {paper_id}")
+                    paper = self.paper_model.find_by_id(paper_id)
+                    
+                    if not paper:
+                        logger.error(f"论文在用户论文库和公共论文库中都不存在: {paper_id}")
+                        return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+                    
+                    # 对于公共论文，需要检查用户是否有权限
+                    # 这里暂时允许所有用户操作，因为前端已经做了权限控制
+                    logger.info(f"找到公共论文，允许操作: {paper_id}")
             else:
                 # 公共论文库中的论文，正常查找
+                logger.info(f"公共论文库模式，查找paper: {paper_id}")
                 paper = self.paper_model.find_by_id(paper_id)
                 if not paper:
+                    logger.error(f"论文不存在: {paper_id}")
                     return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+                logger.info(f"找到论文: {paper}")
 
             # 管理员可以操作所有论文（公开和私有的）
 
-            # 修改权限检查逻辑：如果是个人论文库中的操作，允许用户修改
+            # 修改权限检查逻辑：如果是个人论文库操作，权限已在上面验证
             # 只有在非个人论文库操作且非管理员的情况下，才检查创建者
             if not is_user_paper and not is_admin and paper.get("createdBy") != user_id:
+                logger.error(f"权限检查失败 - paper createdBy: {paper.get('createdBy')}, user_id: {user_id}")
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
 
             # 查找section
+            logger.info(f"查找section: {section_id}")
             target_section = self.section_model.find_by_id(section_id)
-            
+           
             if target_section is None:
+                logger.error(f"section不存在: {section_id}")
                 return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "指定的section不存在")
             
+            logger.info(f"找到section: {target_section}")
+           
             # 验证section属于该论文
             if target_section.get("paperId") != paper_id:
+                logger.error(f"section不属于该论文 - section paperId: {target_section.get('paperId')}, 期望paperId: {paper_id}")
                 return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此章节")
 
             # 删除section
+            logger.info(f"开始删除section: {section_id}")
             if self.section_model.delete(section_id):
+                logger.info(f"section删除成功: {section_id}")
+                
                 # 从论文中移除sectionId引用
                 if is_user_paper:
                     # 对于个人论文库，需要特殊处理sectionIds的更新
+                    logger.info(f"个人论文库模式，移除sectionId引用")
                     success = self._remove_section_id_from_user_paper(paper_id, section_id)
                 else:
+                    logger.info(f"公共论文库模式，移除sectionId引用")
                     success = self.paper_model.remove_section_id(paper_id, section_id)
+               
+                logger.info(f"移除sectionId引用结果: {success}")
                 
                 if success:
                     # 获取更新后的论文数据
                     if is_user_paper:
                         # 对于个人论文库，需要特殊处理
+                        logger.info(f"获取更新后的个人论文数据: {paper_id}")
                         updated_paper = self._get_user_paper_with_sections(paper_id)
                     else:
+                        logger.info(f"获取更新后的公共论文数据: {paper_id}")
                         updated_paper = self.paper_model.find_paper_with_sections(paper_id)
-                    
+                   
+                    logger.info(f"获取更新后的论文数据成功")
                     return self._wrap_success("章节删除成功", {
-                        "deletedSectionId": section_id
-                        # 移除完整的论文数据，减少传输量
+                        "deletedSectionId": section_id,
+                        "paper": updated_paper  # 添加完整的论文数据，确保前端能正确更新
                     })
                 else:
+                    logger.error(f"移除sectionId引用失败")
                     return self._wrap_error("更新论文失败")
             else:
+                logger.error(f"删除section失败: {section_id}")
                 return self._wrap_error("删除章节失败")
 
         except Exception as exc:
+            logger.error(f"delete_section 异常: {exc}", exc_info=True)
             return self._wrap_error(f"删除章节失败: {exc}")
 
     # ------------------------------------------------------------------
@@ -1250,29 +1302,42 @@ class PaperContentService:
             # 获取当前个人论文
             user_paper = user_paper_model.find_by_id(user_paper_id)
             if not user_paper:
+                logger.error(f"个人论文不存在: {user_paper_id}")
                 return False
                 
             # 获取当前的sectionIds
             section_ids = user_paper.get("sectionIds", [])
+            logger.info(f"添加前的sectionIds: {section_ids}, 要添加的section_id: {section_id}, position: {position}")
             
             # 确定插入位置
             if position == -1 or position >= len(section_ids):
                 # 在末尾添加
                 section_ids.append(section_id)
+                logger.info(f"在末尾添加section")
             elif position == 0:
                 # 在最顶部插入
                 section_ids.insert(0, section_id)
+                logger.info(f"在顶部插入section")
             elif position > 0:
                 # 在指定位置插入（确保position是正数）
                 section_ids.insert(position, section_id)
+                logger.info(f"在位置{position}插入section")
             else:
                 # position是负数但不是-1，默认添加到末尾
                 section_ids.append(section_id)
+                logger.info(f"position为负数但不是-1，默认添加到末尾")
             
-            # 更新个人论文的sectionIds
-            return user_paper_model.update(user_paper_id, {"sectionIds": section_ids})
+            logger.info(f"添加后的sectionIds: {section_ids}")
+            
+            # 使用update_direct方法进行原子更新，确保updatedAt字段正确更新
+            result = user_paper_model.update_direct(user_paper_id, {
+                "$set": {"sectionIds": section_ids}
+            })
+            
+            logger.info(f"更新个人论文sectionIds结果: {result}")
+            return result
         except Exception as e:
-            logger.error(f"更新个人论文库sectionIds失败: {e}")
+            logger.error(f"更新个人论文库sectionIds失败: {e}", exc_info=True)
             return False
 
     def _remove_section_id_from_user_paper(self, user_paper_id: str, section_id: str) -> bool:
@@ -1286,15 +1351,26 @@ class PaperContentService:
             # 获取当前个人论文
             user_paper = user_paper_model.find_by_id(user_paper_id)
             if not user_paper:
+                logger.error(f"个人论文不存在: {user_paper_id}")
                 return False
                 
             # 获取当前的sectionIds并移除指定的section_id
             section_ids = user_paper.get("sectionIds", [])
+            logger.info(f"移除前的sectionIds: {section_ids}, 要移除的section_id: {section_id}")
+            
             if section_id in section_ids:
                 section_ids.remove(section_id)
+                logger.info(f"移除后的sectionIds: {section_ids}")
+            else:
+                logger.warning(f"section_id {section_id} 不在sectionIds中")
             
-            # 更新个人论文的sectionIds
-            return user_paper_model.update(user_paper_id, {"sectionIds": section_ids})
+            # 使用update_direct方法进行原子更新，确保updatedAt字段正确更新
+            result = user_paper_model.update_direct(user_paper_id, {
+                "$set": {"sectionIds": section_ids}
+            })
+            
+            logger.info(f"更新个人论文sectionIds结果: {result}")
+            return result
         except Exception as e:
-            logger.error(f"从个人论文库移除sectionId失败: {e}")
+            logger.error(f"从个人论文库移除sectionId失败: {e}", exc_info=True)
             return False

@@ -8,7 +8,14 @@ from werkzeug.utils import secure_filename
 from flask import Blueprint, request, g, current_app
 
 
-from ..services.qiniuService import get_qiniu_service, is_qiniu_configured
+try:
+    from ..services.qiniuService import get_qiniu_service, is_qiniu_configured
+    QINIU_AVAILABLE = True
+except ImportError as e:
+    QINIU_AVAILABLE = False
+    get_qiniu_service = None
+    is_qiniu_configured = None
+    print(f"警告: 七牛云服务不可用，相关功能将被禁用: {str(e)}")
 from ..utils.auth import login_required
 from ..utils.common import (
     success_response,
@@ -62,6 +69,10 @@ def upload_image():
         }
     """
     try:
+        # 检查七牛云服务是否可用
+        if not QINIU_AVAILABLE:
+            return bad_request_response("七牛云服务不可用，请检查安装和配置")
+        
         # 检查七牛云是否已配置
         if not is_qiniu_configured():
             return bad_request_response("七牛云存储未配置，请联系管理员")
@@ -134,6 +145,10 @@ def upload_pdf():
         }
     """
     try:
+        # 检查七牛云服务是否可用
+        if not QINIU_AVAILABLE:
+            return bad_request_response("七牛云服务不可用，请检查安装和配置")
+        
         # 检查七牛云是否已配置
         if not is_qiniu_configured():
             return bad_request_response("七牛云存储未配置，请联系管理员")
@@ -204,6 +219,10 @@ def upload_document():
         }
     """
     try:
+        # 检查七牛云服务是否可用
+        if not QINIU_AVAILABLE:
+            return bad_request_response("七牛云服务不可用，请检查安装和配置")
+        
         # 检查七牛云是否已配置
         if not is_qiniu_configured():
             return bad_request_response("七牛云存储未配置，请联系管理员")
@@ -274,6 +293,10 @@ def upload_markdown():
         }
     """
     try:
+        # 检查七牛云服务是否可用
+        if not QINIU_AVAILABLE:
+            return bad_request_response("七牛云服务不可用，请检查安装和配置")
+        
         # 检查七牛云是否已配置
         if not is_qiniu_configured():
             return bad_request_response("七牛云存储未配置，请联系管理员")
@@ -345,6 +368,10 @@ def upload_paper_image():
         }
     """
     try:
+        # 检查七牛云服务是否可用
+        if not QINIU_AVAILABLE:
+            return bad_request_response("七牛云服务不可用，请检查安装和配置")
+        
         # 检查七牛云是否已配置
         if not is_qiniu_configured():
             return bad_request_response("七牛云存储未配置，请联系管理员")
@@ -432,6 +459,10 @@ def get_upload_token():
         }
     """
     try:
+        # 检查七牛云服务是否可用
+        if not QINIU_AVAILABLE:
+            return bad_request_response("七牛云服务不可用，请检查安装和配置")
+        
         # 检查七牛云是否已配置
         if not is_qiniu_configured():
             return bad_request_response("七牛云存储未配置，请联系管理员")
@@ -480,8 +511,8 @@ def get_upload_config():
         }
     """
     try:
-        # 检查七牛云是否已配置
-        configured = is_qiniu_configured()
+        # 检查七牛云服务是否可用
+        configured = QINIU_AVAILABLE and is_qiniu_configured()
         
         config = {
             "isConfigured": configured,

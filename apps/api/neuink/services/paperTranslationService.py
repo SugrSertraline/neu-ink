@@ -3,7 +3,7 @@ Paper 翻译服务
 处理论文翻译和数据迁移相关的操作
 """
 from typing import Dict, Any, Optional, Tuple, List
-from ..models.paper import PaperModel
+from ..models.adminPaper import AdminPaperModel
 from ..config.constants import BusinessCode
 from ..utils.llm_utils import get_llm_utils
 from ..utils.common import get_current_time
@@ -12,7 +12,7 @@ from ..utils.common import get_current_time
 class PaperTranslationService:
     """Paper 翻译服务类"""
 
-    def __init__(self, paper_model: PaperModel) -> None:
+    def __init__(self, paper_model: AdminPaperModel) -> None:
         self.paper_model = paper_model
 
     # ------------------------------------------------------------------

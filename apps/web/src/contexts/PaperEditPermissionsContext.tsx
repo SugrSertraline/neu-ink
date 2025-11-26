@@ -1,6 +1,5 @@
 import { createContext, useContext } from 'react';
-import { PaperEditPermissions } from '@/lib/hooks/usePaperEditPermissions';
-import { ViewerSource } from '@/types/paper/viewer';
+import type { PaperEditPermissions, ViewerSource } from '@/types/paper/viewer';
 
 const defaultPermissions: PaperEditPermissions = {
   source: 'public-guest' as ViewerSource,

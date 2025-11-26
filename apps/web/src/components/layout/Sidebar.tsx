@@ -7,7 +7,7 @@ import { useRouter } from 'next/navigation';
 import { NavItem } from '@/types/navigation';
 import { User } from '@/types/user';
 import { cn } from '@/lib/utils';
-import { useSidebarStore } from '@/stores/useSidebarStore';
+import { useSidebar, useUiStore } from '@/store/ui';
 import {
   Tooltip,
   TooltipContent,
@@ -51,7 +51,8 @@ export default function Sidebar({
   isAuthenticated,
 }: SidebarProps) {
   const router = useRouter();
-  const { isCollapsed, toggleSidebar } = useSidebarStore();
+  const { isCollapsed } = useSidebar();
+  const { toggle: toggleSidebar } = useUiStore((state) => state.sidebar);
   const [isMounted, setIsMounted] = React.useState(false);
   
   React.useEffect(() => {

@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState, useEffect, useRef, useCallback, Suspense } from 'react';
+import React, { useState, useEffect, useRef, useCallback, Suspense, useMemo } from 'react';
 import { X, Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
-import { useTabStore } from '@/stores/useTabStore';
+import { useTabStore } from '@/store/ui/tabStore';
 import { NavItem } from '@/types/navigation';
 import { cn } from '@/lib/utils';
 import {
@@ -18,6 +18,54 @@ interface TabBarProps {
   onNavigate: (item: NavItem) => void;
   onCloseTab: (tabId: string) => void;
   isAuthenticated: boolean;
+}
+
+// 防抖 Hook
+function useDebounce<T extends (...args: any[]) => any>(
+  callback: T,
+  delay: number
+): T {
+  const timeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
+  
+  const debouncedCallback = useCallback(
+    (...args: Parameters<T>) => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+      timeoutRef.current = setTimeout(() => callback(...args), delay);
+    },
+    [callback, delay]
+  ) as T;
+
+  useEffect(() => {
+    return () => {
+      if (timeoutRef.current) {
+        clearTimeout(timeoutRef.current);
+      }
+    };
+  }, []);
+
+  return debouncedCallback;
+}
+
+// 节流 Hook
+function useThrottle<T extends (...args: any[]) => any>(
+  callback: T,
+  delay: number
+): T {
+  const lastRun = useRef(Date.now());
+  
+  const throttledCallback = useCallback(
+    (...args: Parameters<T>) => {
+      if (Date.now() - lastRun.current >= delay) {
+        callback(...args);
+        lastRun.current = Date.now();
+      }
+    },
+    [callback, delay]
+  ) as T;
+
+  return throttledCallback;
 }
 
 const glowMap = {
@@ -38,6 +86,9 @@ const gradientMap = {
 
 type Badge = { label: string; variant: 'public' | 'personal' };
 
+// 标签页内容缓存
+const tabContentCache = new Map<string, any>();
+
 function TabBarContent({
   navItems,
   onNavigate,
@@ -51,11 +102,14 @@ function TabBarContent({
 
   const [showLeftGradient, setShowLeftGradient] = useState(false);
   const [showRightGradient, setShowRightGradient] = useState(false);
+  const [isNavigating, setIsNavigating] = useState(false);
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const tabBarRef = useRef<HTMLDivElement>(null);
+  const navigationTimeoutRef = useRef<NodeJS.Timeout | undefined>(undefined);
 
-  const visibleTabs = React.useMemo(() => {
+  // 优化的可见标签页计算
+  const visibleTabs = useMemo(() => {
     if (isAuthenticated) return tabs;
     return tabs.filter(tab => {
       const config = navItems.find(item => item.id === tab.id);
@@ -63,78 +117,15 @@ function TabBarContent({
     });
   }, [tabs, navItems, isAuthenticated]);
 
-  const currentHref = React.useMemo(() => {
+  // 优化的当前 href 计算
+  const currentHref = useMemo(() => {
     const base = pathname ?? '';
     const query = searchParams?.toString();
     return query ? `${base}?${query}` : base;
   }, [pathname, searchParams]);
 
-
-
-  useEffect(() => {
-    if (!activeTabId) return;
-    const timer = window.setTimeout(() => scrollToTab(activeTabId), 50);
-    return () => window.clearTimeout(timer);
-  }, [activeTabId]);
-
-  useEffect(() => {
-    if (!loadingTabId) return;
-    const targetTab = tabs.find(tab => tab.id === loadingTabId);
-    if (!targetTab) return;
-
-    if (currentHref === targetTab.path) {
-      const timer = window.setTimeout(() => setLoading(false, null), 160);
-      return () => window.clearTimeout(timer);
-    }
-  }, [loadingTabId, tabs, currentHref, setLoading]);
-
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    const handleWheel = (event: WheelEvent) => {
-      if (Math.abs(event.deltaX) > 0 || event.shiftKey) return;
-      if (Math.abs(event.deltaY) === 0) return;
-      event.preventDefault();
-      container.scrollLeft += event.deltaY;
-    };
-
-    container.addEventListener('wheel', handleWheel, { passive: false });
-    return () => container.removeEventListener('wheel', handleWheel);
-  }, []);
-
-  useEffect(() => {
-    const container = scrollContainerRef.current;
-    if (!container) return;
-
-    const checkScroll = () => {
-      const { scrollLeft: currentLeft, scrollWidth, clientWidth } = container;
-      setShowLeftGradient(currentLeft > 10);
-      setShowRightGradient(currentLeft < scrollWidth - clientWidth - 10);
-    };
-
-    checkScroll();
-    container.addEventListener('scroll', checkScroll);
-    window.addEventListener('resize', checkScroll);
-
-    return () => {
-      container.removeEventListener('scroll', checkScroll);
-      window.removeEventListener('resize', checkScroll);
-    };
-  }, [visibleTabs]);
-
-
-  const scrollToDirection = (direction: 'left' | 'right') => {
-    if (!scrollContainerRef.current) return;
-    const scrollAmount = 220;
-    const delta = direction === 'left' ? -scrollAmount : scrollAmount;
-    scrollContainerRef.current.scrollTo({
-      left: scrollContainerRef.current.scrollLeft + delta,
-      behavior: 'smooth',
-    });
-  };
-
-  const scrollToTab = (tabId: string) => {
+  // 防抖的滚动到标签页函数
+  const debouncedScrollToTab = useDebounce((tabId: string) => {
     const element = document.querySelector<HTMLElement>(`[data-tab-id="${tabId}"]`);
     if (!element || !scrollContainerRef.current) return;
 
@@ -143,9 +134,82 @@ function TabBarContent({
       block: 'nearest',
       inline: 'center',
     });
-  };
+  }, 100);
 
-  const closeTab = useCallback(
+  // 节流的滚动检查函数
+  const throttledCheckScroll = useThrottle(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    const { scrollLeft: currentLeft, scrollWidth, clientWidth } = container;
+    setShowLeftGradient(currentLeft > 10);
+    setShowRightGradient(currentLeft < scrollWidth - clientWidth - 10);
+  }, 16); // 约 60fps
+
+  // 优化的标签页切换函数
+  const optimizedClickTab = useCallback(async (tabId: string) => {
+    if (isNavigating) return;
+    
+    const tab = tabs.find(item => item.id === tabId);
+    if (!tab) return;
+
+    // 如果点击的是当前活动标签页，不做任何操作
+    if (tabId === activeTabId && currentHref === tab.path) {
+      return;
+    }
+
+    const navItem = navItems.find(item => item.id === tabId);
+    if (navItem) {
+      onNavigate(navItem);
+      return;
+    }
+
+    // 对于论文类型的标签页，直接进行导航
+    if (tab.type === 'paper') {
+      setIsNavigating(true);
+      setActiveTab(tabId);
+      setLoading(true, tabId);
+
+      try {
+        await router.push(tab.path);
+      } catch (error) {
+        console.error('Navigation error:', error);
+        setLoading(false, null);
+      } finally {
+        // 使用防抖来重置导航状态
+        if (navigationTimeoutRef.current) {
+          clearTimeout(navigationTimeoutRef.current);
+        }
+        navigationTimeoutRef.current = setTimeout(() => {
+          setIsNavigating(false);
+        }, 300);
+      }
+      return;
+    }
+
+    // 对于其他类型的标签页
+    setIsNavigating(true);
+    setActiveTab(tabId);
+    setLoading(true, tabId);
+
+    try {
+      await router.push(tab.path);
+    } catch (error) {
+      console.error('Navigation error:', error);
+      setLoading(false, null);
+    } finally {
+      // 使用防抖来重置导航状态
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+      }
+      navigationTimeoutRef.current = setTimeout(() => {
+        setIsNavigating(false);
+      }, 300);
+    }
+  }, [isNavigating, tabs, activeTabId, currentHref, navItems, onNavigate, setActiveTab, setLoading, router]);
+
+  // 优化的关闭标签页函数
+  const optimizedCloseTab = useCallback(
     async (tabId: string) => {
       if (tabId === 'public-library') return;
 
@@ -170,36 +234,38 @@ function TabBarContent({
 
         if (targetTab) {
           const targetHref = targetTab.path;
-          const [targetPathname] = targetHref.split('?');
-
           setActiveTab(targetTab.id);
 
           if (currentHref === targetHref) {
             setLoading(false, null);
+            // 立即恢复滚动位置
+            requestAnimationFrame(() => {
+              const updatedMainElement = document.querySelector('main');
+              if (currentMainScrollTop > 0 && updatedMainElement) {
+                updatedMainElement.scrollTop = currentMainScrollTop;
+              } else {
+                window.scrollTo(0, currentScrollY);
+              }
+            });
           } else {
             setLoading(true, targetTab.id);
             try {
               await router.push(targetHref);
               
-              // 延迟恢复滚动位置，等待 DOM 完全更新
-              setTimeout(() => {
-                // 等待下一个事件循环，确保布局稳定
-                const restoreScroll = () => {
-                  const updatedMainElement = document.querySelector('main');
-                  if (currentMainScrollTop > 0 && updatedMainElement) {
-                    updatedMainElement.scrollTop = currentMainScrollTop;
-                  } else {
-                    window.scrollTo(0, currentScrollY);
-                  }
-                };
-                
-                // 使用 requestAnimationFrame 确保 DOM 更新完成
-                requestAnimationFrame(() => {
-                  requestAnimationFrame(restoreScroll);
-                });
-              }, 150);
+              // 优化的滚动位置恢复
+              const restoreScroll = () => {
+                const updatedMainElement = document.querySelector('main');
+                if (currentMainScrollTop > 0 && updatedMainElement) {
+                  updatedMainElement.scrollTop = currentMainScrollTop;
+                } else {
+                  window.scrollTo(0, currentScrollY);
+                }
+              };
+              
+              // 使用更少的 requestAnimationFrame
+              requestAnimationFrame(restoreScroll);
             } catch (error) {
-              // 静默处理导航错误
+              console.error('Navigation error during tab close:', error);
               setLoading(false, null);
             }
           }
@@ -207,11 +273,13 @@ function TabBarContent({
       }
 
       removeTab(tabId);
+      
+      // 清理缓存
+      tabContentCache.delete(tabId);
     },
     [
       activeTabId,
       currentHref,
-      pathname,
       removeTab,
       router,
       setActiveTab,
@@ -221,31 +289,82 @@ function TabBarContent({
     ],
   );
 
-  const onClickTab = (tabId: string) => {
-    const tab = tabs.find(item => item.id === tabId);
-    if (!tab) return;
+  // 优化的滚动方向函数
+  const scrollToDirection = useCallback((direction: 'left' | 'right') => {
+    if (!scrollContainerRef.current) return;
+    const scrollAmount = 220;
+    const delta = direction === 'left' ? -scrollAmount : scrollAmount;
+    scrollContainerRef.current.scrollTo({
+      left: scrollContainerRef.current.scrollLeft + delta,
+      behavior: 'smooth',
+    });
+  }, []);
 
-    // 如果点击的是当前活动标签页，不做任何操作
-    if (tabId === activeTabId && currentHref === tab.path) {
-      return;
+  // 优化的效果
+  useEffect(() => {
+    if (!activeTabId) return;
+    debouncedScrollToTab(activeTabId);
+  }, [activeTabId, debouncedScrollToTab]);
+
+  useEffect(() => {
+    if (!loadingTabId) return;
+    const targetTab = tabs.find(tab => tab.id === loadingTabId);
+    if (!targetTab) return;
+
+    // 当当前路径与目标标签页路径匹配时，清除加载状态
+    if (currentHref === targetTab.path) {
+      const timer = window.setTimeout(() => setLoading(false, null), 160);
+      return () => window.clearTimeout(timer);
     }
-
-    const navItem = navItems.find(item => item.id === tabId);
-    if (navItem) {
-      onNavigate(navItem);
-      return;
+    
+    // 对于论文类型的标签页，检查路径是否匹配（忽略查询参数）
+    if (targetTab.type === 'paper') {
+      const currentPath = pathname || '';
+      const targetPath = new URL(targetTab.path, window.location.origin).pathname;
+      if (currentPath === targetPath) {
+        const timer = window.setTimeout(() => setLoading(false, null), 160);
+        return () => window.clearTimeout(timer);
+      }
     }
+  }, [loadingTabId, tabs, currentHref, pathname, setLoading]);
 
-    setActiveTab(tabId);
-    setLoading(true, tabId);
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
 
-    try {
-      router.push(tab.path);
-    } catch (error) {
-      // 静默处理导航错误
-      setLoading(false, null);
-    }
-  };
+    const handleWheel = (event: WheelEvent) => {
+      if (Math.abs(event.deltaX) > 0 || event.shiftKey) return;
+      if (Math.abs(event.deltaY) === 0) return;
+      event.preventDefault();
+      container.scrollLeft += event.deltaY;
+    };
+
+    container.addEventListener('wheel', handleWheel, { passive: false });
+    return () => container.removeEventListener('wheel', handleWheel);
+  }, []);
+
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container) return;
+
+    throttledCheckScroll();
+    container.addEventListener('scroll', throttledCheckScroll);
+    window.addEventListener('resize', throttledCheckScroll);
+
+    return () => {
+      container.removeEventListener('scroll', throttledCheckScroll);
+      window.removeEventListener('resize', throttledCheckScroll);
+    };
+  }, [visibleTabs, throttledCheckScroll]);
+
+  // 清理函数
+  useEffect(() => {
+    return () => {
+      if (navigationTimeoutRef.current) {
+        clearTimeout(navigationTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const handleTabKeyDown = (
     event: React.KeyboardEvent<HTMLDivElement>,
@@ -255,13 +374,13 @@ function TabBarContent({
     if (disabled) return;
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      onClickTab(tabId);
+      optimizedClickTab(tabId);
     }
   };
 
   const handleCloseTabClick = (event: React.MouseEvent, tabId: string) => {
     event.stopPropagation();
-    void closeTab(tabId);
+    void optimizedCloseTab(tabId);
   };
 
   const isTabClosable = (tabId: string) => tabId !== 'public-library';
@@ -359,17 +478,21 @@ function TabBarContent({
                     <TooltipTrigger asChild>
                       <div
                         role="button"
-                        tabIndex={isLoading ? -1 : 0}
-                        aria-disabled={isLoading}
+                        tabIndex={isLoading || isNavigating ? -1 : 0}
+                        aria-disabled={isLoading || isNavigating}
                         data-tab-id={tab.id}
                         data-glow="true"
-                        onClick={() => onClickTab(tab.id)}
-                        onKeyDown={event => handleTabKeyDown(event, tab.id, isLoading)}
+                        onClick={() => optimizedClickTab(tab.id)}
+                        onKeyDown={event => handleTabKeyDown(event, tab.id, isLoading || isNavigating)}
                         onMouseDown={event => {
                           event.stopPropagation();
-                          if (isLoading) event.preventDefault();
+                          if (isLoading || isNavigating) event.preventDefault();
                         }}
-                        className={cn(baseBtn, activeStyles, isLoading && 'opacity-80 cursor-wait')}
+                        className={cn(
+                          baseBtn, 
+                          activeStyles, 
+                          (isLoading || isNavigating) && 'opacity-80 cursor-wait'
+                        )}
                       >
                         {isActive && (
                           <div className="absolute left-0 top-1/2 -translate-y-1/2 h-7 w-[3px] rounded-r-full bg-white shadow-[0_0_9px_rgba(255,255,255,0.58)]" />
@@ -416,7 +539,6 @@ function TabBarContent({
                                 ? 'bg-white/34 text-white hover:bg-white/48 hover:text-white border-white/50'
                                 : 'bg-white/48 hover:bg-white/70 hover:text-slate-600 text-slate-400 border-white/40 opacity-0 group-hover/tab:opacity-100',
                             )}
-                            // data-glow="true"
                           >
                             <X className="w-3.5 h-3.5" />
                           </button>

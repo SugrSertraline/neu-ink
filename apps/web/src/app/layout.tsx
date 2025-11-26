@@ -1,8 +1,6 @@
 import type { Metadata } from 'next';
 import './globals.css';
 import { AuthProvider } from '@/contexts/AuthContext';
-import { TabProvider } from '@/stores/useTabStore';
-import { EditingProvider } from '@/stores/useEditingState';
 import MainLayout from '@/components/layout/MainLayout';
 import { Toaster } from '@/components/ui/sonner'
 import 'katex/dist/katex.min.css';
@@ -18,14 +16,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh-CN">
       <body className="antialiased" suppressHydrationWarning>
         <AuthProvider>
-          <TabProvider>
-            <EditingProvider>
-              <MainLayout>
-                {children}
-              </MainLayout>
-              <Toaster />
-            </EditingProvider>
-          </TabProvider>
+          <MainLayout>
+            {children}
+          </MainLayout>
+          <Toaster />
         </AuthProvider>
       </body>
     </html>

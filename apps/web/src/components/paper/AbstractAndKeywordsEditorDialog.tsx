@@ -34,7 +34,6 @@ export interface AbstractAndKeywordsEditorDialogProps {
   isSubmitting?: boolean;
   externalError?: string | null;
   userPaperId?: string;
-  paperId?: string; // 兼容性保留，不使用
   autoSave?: boolean;
   autoSaveDelay?: number; // ms
 }
@@ -86,7 +85,6 @@ export default function AbstractAndKeywordsEditorDialog({
   isSubmitting,
   externalError,
   userPaperId,
-  paperId,
   autoSave = false,
   autoSaveDelay = 2000,
 }: AbstractAndKeywordsEditorDialogProps) {

@@ -172,19 +172,21 @@ export default function InlineEditor({
   };
 
   const editor = useEditor({
-    immediatelyRender: false,
+    immediatelyRender: true, // 启用立即渲染，减少初始延迟
     extensions,
     content: inlineContentToTiptap(value),
     onUpdate: ({ editor: ed }) => {
       // 只更新本地状态，不触发保存
       onChange(tiptapToInlineContent(ed.getJSON()));
-      // 内容更新后调整高度
-      setTimeout(updateEditorHeight, 0);
+      // 内容更新后调整高度，使用 requestAnimationFrame 优化性能
+      requestAnimationFrame(updateEditorHeight);
     },
     onSelectionUpdate: () => bumpSelectionTicker(),
-    onCreate: () => {
-      // 编辑器创建后调整高度
-      setTimeout(updateEditorHeight, 100);
+    onCreate: ({ editor: ed }) => {
+      // 编辑器创建后立即调整高度，不使用延迟
+      updateEditorHeight();
+      // 立即聚焦编辑器，提供更好的用户体验
+      ed.commands.focus();
     },
     editorProps: {
       attributes: {
@@ -198,7 +200,8 @@ export default function InlineEditor({
   // 当外部值变化时更新高度
   useEffect(() => {
     if (editor) {
-      setTimeout(updateEditorHeight, 100);
+      // 使用 requestAnimationFrame 优化性能，减少延迟
+      requestAnimationFrame(updateEditorHeight);
     }
   }, [value, editor]);
 
@@ -516,7 +519,39 @@ export default function InlineEditor({
     selectionTicker,
   ]);
 
-  if (!editor) return null;
+  // 添加加载状态指示器，但确保编辑器能够快速显示
+  if (!editor) {
+    return (
+      <div className="space-y-2">
+        {label && (
+          <label className="block text-sm font-medium text-gray-700">{label}</label>
+        )}
+        <div className="flex items-center gap-1 p-2 bg-white border border-gray-300 rounded-t-lg flex-wrap relative shadow-sm z-10">
+          <div className="text-xs text-gray-400">正在加载编辑器...</div>
+        </div>
+        <div className="border border-gray-300 rounded-b-lg bg-white shadow-sm">
+          <div
+            className="prose prose-sm max-w-none focus:outline-none p-3"
+            style={{ minHeight: `${minHeight}px` }}
+            dangerouslySetInnerHTML={{
+              __html: value.map(item => {
+                if (item.type === 'text') return item.content;
+                if (item.type === 'link') return item.children?.map(child => child.type === 'text' ? child.content : '').join('') || '';
+                if (item.type === 'citation') return item.displayText;
+                if (item.type === 'inline-math') return `$${item.latex}$`;
+                if (item.type === 'figure-ref') return item.displayText;
+                if (item.type === 'table-ref') return item.displayText;
+                if (item.type === 'section-ref') return item.displayText;
+                if (item.type === 'equation-ref') return item.displayText;
+                if (item.type === 'footnote') return item.displayText;
+                return '';
+              }).join('') || placeholder
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-2">

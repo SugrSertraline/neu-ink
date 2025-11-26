@@ -7,8 +7,8 @@ import { BookOpen, Lock, ShieldCheck, User } from 'lucide-react';
 
 import PublicLibraryPage from './PublicLibraryPage';
 import PersonalLibraryPage from './PersonalLibraryPage';
-import { useAuth } from '@/contexts/AuthContext';
-import { useTabStore } from '@/stores/useTabStore';
+import { useAuthStore } from '@/store/auth';
+import { useTabStore } from '@/store/ui/tabStore';
 import { Button } from '@/components/ui/button';
 
 type LibrarySection = 'public' | 'personal';
@@ -106,7 +106,7 @@ function PersonalLibraryPlaceholder({ username }: { username?: string | null }) 
 function LibraryPageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const { isAuthenticated, user } = useAuth();
+  const { isAuthenticated, user } = useAuthStore();
   const { addTab, setActiveTab } = useTabStore();
 
   const requestedSection: LibrarySection =

@@ -87,6 +87,7 @@ const updateSections = useCallback(
         const result = await userPaperService.updateSection(userPaperId, sectionId, updateData);
         
         if (result.bizCode === 0) {
+          toast.success('章节更新成功');
           return { success: true, data: result.data };
         } else {
           toast.error('更新失败', { description: result.bizMessage || '服务器错误' });
@@ -97,6 +98,7 @@ const updateSections = useCallback(
         const result = await adminPaperService.updateSection(paperId, sectionId, updateData);
         
         if (result.bizCode === 0) {
+          toast.success('章节更新成功');
           return { success: true, data: result.data };
         } else {
           toast.error('更新失败', { description: result.bizMessage || '服务器错误' });
@@ -164,9 +166,19 @@ const updateSections = useCallback(
     isPersonalOwner: boolean
   ) => {
     try {
+      console.log('【API步骤1】handleSectionDeleteWithAPI 开始:', { sectionId, paperId, userPaperId, isPersonalOwner });
+      
       if (isPersonalOwner && userPaperId) {
+        console.log('【API步骤2】使用用户论文服务删除章节');
+        console.log('【API步骤2.1】准备导入 userPaperService');
         const { userPaperService } = await import('@/lib/services/paper');
+        console.log('【API步骤2.2】userPaperService 导入成功:', typeof userPaperService);
+        console.log('【API步骤2.3】即将调用 userPaperService.deleteSection:', userPaperId, sectionId);
+        console.log('【API步骤2.4】userPaperService.deleteSection 方法:', typeof userPaperService.deleteSection);
+        
         const result = await userPaperService.deleteSection(userPaperId, sectionId);
+        
+        console.log('【API步骤3】用户论文服务删除章节结果:', result);
         
         if (result.bizCode === 0) {
           // 本地更新UI - 移除该章节
@@ -185,18 +197,23 @@ const updateSections = useCallback(
               return nextNodes;
             };
             const next = prune(sections);
+            console.log('本地更新UI，删除章节后:', next);
             return { sections: touched ? next : sections, touched };
           });
           
           toast.success('章节删除成功');
-          return { success: true };
+          return { success: true, data: result.data };
         } else {
+          console.error('用户论文服务删除章节失败:', result.bizMessage);
           toast.error('删除失败', { description: result.bizMessage || '服务器错误' });
           return { success: false, error: result.bizMessage || '删除章节失败' };
         }
       } else {
+        console.log('使用管理员论文服务删除章节');
         const { adminPaperService } = await import('@/lib/services/paper');
         const result = await adminPaperService.deleteSection(paperId, sectionId);
+        
+        console.log('管理员论文服务删除章节结果:', result);
         
         if (result.bizCode === 0) {
           // 本地更新UI - 移除该章节
@@ -215,17 +232,20 @@ const updateSections = useCallback(
               return nextNodes;
             };
             const next = prune(sections);
+            console.log('本地更新UI，删除章节后:', next);
             return { sections: touched ? next : sections, touched };
           });
           
           toast.success('章节删除成功');
-          return { success: true };
+          return { success: true, data: result.data };
         } else {
+          console.error('管理员论文服务删除章节失败:', result.bizMessage);
           toast.error('删除失败', { description: result.bizMessage || '服务器错误' });
           return { success: false, error: result.bizMessage || '删除章节失败' };
         }
       }
     } catch (error) {
+      console.error('handleSectionDeleteWithAPI 异常:', error);
       const message = error instanceof Error ? error.message : '删除章节时发生未知错误';
       toast.error('删除失败', { description: message });
       return { success: false, error: message };
@@ -293,10 +313,11 @@ const updateSections = useCallback(
           description: result.error
         });
       } else {
-        toast.success('章节标题更新成功', { id: 'update-section-title' });
+        // 移除成功提示，因为 handleSectionUpdateWithAPI 已经显示了
+        toast.dismiss('update-section-title');
         
-        // 如果API返回了更新后的论文数据，可以在这里处理
-        if (result.data && result.data.paper) {
+        // 如果API返回了更新后的section数据，可以在这里处理
+        if (result.data && result.data.updatedSection) {
           // 可以在这里更新本地状态，但通常不需要，因为我们已经更新了UI
         }
       }
@@ -524,25 +545,49 @@ const updateSections = useCallback(
       isPersonalOwner: boolean,
       onSaveToServer?: () => Promise<void>
     ) => {
-      // 显示加载状态
-      toast.loading('正在删除章节...', { id: 'delete-section' });
-      
-      const result = await handleSectionDeleteWithAPI(
-        sectionId,
-        paperId,
-        userPaperId,
-        isPersonalOwner
-      );
+      try {
+        console.log('【Hook步骤1】handleSectionDelete 被调用:', { sectionId, paperId, userPaperId, isPersonalOwner });
+        
+        // 显示加载状态
+        toast.loading('正在删除章节...', { id: 'delete-section' });
+        console.log('【Hook步骤2】准备调用 handleSectionDeleteWithAPI');
+        
+        const result = await handleSectionDeleteWithAPI(
+          sectionId,
+          paperId,
+          userPaperId,
+          isPersonalOwner
+        );
 
-      // 不再调用 handleSaveToServer，因为 handleSectionDeleteWithAPI 已经更新了数据库
-      // 如果 API 调用失败，可以考虑回滚本地更新
-      if (!result.success) {
+        console.log('【Hook步骤3】handleSectionDeleteWithAPI 返回结果:', result);
+
+        // 不再调用 handleSaveToServer，因为 handleSectionDeleteWithAPI 已经更新了数据库
+        // 如果 API 调用失败，可以考虑回滚本地更新
+        if (!result.success) {
+          console.error('【Hook步骤4】删除章节失败:', result.error);
+          toast.error('删除章节失败', {
+            id: 'delete-section',
+            description: result.error
+          });
+        } else {
+          console.log('【Hook步骤5】删除章节成功');
+          // 如果后端返回了更新后的论文数据，可以使用它来更新本地状态
+          if (result.data && result.data.paper) {
+            // 这里可以根据需要使用后端返回的数据来更新本地状态
+            console.log('【Hook步骤5.1】删除章节成功，后端返回的论文数据:', result.data.paper);
+            
+            // 可以选择性地使用后端返回的数据来更新本地状态
+            // 例如：如果本地状态与后端状态不同步，可以使用后端数据
+            // 但目前我们已经在 handleSectionDeleteWithAPI 中更新了本地状态
+          }
+          toast.success('章节删除成功', { id: 'delete-section' });
+        }
+      } catch (error) {
+        console.error('【Hook步骤6】handleSectionDelete 异常:', error);
         toast.error('删除章节失败', {
           id: 'delete-section',
-          description: result.error
+          description: error instanceof Error ? error.message : '未知错误'
         });
-      } else {
-        toast.success('章节删除成功', { id: 'delete-section' });
       }
     },
     [handleSectionDeleteWithAPI]

@@ -4,19 +4,44 @@ UserPaper 业务逻辑服务
 """
 from typing import Dict, Any, List, Optional, Tuple
 
-from ..models.paper import PaperModel
+from ..models.adminPaper import AdminPaperModel
 from ..models.userPaper import UserPaperModel
 from ..models.note import NoteModel
 from ..config.constants import BusinessCode
+from .basePaperService import BasePaperService
+from ..models.context import PaperContext, check_paper_permission, create_paper_context
 
 
-class UserPaperService:
+class UserPaperService(BasePaperService):
     """UserPaper 业务逻辑服务类"""
 
     def __init__(self) -> None:
-        self.paper_model = PaperModel()
-        self.user_paper_model = UserPaperModel()
-        self.note_model = NoteModel()
+        super().__init__()
+        self.paper_model = AdminPaperModel()
+        self._user_paper_model_instance = UserPaperModel()
+        self._note_model_instance = NoteModel()
+    
+    def get_paper_model(self):
+        """获取论文模型实例"""
+        return self._user_paper_model_instance
+    
+    @property
+    def user_paper_model(self):
+        """获取用户论文模型实例"""
+        return self._user_paper_model_instance
+    
+    @property
+    def note_model(self):
+        """获取笔记模型实例"""
+        return self._note_model_instance
+    
+    def _get_paper_model(self):
+        """获取论文模型实例（向后兼容）"""
+        return self._user_paper_model_instance
+    
+    def get_paper_type(self) -> str:
+        """获取论文类型"""
+        return "user"
 
     # ------------------------------------------------------------------
     # 个人论文库列表
@@ -144,6 +169,63 @@ class UserPaperService:
         """
         return self._wrap_failure(BusinessCode.INVALID_PARAMS, "论文上传功能已移除")
 
+    def create_user_paper(
+        self,
+        paper_data: Dict[str, Any],
+        user_id: str,
+    ) -> Dict[str, Any]:
+        """
+        创建用户个人论文
+        
+        Args:
+            paper_data: 论文数据，包含metadata等字段
+            user_id: 用户ID
+            
+        Returns:
+            创建结果
+        """
+        try:
+            # 验证必要字段
+            if not paper_data.get("metadata", {}).get("title"):
+                return self._wrap_failure(
+                    BusinessCode.INVALID_PARAMS,
+                    "论文标题不能为空"
+                )
+            
+            # 提取论文数据并复制sections（如果存在）
+            extracted_data, section_ids = self._extract_paper_data_and_copy_sections(paper_data)
+            
+            # 构建用户论文数据（扁平化结构）
+            user_paper_data = {
+                "userId": user_id,
+                "sourcePaperId": None,  # 直接创建的论文没有来源
+                # 扁平化字段
+                "metadata": extracted_data["metadata"],
+                "abstract": extracted_data["abstract"],
+                "keywords": extracted_data["keywords"],
+                "references": extracted_data["references"],
+                "attachments": extracted_data["attachments"],
+                "sectionIds": section_ids,  # 复制的section ID列表
+                "customTags": paper_data.get("customTags", []),
+                "readingStatus": paper_data.get("readingStatus", "unread"),
+                "priority": paper_data.get("priority", "medium"),
+                "remarks": paper_data.get("remarks"),
+            }
+
+            user_paper = self.user_paper_model.create(user_paper_data)
+            
+            # 更新sections的paperId为用户论文ID
+            if section_ids and user_paper.get("id"):
+                from ..models.section import get_section_model
+                section_model = get_section_model()
+                for section_id in section_ids:
+                    section_model.update(section_id, {"paperId": user_paper["id"]})
+            
+            return self._wrap_success("创建个人论文成功", user_paper)
+
+        except Exception as exc:  # pylint: disable=broad-except
+            return self._wrap_error(f"创建个人论文失败: {exc}")
+
     def add_uploaded_paper(
         self,
         user_id: str,
@@ -195,86 +277,41 @@ class UserPaperService:
         user_paper_id: str,
         user_id: str,
     ) -> Dict[str, Any]:
-        """
-        获取个人论文详情
-        """
-        try:
-            # 获取个人论文详情，默认包含sections数据
-            user_paper = self.user_paper_model.find_by_id(user_paper_id)
-            
-            if not user_paper:
-                return self._wrap_failure(
-                    BusinessCode.PAPER_NOT_FOUND,
-                    "论文不存在"
-                )
-            
-            # 权限检查
-            if user_paper["userId"] != user_id:
-                return self._wrap_failure(
-                    BusinessCode.PERMISSION_DENIED,
-                    "无权访问此论文"
-                )
-
+        """获取个人论文详情 - 兼容旧接口"""
+        # 创建上下文
+        context = create_paper_context(user_id, "user")
+        
+        # 调用新的获取论文方法
+        result = self.get_paper(user_paper_id, context)
+        if result.get("code") == BusinessCode.SUCCESS:  # 成功
+            user_paper = result.get("data")
             # 添加笔记信息
             notes, _ = self.note_model.find_by_user_paper(user_paper_id)
             user_paper["notes"] = notes
             user_paper["noteCount"] = len(notes)
-
             return self._wrap_success("获取论文详情成功", user_paper)
-
-        except Exception as exc:  # pylint: disable=broad-except
-            return self._wrap_error(f"获取论文详情失败: {exc}")
+        else:  # 失败
+            return self._wrap_failure(result.get("code", BusinessCode.PAPER_NOT_FOUND), result.get("message", "获取论文失败"))
 
     # ------------------------------------------------------------------
     # 更新个人论文
     # ------------------------------------------------------------------
     def update_user_paper(
-    self,
-    entry_id: str,
-    user_id: str,
-    update_data: Dict[str, Any],
+        self,
+        entry_id: str,
+        user_id: str,
+        update_data: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """
-        更新个人论文库条目
-        支持修改：
-        1. 论文内容（metadata, abstract, keywords, references, attachments）
-        2. 自定义标签（customTags）
-        3. 阅读状态（readingStatus）
-        4. 优先级（priority）
-        5. 阅读位置（readingPosition）
-        6. 总阅读时间（totalReadingTime）
-        7. 最后阅读时间（lastReadTime）
-        8. 备注（remarks）
-        """
-        try:
-            user_paper = self.user_paper_model.find_by_id(entry_id)
-            
-            if not user_paper:
-                return self._wrap_failure(
-                    BusinessCode.PAPER_NOT_FOUND,
-                    "论文不存在"
-                )
-            
-            # 权限检查
-            if user_paper["userId"] != user_id:
-                return self._wrap_failure(
-                    BusinessCode.PERMISSION_DENIED,
-                    "无权修改此论文"
-                )
-
-            # 防止修改关键字段
-            for field in ["id", "userId", "sourcePaperId", "addedAt"]:
-                update_data.pop(field, None)
-
-            # 更新
-            if self.user_paper_model.update(entry_id, update_data):
-                updated = self.user_paper_model.find_by_id(entry_id)
-                return self._wrap_success("更新成功", updated)
-
-            return self._wrap_error("更新失败")
-
-        except Exception as exc:  # pylint: disable=broad-except
-            return self._wrap_error(f"更新论文失败: {exc}")
+        """更新个人论文库条目 - 兼容旧接口"""
+        # 创建上下文
+        context = create_paper_context(user_id, "user")
+        
+        # 调用新的更新论文方法
+        result = self.update_paper(entry_id, update_data, context)
+        if result.get("code") == BusinessCode.SUCCESS:  # 成功
+            return self._wrap_success("更新成功", result.get("data"))
+        else:  # 失败
+            return self._wrap_failure(result.get("code", BusinessCode.PERMISSION_DENIED), result.get("message", "更新失败"))
 
     # ------------------------------------------------------------------
     # 删除个人论文
@@ -284,55 +321,16 @@ class UserPaperService:
         entry_id: str,
         user_id: str,
     ) -> Dict[str, Any]:
-        """
-        删除个人论文库条目
-        同时删除关联的所有笔记和附件文件
-        """
-        try:
-            user_paper = self.user_paper_model.find_by_id(entry_id)
-            
-            if not user_paper:
-                return self._wrap_failure(
-                    BusinessCode.PAPER_NOT_FOUND,
-                    "论文不存在"
-                )
-            
-            # 权限检查
-            if user_paper["userId"] != user_id:
-                return self._wrap_failure(
-                    BusinessCode.PERMISSION_DENIED,
-                    "无权删除此论文"
-                )
-
-            # 删除关联的笔记
-            deleted_notes = self.note_model.delete_by_user_paper(entry_id)
-            
-            # 删除关联的sections
-            from ..models.section import get_section_model
-            section_model = get_section_model()
-            section_ids = user_paper.get("sectionIds", [])
-            deleted_sections = 0
-            for section_id in section_ids:
-                if section_model.delete(section_id):
-                    deleted_sections += 1
-
-            # 删除附件文件
-            deleted_attachments = self._delete_user_paper_attachments(user_paper)
-
-            # 删除论文
-            if self.user_paper_model.delete(entry_id):
-                message = f"删除成功，同时删除了 {deleted_notes} 条笔记和 {deleted_sections} 个章节"
-                if deleted_attachments > 0:
-                    message += f"以及 {deleted_attachments} 个附件文件"
-                return self._wrap_success(
-                    message,
-                    {"deletedNotes": deleted_notes, "deletedSections": deleted_sections, "deletedAttachments": deleted_attachments}
-                )
-
-            return self._wrap_error("删除失败")
-
-        except Exception as exc:  # pylint: disable=broad-except
-            return self._wrap_error(f"删除论文失败: {exc}")
+        """删除个人论文库条目 - 兼容旧接口"""
+        # 创建上下文
+        context = create_paper_context(user_id, "user")
+        
+        # 调用新的删除论文方法
+        result = self.delete_paper(entry_id, context)
+        if result.get("code") == BusinessCode.SUCCESS:  # 成功
+            return self._wrap_success(result.get("message", "删除成功"), None)
+        else:  # 失败
+            return self._wrap_failure(result.get("code", BusinessCode.PERMISSION_DENIED), result.get("message", "删除失败"))
 
     # ------------------------------------------------------------------
     # 统计信息
@@ -342,7 +340,7 @@ class UserPaperService:
         获取用户的统计信息
         """
         try:
-            stats = self.user_paper_model.get_user_statistics(user_id)
+            stats = self._get_paper_model().get_user_statistics(user_id)
             stats["totalNotes"] = self.note_model.count_by_user(user_id)
             
             return self._wrap_success("获取统计信息成功", stats)
@@ -574,8 +572,12 @@ class UserPaperService:
                 return 0
                 
             # 获取七牛云服务
-            from ..services.qiniuService import get_qiniu_service
-            qiniu_service = get_qiniu_service()
+            try:
+                from ..services.qiniuService import get_qiniu_service
+                qiniu_service = get_qiniu_service()
+            except ImportError as e:
+                print(f"警告: 七牛云服务不可用，跳过文件删除: {str(e)}")
+                return 0
             
             deleted_count = 0
             
@@ -608,7 +610,7 @@ class UserPaperService:
 _user_paper_service: Optional[UserPaperService] = None
 
 
-def add_references_to_paper(self, user_paper_id: str, references: List[Dict[str, Any]], user_id: str) -> Dict[str, Any]:
+def add_references_to_paper(service: UserPaperService, user_paper_id: str, references: List[Dict[str, Any]], user_id: str) -> Dict[str, Any]:
         """
         添加参考文献到个人论文
         
@@ -622,7 +624,7 @@ def add_references_to_paper(self, user_paper_id: str, references: List[Dict[str,
         """
         try:
             # 获取个人论文
-            paper = self.user_paper_model.find_by_id(user_paper_id)
+            paper = service.user_paper_model.find_by_id(user_paper_id)
             if not paper:
                 return {
                     "success": False,
@@ -641,7 +643,7 @@ def add_references_to_paper(self, user_paper_id: str, references: List[Dict[str,
             
             # 更新论文的参考文献
             update_data = {"references": sorted_references}
-            result = self.user_paper_model.update(user_paper_id, update_data)
+            result = service.user_paper_model.update(user_paper_id, update_data)
             
             if result:
                 return {
@@ -649,7 +651,7 @@ def add_references_to_paper(self, user_paper_id: str, references: List[Dict[str,
                     "message": f"成功添加 {len(sorted_references)} 条参考文献",
                     "data": {
                         "references": sorted_references,
-                        "paper": self.user_paper_model.find_by_id(user_paper_id)
+                        "paper": service.user_paper_model.find_by_id(user_paper_id)
                     }
                 }
             else:

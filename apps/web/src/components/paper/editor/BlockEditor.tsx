@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { useEditingState } from '@/stores/useEditingState';
+import { useEditorStore } from '@/store/editor/editorStore';
 import { toast } from 'sonner';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { uploadImage, uploadPaperImage } from '@/lib/services/upload';
@@ -84,18 +84,18 @@ export default function BlockEditor({
   const [isHovered, setIsHovered] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
-  const { isEditing, clearEditing, setHasUnsavedChanges, switchToEdit } = useEditingState();
+  const { currentEditingId, clearCurrentEditing, setHasUnsavedChanges, switchToEdit } = useEditorStore();
   const { confirm, ConfirmDialog } = useConfirmDialog();
 
   const originalBlockRef = useRef<BlockContent>(cloneBlock(block));
   const originalSerializedRef = useRef<string>(JSON.stringify(block));
   const wasEditingRef = useRef(false);
 
-  const config = getBlockTypeConfig(block.type);
+  const config = useMemo(() => getBlockTypeConfig(block.type), [block.type]);
   const Icon = config.icon;
 
   const serializedBlock = useMemo(() => JSON.stringify(block), [block]);
-  const isCurrentlyEditing = isEditing(block.id);
+  const isCurrentlyEditing = currentEditingId === block.id;
 
   useEffect(() => {
     if (isCurrentlyEditing && !wasEditingRef.current) {
@@ -103,14 +103,18 @@ export default function BlockEditor({
       originalSerializedRef.current = serializedBlock;
     }
     if (!isCurrentlyEditing && wasEditingRef.current) {
-      setHasUnsavedChanges(false);
+      requestAnimationFrame(() => {
+        setHasUnsavedChanges(false);
+      });
     }
     wasEditingRef.current = isCurrentlyEditing;
-  }, [isCurrentlyEditing, block, serializedBlock, setHasUnsavedChanges]);
+  }, [isCurrentlyEditing, serializedBlock, setHasUnsavedChanges]);
 
   useEffect(() => {
     if (!isCurrentlyEditing) return;
-    setHasUnsavedChanges(serializedBlock !== originalSerializedRef.current);
+    requestAnimationFrame(() => {
+      setHasUnsavedChanges(serializedBlock !== originalSerializedRef.current);
+    });
   }, [isCurrentlyEditing, serializedBlock, setHasUnsavedChanges]);
 
   const handleCompleteEditing = useCallback(async () => {
@@ -139,8 +143,10 @@ export default function BlockEditor({
         // 保存成功后，更新原始状态并退出编辑模式
         originalBlockRef.current = cloneBlock(block);
         originalSerializedRef.current = serializedBlock;
-        setHasUnsavedChanges(false);
-        clearEditing();
+        requestAnimationFrame(() => {
+          setHasUnsavedChanges(false);
+          clearCurrentEditing();
+        });
         toast.success('内容保存成功', { id: 'save-block' });
       } catch (error) {
         const message = error instanceof Error ? error.message : '保存失败，请稍后重试';
@@ -157,32 +163,26 @@ export default function BlockEditor({
       // 如果没有 onSaveToServer 函数，直接退出编辑模式
       originalBlockRef.current = cloneBlock(block);
       originalSerializedRef.current = serializedBlock;
-      setHasUnsavedChanges(false);
-      clearEditing();
+      requestAnimationFrame(() => {
+        setHasUnsavedChanges(false);
+        clearCurrentEditing();
+      });
       toast.success('内容已更新');
     }
-  }, [block, serializedBlock, clearEditing, setHasUnsavedChanges, onSaveToServer, allSections]);
+  }, [block, serializedBlock, clearCurrentEditing, setHasUnsavedChanges, onSaveToServer, allSections]);
 
   const handleCancelEditing = useCallback(() => {
     if (serializedBlock !== originalSerializedRef.current) {
       onChange(cloneBlock(originalBlockRef.current));
       toast.info('已取消编辑，内容已恢复');
     }
-    setHasUnsavedChanges(false);
-    clearEditing();
-  }, [serializedBlock, onChange, setHasUnsavedChanges, clearEditing]);
-
-  const handleStartEditing = useCallback(async () => {
-    if (isCurrentlyEditing) return;
-    const switched = await switchToEdit(block.id, {
-      onRequestSave: ({ currentId }) => {
-        if (currentId === block.id) {
-          handleCompleteEditing();
-        }
-      },
+    requestAnimationFrame(() => {
+      setHasUnsavedChanges(false);
+      clearCurrentEditing();
     });
-    if (!switched) return;
-  }, [isCurrentlyEditing, switchToEdit, block.id, handleCompleteEditing]);
+  }, [serializedBlock, onChange, setHasUnsavedChanges, clearCurrentEditing]);
+
+  // 移除handleStartEditing函数，因为编辑状态现在完全由父组件控制
 
   const blockTypes: Array<{ type: BlockContent['type']; label: string; icon: string }> = [
     { type: 'paragraph', label: '段落', icon: '📝' },
@@ -208,7 +208,7 @@ export default function BlockEditor({
       }`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
-      onClick={handleStartEditing}
+      // 移除onClick，因为编辑状态由父组件控制
     >
       <div
         className={`flex items-center justify-between px-3 py-2 border-b transition-colors ${
@@ -730,7 +730,7 @@ function FigureEditor({
   const [uploadProgress, setUploadProgress] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [pasting, setPasting] = useState(false);
-  const { isEditing } = useEditingState();
+  const { currentEditingId } = useEditorStore();
 
   // 用于"乐观预览"的本地状态；与 block.src 双向同步
   const [localSrc, setLocalSrc] = useState(block.src ?? '');
@@ -744,7 +744,7 @@ function FigureEditor({
   useEffect(() => {
     const handleKeyDown = async (event: KeyboardEvent) => {
       // 只在编辑模式下处理快捷键
-      if (!isEditing(block.id)) return;
+      if (currentEditingId !== block.id) return;
       
       // Ctrl+V 或 Cmd+V (Mac)
       if ((event.ctrlKey || event.metaKey) && event.key === 'v') {
@@ -761,7 +761,7 @@ function FigureEditor({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isEditing, block.id, uploading, pasting]);
+  }, [currentEditingId, block.id, uploading, pasting]);
 
   // 为 alt 文本添加本地状态，确保更改能立即反映在 UI 中
   const [localAlt, setLocalAlt] = useState(block.alt ?? '');
@@ -1219,7 +1219,7 @@ function TableEditor({
   onSaveToServer?: (blockId: string, sectionId: string) => Promise<void>;
 }) {
   const [htmlError, setHtmlError] = useState<string | null>(null);
-  const { clearEditing } = useEditingState();
+  const { clearCurrentEditing } = useEditorStore();
 
   // 本地HTML内容状态
   const [localContent, setLocalContent] = useState(block.content || '');

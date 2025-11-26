@@ -3,7 +3,7 @@
 
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { adminPaperService } from '@/lib/services/paper';
+import { adminPaperService } from '@/lib/services/papers';
 import type { Reference } from '@/types/paper';
 
 interface UseParseReferencesProps {
@@ -46,7 +46,7 @@ export function useParseReferences({
         }
 
         // 第一步：解析参考文献
-        const parseResult = await adminPaperService.parseReferences({
+        const parseResult = await adminPaperService.parseReferences(targetId, {
           text: trimmed,
         });
 

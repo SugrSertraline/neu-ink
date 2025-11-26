@@ -3,7 +3,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { Loader2, X, Check } from 'lucide-react';
-import { useEditingState } from '@/stores/useEditingState';
+import { useEditorStore } from '@/store/editor/editorStore';
 
 interface InlineTextParserEditorProps {
   sectionId: string;
@@ -38,7 +38,7 @@ export default function InlineTextParserEditor({
   const [text, setText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const { setHasUnsavedChanges } = useEditingState();
+  const { setHasUnsavedChanges } = useEditorStore();
 
   useEffect(() => {
     setHasUnsavedChanges(text.trim().length > 0);

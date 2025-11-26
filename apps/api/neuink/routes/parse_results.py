@@ -7,7 +7,7 @@ from flask import Blueprint, request, g
 from ..services.userPaperService import get_user_paper_service
 from ..services.paperService import get_paper_service
 from ..services.paperContentService import PaperContentService
-from ..models.paper import PaperModel
+from ..models.adminPaper import AdminPaperModel
 from ..models.section import get_section_model
 from ..models.parseBlocks import get_parse_blocks_model
 from ..utils.auth import login_required, admin_required
@@ -207,7 +207,7 @@ def _confirm_parse_result_common(paper_id, parse_id):
                 return bad_request_response(paper_result["message"])
         
         # 插入选中的blocks到section
-        paper_model = PaperModel()
+        paper_model = AdminPaperModel()
         content_service = PaperContentService(paper_model)
         
         # 获取section信息
@@ -314,7 +314,7 @@ def _discard_parse_result_common(paper_id, parse_id):
         
         # 移除临时parsing block
         if temp_block_id and section_id:
-            paper_model = PaperModel()
+            paper_model = AdminPaperModel()
             content_service = PaperContentService(paper_model)
             
             # 尝试移除临时block，但不因为失败而中断整个操作
@@ -427,7 +427,7 @@ def _save_all_parse_result_common(paper_id, parse_id):
                 return bad_request_response(paper_result["message"])
         
         # 插入选中的blocks到section
-        paper_model = PaperModel()
+        paper_model = AdminPaperModel()
         content_service = PaperContentService(paper_model)
         
         # 获取section信息
@@ -608,27 +608,20 @@ def _extract_references_common(paper_id, is_user_paper):
             return bad_request_response("论文没有content_list.json附件，请先上传PDF并完成解析")
         
         # 获取content_list.json文件路径
-        from ..services.qiniuService import get_qiniu_service
-        qiniu_service = get_qiniu_service()
+        try:
+            from ..services.qiniuService import get_qiniu_service
+            qiniu_service = get_qiniu_service()
+        except ImportError as e:
+            return internal_error_response(f"七牛云服务不可用: {str(e)}")
         
         # 构建content_list.json的完整路径
         content_list_url = content_list.get("url", "")
-        if content_list_url:
-            # 如果是完整URL，直接使用
-            content_list_path = content_list_url
-        else:
-            # 如果是相对路径，需要构建完整路径
-            # 假设content_list.json存储在与PDF相同的位置
-            pdf_attachment = attachments.get("pdf", {})
-            pdf_url = pdf_attachment.get("url", "")
-            if pdf_url:
-                # 从PDF URL构建content_list.json路径
-                # 例如：如果PDF路径是 /uploads/papers/abc123.pdf
-                # 则content_list.json路径可能是 /uploads/papers/abc123_content_list.json
-                pdf_path = pdf_url.split('?')[0] if '?' in pdf_url else pdf_url
-                content_list_path = pdf_path.rsplit('.', 1)[0] + '_content_list.json'
-            else:
-                return bad_request_response("无法确定content_list.json文件路径")
+        if not content_list_url:
+            # 如果数据库中没有存储content_list.json的URL，说明文件不存在或未正确上传
+            return bad_request_response("论文没有content_list.json附件或附件URL未正确存储")
+        
+        # 直接使用数据库中存储的URL，不进行路径猜测
+        content_list_path = content_list_url
         
         # 调用参考文献提取服务
         from ..services.referenceExtractorService import get_reference_extractor_service
@@ -643,17 +636,20 @@ def _extract_references_common(paper_id, is_user_paper):
         # 将参考文献添加到论文
         if is_user_paper:
             # 用户论文库
+            from ..services.userPaperService import add_references_to_paper
             user_paper_service = get_user_paper_service()
-            add_result = user_paper_service.add_references_to_paper(
-                paper_id=paper_id,
+            add_result = add_references_to_paper(
+                service=user_paper_service,
+                user_paper_id=paper_id,
                 references=references,
                 user_id=user_id
             )
         else:
             # 公共论文库
             paper_service = get_paper_service()
-            add_result = paper_service.add_references_to_paper(
-                paper_id=paper_id,
+            add_result = add_references_to_paper(
+                service=paper_service,
+                user_paper_id=paper_id,
                 references=references,
                 user_id=user_id
             )

@@ -1,14 +1,14 @@
 // apps/web/src/components/layout/MainLayout.tsx
 'use client';
 
-import React, { useCallback, useEffect, Suspense } from 'react';
+import React, { useCallback, useEffect, Suspense, useMemo } from 'react';
 import { useRouter, usePathname, useSearchParams } from 'next/navigation';
 import { BookOpen, Library, Settings, CheckSquare, Users } from 'lucide-react';
 
-import { useAuth } from '@/contexts/AuthContext';
-import { useTabStore } from '@/stores/useTabStore';
-import { SidebarProvider } from '@/stores/useSidebarStore';
+import { useAuthStore } from '@/store/auth';
+import { useTabStore } from '@/store/ui/tabStore';
 import { NavItem } from '@/types/navigation';
+import { useTabNavigation } from '@/hooks/useTabNavigation';
 
 import TabBar from './TabBar';
 import Sidebar from './Sidebar';
@@ -18,7 +18,7 @@ function useCurrentHref(
   pathname: string | null,
   searchParams: ReturnType<typeof useSearchParams>,
 ) {
-  return React.useMemo(() => {
+  return useMemo(() => {
     const base = pathname ?? '';
     const query = searchParams?.toString();
     return query ? `${base}?${query}` : base;
@@ -32,55 +32,30 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
 
   const currentHref = useCurrentHref(pathname, searchParams);
 
-  const { user, isAdmin, isAuthenticated } = useAuth();
+  const { user, isAdmin, isAuthenticated } = useAuthStore();
+  const { tabs, activeTabId, addTab, setActiveTab, removeTab } = useTabStore();
+  
+  // 使用优化的标签页导航 Hook
   const {
-    tabs,
-    activeTabId,
-    addTab,
-    setActiveTab,
-    removeTab,
-    loadingTabId,
-    setLoading,
-  } = useTabStore();
+    navigateToTab,
+    preloadTabContent,
+    getCachedTabContent,
+    clearTabCache,
+    isNavigating
+  } = useTabNavigation({
+    onNavigationStart: (tabId) => {
+      console.log(`Starting navigation to tab: ${tabId}`);
+    },
+    onNavigationEnd: (tabId) => {
+      console.log(`Navigation completed to tab: ${tabId}`);
+    },
+    onError: (error, tabId) => {
+      console.error(`Navigation error for tab ${tabId}:`, error);
+    }
+  });
 
-  // useEffect(() => {
-  //   // 初始化所有带有 data-glow 属性的元素的 CSS 变量
-  //   const initGlowElements = () => {
-  //     const glowElements = document.querySelectorAll<HTMLElement>('[data-glow="true"]');
-  //     glowElements.forEach(element => {
-  //       // 如果还没有设置这些变量，则设置默认值
-  //       if (!element.style.getPropertyValue('--cursor-x')) {
-  //         element.style.setProperty('--cursor-x', '50%');
-  //       }
-  //       if (!element.style.getPropertyValue('--cursor-y')) {
-  //         element.style.setProperty('--cursor-y', '50%');
-  //       }
-  //     });
-  //   };
-
-  //   // 初始化
-  //   initGlowElements();
-
-  //   const handlePointerMove = (event: PointerEvent) => {
-  //     document.documentElement.style.setProperty('--cursor-x', `${event.clientX}px`);
-  //     document.documentElement.style.setProperty('--cursor-y', `${event.clientY}px`);
-
-  //     const path = event.composedPath();
-  //     for (const target of path) {
-  //       if (!(target instanceof HTMLElement)) continue;
-  //       if (target.dataset.glow !== 'true') continue;
-
-  //       const rect = target.getBoundingClientRect();
-  //       target.style.setProperty('--cursor-x', `${event.clientX - rect.left}px`);
-  //       target.style.setProperty('--cursor-y', `${event.clientY - rect.top}px`);
-  //     }
-  //   };
-
-  //   window.addEventListener('pointermove', handlePointerMove, { passive: true });
-  //   return () => window.removeEventListener('pointermove', handlePointerMove);
-  // }, []);
-
-  const navigationConfig: NavItem[] = [
+  // 导航配置
+  const navigationConfig: NavItem[] = useMemo(() => [
     {
       id: 'public-library',
       type: 'public-library',
@@ -128,7 +103,7 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
       requiresAuth: true,
       activeColor: 'purple',
       closable: true,
-      showInSidebar: isAdmin, // 只有管理员可见
+      showInSidebar: isAdmin(), // 只有管理员可见
       isPermanentTab: false,
     },
     {
@@ -143,9 +118,10 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
       showInSidebar: true,
       isPermanentTab: false,
     },
-  ];
+  ], [isAdmin]);
 
-  const visibleNavItems = React.useMemo(() => {
+  // 可见的导航项
+  const visibleNavItems = useMemo(() => {
     return navigationConfig.filter(item => {
       if (!isAuthenticated && item.requiresAuth) return false;
       
@@ -154,8 +130,9 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
       
       return true;
     });
-  }, [isAuthenticated, isAdmin]);
+  }, [isAuthenticated, isAdmin, navigationConfig]);
 
+  // 优化的导航处理函数
   const handleNavigate = useCallback(
     async (item: NavItem) => {
       if (item.requiresAuth && !isAuthenticated) {
@@ -165,52 +142,32 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
       if (item.disabled) return;
 
       const targetHref = item.path ?? '/';
-      const [targetPathname] = targetHref.split('?');
       const existingTab = tabs.find(t => t.id === item.id);
 
-      if (currentHref === targetHref) {
-        if (existingTab) {
-          setActiveTab(item.id);
-        } else {
-          addTab({ id: item.id, type: item.type, title: item.label, path: targetHref });
-          setActiveTab(item.id);
-        }
-        setLoading(false, null);
-        return;
+      // 如果标签页不存在，添加它
+      if (!existingTab) {
+        addTab({ 
+          id: item.id, 
+          type: item.type, 
+          title: item.label, 
+          path: targetHref,
+          data: { preloaded: false }
+        });
       }
 
-      setLoading(true, item.id);
-
-      if (existingTab) {
-        setActiveTab(item.id);
-      } else {
-        addTab({ id: item.id, type: item.type, title: item.label, path: targetHref });
-        setActiveTab(item.id);
-      }
-
-      try {
-        if (pathname === targetPathname && currentHref !== targetHref) {
-          await router.push(targetHref);
-        } else {
-          await router.push(targetHref);
-        }
-      } catch (error) {
-        // 静默处理导航错误
-        setLoading(false, null);
-      }
+      // 使用优化的导航函数
+      await navigateToTab(item.id, targetHref);
     },
     [
-      currentHref,
       isAuthenticated,
-      pathname,
       tabs,
       router,
       addTab,
-      setActiveTab,
-      setLoading,
+      navigateToTab,
     ],
   );
 
+  // 优化的关闭标签页函数
   const handleCloseTab = useCallback(
     async (tabId: string) => {
       const tabConfig = navigationConfig.find(item => item.id === tabId);
@@ -218,6 +175,9 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
 
       const tabToClose = tabs.find(t => t.id === tabId);
       if (!tabToClose) return;
+
+      // 清理缓存
+      clearTabCache(tabId);
 
       if (tabId === activeTabId) {
         const visibleTabs = tabs.filter(tab => {
@@ -237,43 +197,26 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
 
         if (targetTab) {
           const targetHref = targetTab.path;
-          const [targetPathname] = targetHref.split('?');
-
-          if (currentHref === targetHref) {
-            setActiveTab(targetTab.id);
-            setLoading(false, null);
-          } else {
-            setLoading(true, targetTab.id);
-            try {
-              setActiveTab(targetTab.id);
-              if (pathname === targetPathname && currentHref !== targetHref) {
-                await router.push(targetHref);
-              } else {
-                await router.push(targetHref);
-              }
-            } catch (error) {
-              // 静默处理导航错误
-              setLoading(false, null);
-            }
-          }
+          
+          // 使用优化的导航函数切换到目标标签页
+          await navigateToTab(targetTab.id, targetHref);
         }
       }
 
       removeTab(tabId);
     },
     [
+      navigationConfig,
       tabs,
       activeTabId,
-      currentHref,
-      pathname,
       isAuthenticated,
-      router,
-      setActiveTab,
-      setLoading,
+      navigateToTab,
+      clearTabCache,
       removeTab,
     ],
   );
 
+  // 处理论文路径的特殊逻辑
   useEffect(() => {
     const isPaperPath = /^\/(paper|papers)\//.test(pathname || '');
     if (!isPaperPath) return;
@@ -286,14 +229,26 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
       activeTabId === 'public-library';
 
     if (!hasPaperTab && isPristine) {
-      setLoading(true, 'public-library');
-      router.replace('/library?section=public');
+      navigateToTab('public-library', '/library?section=public');
     }
-  }, [pathname, tabs, activeTabId, setLoading, router]);
+  }, [pathname, tabs, activeTabId, navigateToTab]);
+
+  // 预加载常用标签页
+  useEffect(() => {
+    // 延迟预加载，避免影响初始页面加载
+    const timer = setTimeout(() => {
+      // 预加载公共库和个人库
+      if (isAuthenticated) {
+        preloadTabContent('library', '/library?section=personal');
+      }
+      preloadTabContent('public-library', '/library?section=public');
+    }, 2000);
+
+    return () => clearTimeout(timer);
+  }, [isAuthenticated, preloadTabContent]);
 
   return (
-    <SidebarProvider>
-      <div className="relative min-h-screen overflow-hidden bg-linear-to-br from-[#edf1f8] via-white to-[#e0e7f5] text-slate-900">
+    <div className="relative min-h-screen overflow-hidden bg-linear-to-br from-[#edf1f8] via-white to-[#e0e7f5] text-slate-900">
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_80%_at_15%_25%,rgba(40,65,138,0.16),transparent),radial-gradient(45%_60%_at_85%_30%,rgba(247,194,66,0.12),transparent)]" />
         <div className="pointer-events-none absolute inset-x-0 bottom-[-20%] h-[36%] blur-3xl bg-[linear-gradient(120deg,rgba(40,65,138,0.12),rgba(247,194,66,0.12),rgba(89,147,205,0.12))]" />
 
@@ -301,10 +256,10 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
           <Sidebar
             navItems={visibleNavItems}
             activeTabId={activeTabId}
-            loadingTabId={loadingTabId}
+            loadingTabId={isNavigating ? activeTabId : null}
             onNavigate={handleNavigate}
             user={user}
-            isAdmin={isAdmin}
+            isAdmin={isAdmin()}
             isAuthenticated={isAuthenticated}
           />
 
@@ -326,7 +281,6 @@ function MainLayoutContent({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       </div>
-    </SidebarProvider>
   );
 }
 

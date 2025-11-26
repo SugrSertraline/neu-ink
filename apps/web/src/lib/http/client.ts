@@ -2,8 +2,9 @@
 import { ApiResponse } from '@/types/api';
 import { ApiError } from './errors';
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL?.replace('/api/v1', '') || process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5000';
-const API_PREFIX = process.env.NEXT_PUBLIC_API_URL?.includes('/api/v1') ? '/api/v1' : process.env.NEXT_PUBLIC_API_PREFIX || '/api/v1';
+// 新的API基础配置，适配后端API文档
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5000';
+const API_PREFIX = process.env.NEXT_PUBLIC_API_PREFIX || '/api/v1';
 const AUTH_STORAGE_KEY = 'auth_token';
 
 type HttpMethod = 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH';
@@ -104,10 +105,12 @@ export class ApiClient {
   }
 
   private async doFetch(url: string, init: RequestInit & { timeout?: number } = {}, isRetry: boolean = false): Promise<ApiResponse<any>> {
+    console.log('ApiClient.doFetch 开始:', { url, method: init.method, isRetry });
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), init.timeout ?? this.defaultTimeoutMs);
 
     try {
+      console.log('发送 fetch 请求:', { url, method: init.method, headers: init.headers });
       const res = await fetch(url, {
         // 👇 总是带上 cookie（如后端也做了 session 校验时）
         credentials: 'include',
@@ -116,8 +119,10 @@ export class ApiClient {
         ...init,
         signal: controller.signal,
       });
+      console.log('收到 fetch 响应:', { url, status: res.status, ok: res.ok });
 
       const text = await res.text();
+      console.log('响应文本内容:', text.substring(0, 200) + (text.length > 200 ? '...' : ''));
 
       if (!text) {
         throw new ApiError('Empty response from server', { status: res.status, url });
@@ -126,7 +131,9 @@ export class ApiClient {
       let data: any;
       try {
         data = JSON.parse(text);
+        console.log('解析后的JSON数据:', data);
       } catch (e) {
+        console.error('JSON解析失败:', e, '原始文本:', text);
         throw new ApiError('Invalid JSON response', { status: res.status, url, payload: text as any });
       }
 
@@ -208,6 +215,7 @@ export class ApiClient {
 
   private request<T>(endpoint: string, method: HttpMethod, body?: any, headers?: HeadersInit) {
     const url = this.getFullURL(endpoint);
+    console.log('ApiClient.request 被调用:', { endpoint, method, url, body });
     return this.doFetch(url, {
       method,
       headers: this.getHeaders(headers), // 👈 这里的 headers 已经包含最新 token
@@ -233,6 +241,7 @@ export class ApiClient {
   }
 
   delete<T>(endpoint: string) {
+    console.log('ApiClient.delete 被调用:', endpoint);
     return this.request<T>(endpoint, 'DELETE');
   }
 

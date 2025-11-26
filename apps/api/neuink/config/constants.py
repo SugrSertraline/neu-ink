@@ -93,10 +93,12 @@ class UserStatus:
 class Collections:
     """MongoDB 集合名称"""
     USER = "User"
-    PAPER = "Paper"
+    ADMIN_PAPER = "AdminPaper"  # 管理员论文集合
     USER_PAPER = "UserPaper"
     NOTE = "Note"
     SECTION = "Section"
+    PARSE_BLOCKS = "ParseBlocks"
+    PARSING_SESSIONS = "ParsingSessions"
 
 
 # 论文状态

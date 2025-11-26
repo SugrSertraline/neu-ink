@@ -64,9 +64,15 @@ export default function ParseProgressBlock({
 
   const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasNotifiedRef = useRef(false);
+  const progressRef = useRef<ParsingProgressData>(progress);
   
   // 将blocksCount移到组件顶层,避免违反Hooks规则
   const [blocksCount, setBlocksCount] = useState<number>(0);
+  
+  // 同步 progress 到 ref
+  useEffect(() => {
+    progressRef.current = progress;
+  }, [progress]);
 
   const clearPolling = () => {
     if (pollingTimerRef.current) {
@@ -79,7 +85,10 @@ export default function ParseProgressBlock({
 
   // 5s 轮询解析状态
   useEffect(() => {
-    if (progress.status === 'completed' || progress.status === 'failed') {
+    // 使用 ref 来避免依赖 progress.status 导致的循环
+    const currentStatus = progressRef.current.status;
+    
+    if (currentStatus === 'completed' || currentStatus === 'failed') {
       clearPolling();
       return;
     }
@@ -106,7 +115,7 @@ export default function ParseProgressBlock({
               error: message,
               blockId,
               sectionId,
-              sessionId: sessionId || progress.sessionId || blockId,
+              sessionId: sessionId || progressRef.current.sessionId || blockId,
             });
           }
           clearPolling();
@@ -125,19 +134,25 @@ export default function ParseProgressBlock({
             ? 'pending_confirmation'
             : 'pending';
 
-        setProgress(prev => ({
-          ...prev,
-          status: normalizedStatus,
-          progress: typeof data.progress === 'number' ? data.progress : prev.progress,
-          message: data.message || prev.message,
-          error: data.error,
-          // 注意：当 addedBlocks 存在时，paper 字段不会返回，避免数据冗余
-          paper: data.addedBlocks ? prev.paper : (data.paper ?? prev.paper),
-          blocks: data.addedBlocks ?? prev.blocks,
-          parsedBlocks: data.parsedBlocks ?? prev.parsedBlocks,
-          sessionId: prev.sessionId || sessionId,
-          parseId: data.parseId || prev.parseId || parseId, // 确保parseId被更新
-        }));
+        setProgress(prev => {
+          const newProgress = {
+            ...prev,
+            status: normalizedStatus,
+            progress: typeof data.progress === 'number' ? data.progress : prev.progress,
+            message: data.message || prev.message,
+            error: data.error,
+            // 注意：当 addedBlocks 存在时，paper 字段不会返回，避免数据冗余
+            paper: data.addedBlocks ? prev.paper : (data.paper ?? prev.paper),
+            blocks: data.addedBlocks ?? prev.blocks,
+            parsedBlocks: data.parsedBlocks ?? prev.parsedBlocks,
+            sessionId: prev.sessionId || sessionId,
+            parseId: data.parseId || prev.parseId || parseId, // 确保parseId被更新
+          };
+          
+          // 更新 ref
+          progressRef.current = newProgress;
+          return newProgress;
+        });
 
         if (normalizedStatus === 'completed' || normalizedStatus === 'pending_confirmation') {
           clearPolling();
@@ -193,7 +208,7 @@ export default function ParseProgressBlock({
             status: 'failed',
             message,
             error: message,
-            sessionId: sessionId || progress.sessionId || blockId,
+            sessionId: sessionId || progressRef.current.sessionId || blockId,
             blockId,
             sectionId,
           });
@@ -208,7 +223,7 @@ export default function ParseProgressBlock({
       cancelled = true;
       clearPolling();
     };
-  }, [paperId, sectionId, blockId, isPersonalOwner, userPaperId, progress.status, sessionId, onCompleted]);
+  }, [paperId, sectionId, blockId, isPersonalOwner, userPaperId, sessionId, onCompleted]);
 
   // 关键：外部进度优先
   useEffect(() => {
@@ -314,7 +329,7 @@ export default function ParseProgressBlock({
           const blocks = parseData.parsedBlocks || parseData.blocks || [];
           setBlocksCount(blocks.length);
           
-          // 更新progress中的parsedBlocks
+          // 更新progress中的parsedBlocks，但不依赖 parsedBlocks 避免循环
           setProgress(prev => ({
             ...prev,
             parsedBlocks: blocks
@@ -326,7 +341,7 @@ export default function ParseProgressBlock({
     };
     
     fetchParseResult();
-  }, [progress.status, progress.parseId, progress.parsedBlocks, blocksCount, isPersonalOwner, userPaperId, paperId]);
+  }, [progress.status, progress.parseId, blocksCount, isPersonalOwner, userPaperId, paperId]); // 移除 progress.parsedBlocks 依赖
 
   // 如果是完成状态且有parseId，显示解析结果管理器按钮
   if (progress.status === 'completed' && progress.parseId) {

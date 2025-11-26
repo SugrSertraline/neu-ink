@@ -1,6 +1,6 @@
 // hooks/usePaperNotes.ts
 import { useState, useCallback } from 'react';
-import { noteService } from '@/lib/services/paper';
+import { userNoteService } from '@/lib/services/notes';
 import type { InlineContent, CreateNoteRequest, UpdateNoteRequest } from '@/types/paper';
 import {
   type PersonalNoteItem,
@@ -28,7 +28,7 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await noteService.getNotesByPaper(userPaperId);
+      const response = await userNoteService.getNotesByPaper(userPaperId);
       const data = ensureUnified(response);
       const notesRaw = pickNoteArray(data);
       const personalNotes = notesRaw.map(note => adaptNoteFromApi(note));
@@ -84,7 +84,7 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
           content,
           plainText: extractPlainText(content),
         };
-        const response = await noteService.createNote(payload);
+        const response = await userNoteService.createNote(userPaperId, payload);
         
         // 4. 检查响应并显示成功消息
         if (response.bizMessage) {
@@ -148,7 +148,7 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
           content,
           plainText: extractPlainText(content),
         };
-        const response = await noteService.updateNote(noteId, payload);
+        const response = await userNoteService.updateNote(userPaperId, noteId, payload);
         
         // 处理可能的响应格式
         let noteData = response.data;
@@ -204,7 +204,7 @@ export function usePaperNotes(userPaperId: string | null, isEnabled: boolean) {
       }
       setIsMutating(true);
       try {
-        const response = await noteService.deleteNote(noteId);
+        const response = await userNoteService.deleteNote(userPaperId, noteId);
         if (response.bizCode !== 0) {
           throw new Error(response.bizMessage ?? '删除笔记失败，请稍后重试');
         }

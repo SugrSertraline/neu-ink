@@ -173,8 +173,8 @@ class PaperReferenceService:
                 if paper["userId"] != user_id:
                     return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
             else:
-                from ..models.paper import PaperModel
-                paper_model = PaperModel()
+                from ..models.adminPaper import AdminPaperModel
+                paper_model = AdminPaperModel()
                 
                 # 检查论文是否存在及权限
                 paper = paper_model.find_by_id(paper_id)

@@ -16,7 +16,8 @@ class PdfParseTaskModel:
     def __init__(self):
         """初始化模型"""
         self.db = get_db()
-        self.collection_name = "pdf_parse_tasks"
+        from ..config.constants import Collections
+        self.collection_name = Collections.PDF_PARSE_TASKS
     
     def create_task(self, paper_id: str, user_id: str, pdf_url: str, is_admin: bool = False, user_paper_id: Optional[str] = None) -> Dict[str, Any]:
         """

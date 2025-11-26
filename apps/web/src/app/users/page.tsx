@@ -14,7 +14,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-import { useAuth } from '@/contexts/AuthContext';
+import { useAuthStore } from '@/store/auth';
 import { userService, isSuccess } from '@/lib/services/user';
 import { cn } from '@/lib/utils';
 import type {
@@ -41,7 +41,7 @@ const DeleteUserDialog = dynamic(() => import('@/components/users/DeleteUserDial
 });
 
 export default function UsersPage() {
-  const { user: currentUser, isAdmin, requireAuth } = useAuth();
+  const { user: currentUser, isAdmin, requireAuth } = useAuthStore();
   const [users, setUsers] = useState<UserType[]>([]);
   const [pagination, setPagination] = useState({
     page: 1,

@@ -2,7 +2,7 @@
 
 import { useState, useMemo, useCallback } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
-import { useTabStore } from '@/stores/useTabStore';
+import { useTabStore } from '@/store/ui/tabStore';
 import { useAuth } from '@/contexts/AuthContext';
 import { ViewerSource } from '@/types/paper/viewer';
 import type { Paper, PaperContent as PaperContentModel, PaperMetadata as PaperMetadataModel } from '@/types/paper';

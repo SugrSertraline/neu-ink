@@ -26,20 +26,23 @@ export interface UploadConfig {
  * @returns 上传结果
  */
 export async function uploadImage(file: File): Promise<UploadResponse> {
-  const formData = new FormData();
-  formData.append('file', file);
-
-  const response = await callAndNormalize<UploadResponse>(
-    apiClient.upload<UploadResponse>('/upload/image', formData)
-  );
+  // 临时返回功能不可用提示
+  return Promise.reject(new Error('文件上传功能暂时不可用，请联系管理员启用后端服务'));
   
-  // 处理嵌套的响应结构
-  // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
-  if (response.data && typeof response.data === 'object' && 'data' in response.data) {
-    return response.data.data as UploadResponse;
-  }
-  
-  return response.data;
+  // 原始代码（后端服务启用后可恢复）
+  // const formData = new FormData();
+  // formData.append('file', file);
+  // const response = await callAndNormalize<UploadResponse>(
+  //   apiClient.upload<UploadResponse>('/upload/image', formData)
+  // );
+  //
+  // // 处理嵌套的响应结构
+  // // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
+  // if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+  //   return response.data.data as UploadResponse;
+  // }
+  //
+  // return response.data;
 }
 
 /**
@@ -48,19 +51,23 @@ export async function uploadImage(file: File): Promise<UploadResponse> {
  * @returns 上传结果
  */
 export async function uploadPdf(file: File): Promise<UploadResponse> {
-  const formData = new FormData();
-  formData.append('file', file);
-
-  const response = await callAndNormalize<UploadResponse>(
-    apiClient.upload<UploadResponse>('/upload/pdf', formData)
-  );
+  // 临时返回功能不可用提示
+  return Promise.reject(new Error('文件上传功能暂时不可用，请联系管理员启用后端服务'));
   
-  // 处理嵌套的响应结构
-  if (response.data && typeof response.data === 'object' && 'data' in response.data) {
-    return response.data.data as UploadResponse;
-  }
-  
-  return response.data;
+  // 原始代码（后端服务启用后可恢复）
+  // const formData = new FormData();
+  // formData.append('file', file);
+  // const response = await callAndNormalize<UploadResponse>(
+  //   apiClient.upload<UploadResponse>('/upload/pdf', formData)
+  // );
+  //
+  // // 处理嵌套的响应结构
+  // // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
+  // if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+  //   return response.data.data as UploadResponse;
+  // }
+  //
+  // return response.data;
 }
 
 /**
@@ -69,19 +76,23 @@ export async function uploadPdf(file: File): Promise<UploadResponse> {
  * @returns 上传结果
  */
 export async function uploadDocument(file: File): Promise<UploadResponse> {
-  const formData = new FormData();
-  formData.append('file', file);
-
-  const response = await callAndNormalize<UploadResponse>(
-    apiClient.upload<UploadResponse>('/upload/document', formData)
-  );
+  // 临时返回功能不可用提示
+  return Promise.reject(new Error('文件上传功能暂时不可用，请联系管理员启用后端服务'));
   
-  // 处理嵌套的响应结构
-  if (response.data && typeof response.data === 'object' && 'data' in response.data) {
-    return response.data.data as UploadResponse;
-  }
-  
-  return response.data;
+  // 原始代码（后端服务启用后可恢复）
+  // const formData = new FormData();
+  // formData.append('file', file);
+  // const response = await callAndNormalize<UploadResponse>(
+  //   apiClient.upload<UploadResponse>('/upload/document', formData)
+  // );
+  //
+  // // 处理嵌套的响应结构
+  // // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
+  // if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+  //   return response.data.data as UploadResponse;
+  // }
+  //
+  // return response.data;
 }
 
 /**
@@ -90,19 +101,23 @@ export async function uploadDocument(file: File): Promise<UploadResponse> {
  * @returns 上传结果
  */
 export async function uploadMarkdown(file: File): Promise<UploadResponse> {
-  const formData = new FormData();
-  formData.append('file', file);
-
-  const response = await callAndNormalize<UploadResponse>(
-    apiClient.upload<UploadResponse>('/upload/markdown', formData)
-  );
+  // 临时返回功能不可用提示
+  return Promise.reject(new Error('文件上传功能暂时不可用，请联系管理员启用后端服务'));
   
-  // 处理嵌套的响应结构
-  if (response.data && typeof response.data === 'object' && 'data' in response.data) {
-    return response.data.data as UploadResponse;
-  }
-  
-  return response.data;
+  // 原始代码（后端服务启用后可恢复）
+  // const formData = new FormData();
+  // formData.append('file', file);
+  // const response = await callAndNormalize<UploadResponse>(
+  //   apiClient.upload<UploadResponse>('/upload/markdown', formData)
+  // );
+  //
+  // // 处理嵌套的响应结构
+  // // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
+  // if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+  //   return response.data.data as UploadResponse;
+  // }
+  //
+  // return response.data;
 }
 
 /**
@@ -112,23 +127,26 @@ export async function uploadMarkdown(file: File): Promise<UploadResponse> {
  * @returns 上传结果
  */
 export async function uploadPaperImage(file: File, paperId?: string): Promise<UploadResponse> {
-  const formData = new FormData();
-  formData.append('file', file);
-  if (paperId) {
-    formData.append('paper_id', paperId);
-  }
-
-  const response = await callAndNormalize<UploadResponse>(
-    apiClient.upload<UploadResponse>('/upload/paper-image', formData)
-  );
+  // 临时返回功能不可用提示
+  return Promise.reject(new Error('文件上传功能暂时不可用，请联系管理员启用后端服务'));
   
-  // 处理嵌套的响应结构
-  // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
-  if (response.data && typeof response.data === 'object' && 'data' in response.data) {
-    return response.data.data as UploadResponse;
-  }
-  
-  return response.data;
+  // 原始代码（后端服务启用后可恢复）
+  // const formData = new FormData();
+  // formData.append('file', file);
+  // if (paperId) {
+  //   formData.append('paper_id', paperId);
+  // }
+  // const response = await callAndNormalize<UploadResponse>(
+  //   apiClient.upload<UploadResponse>('/upload/paper-image', formData)
+  // );
+  //
+  // // 处理嵌套的响应结构
+  // // 外层是HTTP响应，内层是业务响应，真正的数据在内层的data中
+  // if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+  //   return response.data.data as UploadResponse;
+  // }
+  //
+  // return response.data;
 }
 
 /**
@@ -136,10 +154,14 @@ export async function uploadPaperImage(file: File, paperId?: string): Promise<Up
  * @returns 上传配置
  */
 export async function getUploadConfig(): Promise<UploadConfig> {
-  const response = await callAndNormalize<UploadConfig>(
-    apiClient.get<UploadConfig>('/upload/config')
-  );
-  return response.data;
+  // 临时返回功能不可用提示
+  return Promise.reject(new Error('文件上传功能暂时不可用，请联系管理员启用后端服务'));
+  
+  // 原始代码（后端服务启用后可恢复）
+  // const response = await callAndNormalize<UploadConfig>(
+  //   apiClient.get<UploadConfig>('/upload/config')
+  // );
+  // return response.data;
 }
 
 /**
@@ -154,18 +176,22 @@ export async function getUploadToken(key: string, expires = 3600): Promise<{
   expires: number;
   domain: string;
 }> {
-  const response = await callAndNormalize<{
-    token: string;
-    key: string;
-    expires: number;
-    domain: string;
-  }>(
-    apiClient.get<{
-      token: string;
-      key: string;
-      expires: number;
-      domain: string;
-    }>(`/upload/token?key=${encodeURIComponent(key)}&expires=${expires}`)
-  );
-  return response.data;
+  // 临时返回功能不可用提示
+  return Promise.reject(new Error('文件上传功能暂时不可用，请联系管理员启用后端服务'));
+  
+  // 原始代码（后端服务启用后可恢复）
+  // const response = await callAndNormalize<{
+  //   token: string;
+  //   key: string;
+  //   expires: number;
+  //   domain: string;
+  // }>(
+  //   apiClient.get<{
+  //     token: string;
+  //     key: string;
+  //     expires: number;
+  //     domain: string;
+  //   }>(`/upload/token?key=${encodeURIComponent(key)}&expires=${expires}`)
+  // );
+  // return response.data;
 }

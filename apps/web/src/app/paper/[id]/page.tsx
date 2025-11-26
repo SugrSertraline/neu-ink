@@ -7,17 +7,18 @@ import {
   useMemo,
   type CSSProperties,
   Suspense,
+  useState,
 } from 'react';
 import { useParams, useSearchParams } from 'next/navigation';
 import { motion } from 'framer-motion';
-import { useTabStore } from '@/stores/useTabStore';
+import { useTabStore } from '@/store/ui/tabStore';
 import { ViewerSource } from '@/types/paper/viewer';
 
 import { usePaperLoader } from '@/lib/hooks/usePaperLoader';
 import { usePaperEditPermissions } from '@/lib/hooks/usePaperEditPermissions';
 import { PaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
-import { useAuth } from '@/contexts/AuthContext';
-import { useEditingState } from '@/stores/useEditingState';
+import { useAuthStore } from '@/store/auth';
+import { useEditorStore } from '@/store/editor/editorStore';
 
 import PaperHeader from '@/components/paper/PaperHeader';
 import PaperMetadata from '@/components/paper/PaperMetadata';
@@ -29,7 +30,6 @@ import { PaperLoadingState } from '@/components/paper/PaperLoadingState';
 import { PaperErrorState } from '@/components/paper/PaperErrorState';
 import { PaperNotesPanel } from '@/components/paper/PaperNotesPanel';
 import { PaperDialogs } from '@/components/paper/PaperDialogs';
-import dynamic from 'next/dynamic';
 
 import { usePaperPageState } from '@/lib/hooks/usePaperPageState';
 import { usePaperPageInteractions } from '@/lib/hooks/usePaperPageInteractions';
@@ -45,19 +45,140 @@ import { MOTION, WRAPPER_MAX_W, CONTENT_SHIFT_X, handleTOCNavigate, handleSearch
 
 const HEADER_STICKY_OFFSET = 8;
 
-const PaperAttachmentsDrawerDynamic = dynamic(
-  () => import('@/components/paper/PaperAttachmentsDrawer').then(mod => mod.PaperAttachmentsDrawer),
-  {
-    ssr: false,
-    loading: () => null,
-  },
-);
+// 性能优化的 Intersection Observer Hook
+function useIntersectionObserver(
+  ref: React.RefObject<Element | null>,
+  options: IntersectionObserverInit = {}
+) {
+  const [isIntersecting, setIsIntersecting] = useState(false);
+  const [hasIntersected, setHasIntersected] = useState(false);
+
+  useEffect(() => {
+    const element = ref.current;
+    if (!element) return;
+
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        setIsIntersecting(entry.isIntersecting);
+        if (entry.isIntersecting && !hasIntersected) {
+          setHasIntersected(true);
+        }
+      },
+      { threshold: 0.1, ...options }
+    );
+
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [ref, options, hasIntersected]);
+
+  return { isIntersecting, hasIntersected };
+}
+
+// 懒加载包装器组件
+function LazyWrapper({
+  children,
+  fallback = <div className="animate-pulse bg-gray-200 rounded-lg h-32" />,
+  rootMargin = "100px"
+}: {
+  children: React.ReactNode;
+  fallback?: React.ReactNode;
+  rootMargin?: string;
+}) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [forceRender, setForceRender] = useState(false);
+  
+  // 检查子组件是否使用了 createPortal
+  const isPortalChild = useMemo(() => {
+    // 更全面的检查：检查组件类型、函数名称以及子组件结构
+    const childType = children as any;
+    
+    // 检查函数名称
+    if (childType && typeof childType === 'function') {
+      const functionName = childType.name || '';
+      // 检查常见的 Portal 组件模式
+      if (functionName.includes('Paper') ||
+          functionName.includes('Dialog') ||
+          functionName.includes('Drawer') ||
+          functionName.includes('Menu') ||
+          functionName.includes('Toolbar') ||
+          functionName.includes('Panel') ||
+          functionName.includes('SidePanel') ||
+          functionName.includes('Attachments')) {
+        return true;
+      }
+    }
+    
+    // 检查组件的 displayName
+    if (childType && childType.type && typeof childType.type === 'function') {
+      const displayName = childType.type.displayName || childType.type.name || '';
+      if (displayName.includes('Paper') ||
+          displayName.includes('Dialog') ||
+          displayName.includes('Drawer') ||
+          displayName.includes('Menu') ||
+          displayName.includes('Toolbar') ||
+          displayName.includes('Panel') ||
+          displayName.includes('SidePanel') ||
+          displayName.includes('Attachments')) {
+        return true;
+      }
+    }
+    
+    // 检查是否是 PaperAttachmentsDrawer 组件
+    if (childType && childType.type && childType.type.name === 'PaperAttachmentsDrawer') {
+      return true;
+    }
+    
+    // 检查子组件的 props 是否包含 isOpen 属性（常见的抽屉/对话框属性）
+    if (childType && childType.props && 'isOpen' in childType.props) {
+      return true;
+    }
+    
+    return false;
+  }, [children]);
+
+  const { hasIntersected } = useIntersectionObserver(ref, {
+    rootMargin: isPortalChild ? "0px" : rootMargin // 对于 Portal 组件，使用 0px 边距
+  });
+
+  // 对于 Portal 组件，添加一个强制渲染的机制
+  useEffect(() => {
+    if (isPortalChild && !hasIntersected) {
+      // 延迟一小段时间后强制渲染 Portal 组件
+      const timer = setTimeout(() => {
+        setForceRender(true);
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [isPortalChild, hasIntersected]);
+
+  return (
+    <div ref={ref}>
+      {(hasIntersected || (isPortalChild && forceRender)) ? (
+        <Suspense fallback={fallback}>
+          {children}
+        </Suspense>
+      ) : (
+        fallback
+      )}
+    </div>
+  );
+}
+
 
 function PaperPageContent() {
   const params = useParams();
   const searchParams = useSearchParams();
-  const { user, isAdmin } = useAuth();
+  const { user, isAdmin } = useAuthStore();
   const { tabs } = useTabStore();
+  
+  // 添加本地状态来控制附件抽屉
+  const [localIsAttachmentsDrawerOpen, setLocalIsAttachmentsDrawerOpen] = useState(false);
+  
+  // 监听本地状态变化
+  useEffect(() => {
+    console.log('localIsAttachmentsDrawerOpen 状态变化:', localIsAttachmentsDrawerOpen);
+  }, [localIsAttachmentsDrawerOpen]);
   
   // 获取论文ID
   const paperId = Array.isArray(params?.id) ? params.id[0] : (params?.id as string);
@@ -90,16 +211,16 @@ function PaperPageContent() {
     }
 
     if (user) {
-      push(isAdmin ? 'public-admin' : 'personal-owner');
+      push(isAdmin() ? 'public-admin' : 'personal-owner');
     }
 
-    push(isAdmin ? 'public-admin' : 'public-guest');
+    push(isAdmin() ? 'public-admin' : 'public-guest');
 
     return Array.from(seen) as ViewerSource[];
   }, [tabData.source, tabData.initialPaper, urlSource, user, isAdmin]);
   
   // 使用编辑状态
-  const { setHasUnsavedChanges, switchToEdit, clearEditing, currentEditingId } = useEditingState();
+  const { setHasUnsavedChanges, switchToEdit, clearCurrentEditing, currentEditingId } = useEditorStore();
   
   // 使用自定义Hook管理状态
   const { paper, isLoading, error, activeSource } = usePaperLoader(
@@ -162,6 +283,11 @@ function PaperPageContent() {
     openParseDialog,
     closeParseDialog,
   } = pageState;
+
+  // 监听全局状态变化
+  useEffect(() => {
+    console.log('isAttachmentsDrawerOpen 状态变化:', isAttachmentsDrawerOpen);
+  }, [isAttachmentsDrawerOpen]);
 
   // 使用自定义Hook管理交互
   const interactions = usePaperPageInteractions({
@@ -365,7 +491,7 @@ function PaperPageContent() {
       return;
     }
 
-    // 如果没有完整的paperData，则回退到只处理blocks（兼容旧逻辑）
+    // 如果没有完整的paperData，则回退到只处理blocks
     updateSections(sections => {
       let touched = false;
 
@@ -449,18 +575,28 @@ function PaperPageContent() {
             willChange: 'transform'
           }}
         >
-          <PaperHeader
-            lang={lang}
-            setLang={setLang}
-            searchQuery={searchQuery}
-            setSearchQuery={setSearchQuery}
-            searchResultsCount={searchResults.length}
-            currentSearchIndex={currentSearchIndex}
-            onSearchNavigate={handleSearchNavigateCallback}
-            actions={headerActions as any}
-            viewerSource={effectiveSource}
-            onOpenAttachments={() => setIsAttachmentsDrawerOpen(true)}
-          />
+          <LazyWrapper>
+            <PaperHeader
+              lang={lang}
+              setLang={setLang}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              searchResultsCount={searchResults.length}
+              currentSearchIndex={currentSearchIndex}
+              onSearchNavigate={handleSearchNavigateCallback}
+              actions={headerActions as any}
+              viewerSource={effectiveSource}
+              onOpenAttachments={() => {
+                console.log('onOpenAttachments 被调用');
+                console.log('设置 localIsAttachmentsDrawerOpen 为 true');
+                setLocalIsAttachmentsDrawerOpen(true);
+                console.log('设置 isAttachmentsDrawerOpen 为 true');
+                setIsAttachmentsDrawerOpen(true);
+                console.log('状态更新完成');
+              }}
+              hasAttachments={Boolean(attachments && (attachments.pdf || attachments.markdown))}
+            />
+          </LazyWrapper>
         </div>
 
         <div ref={pageContainerRef} style={{ paddingBottom: 32 }}>
@@ -485,82 +621,93 @@ function PaperPageContent() {
                 transition={MOTION}
               >
                 <div className="flex flex-col gap-8 pb-24">
-                  <PaperMetadata
-                    metadata={displayContent.metadata}
-                    abstract={displayContent.abstract}
-                    keywords={displayContent.keywords}
-                    lang={lang}
-                    onEditRequest={() => metadata && handleMetadataEditStart(metadata, setIsMetadataEditorOpen, setMetadataEditorInitial, setMetadataEditorError)}
-                    onAbstractKeywordsEditRequest={() => handleAbstractKeywordsEditStart(displayContent, setIsAbstractKeywordsEditorOpen, setAbstractKeywordsEditorInitial, setAbstractKeywordsEditorError)}
-                    data-metadata="true"
-                  />
+                  <LazyWrapper>
+                    <PaperMetadata
+                      metadata={displayContent.metadata}
+                      abstract={displayContent.abstract}
+                      keywords={displayContent.keywords}
+                      lang={lang}
+                      onEditRequest={() => metadata && handleMetadataEditStart(metadata, setIsMetadataEditorOpen, setMetadataEditorInitial, setMetadataEditorError)}
+                      onAbstractKeywordsEditRequest={() => handleAbstractKeywordsEditStart(displayContent, setIsAbstractKeywordsEditorOpen, setAbstractKeywordsEditorInitial, setAbstractKeywordsEditorError)}
+                      data-metadata="true"
+                    />
+                  </LazyWrapper>
 
                   <PaperContent
-                    sections={editableDraft?.sections ?? []}
-                    references={displayContent.references}
-                    lang={lang}
-                    searchQuery={searchQuery}
-                    activeBlockId={activeBlockId}
-                    selectedBlockId={selectedBlockId}
-                    setActiveBlockId={setActiveBlockId}
-                    contentRef={contentRef}
-                    setSearchResults={setSearchResults}
-                    setCurrentSearchIndex={setCurrentSearchIndex}
-                    onBlockClick={handleBlockSelect}
-                    onSectionTitleUpdate={(sectionId, title) => {
-                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
-                      return handleSectionTitleUpdate(sectionId, title, paperId, userPaperId, isPersonalOwner, handleSaveToServerCallback);
-                    }}
-                    onSectionInsert={(targetSectionId, position, parentSectionId) => {
-                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
-                      return handleSectionInsert(targetSectionId, position, parentSectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServerCallback);
-                    }}
-                    onSectionMove={handleSectionMove}
-                    onSectionDelete={(sectionId) => {
-                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
-                      return handleSectionDelete(sectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServerCallback);
-                    }}
-                    onSectionAddBlock={(sectionId, type) => {
-                      return handleSectionAddBlock(sectionId, type, lang, paperId, resolvedUserPaperId, isPersonalOwner, handleSaveToServerCallback);
-                    }}
-                    onBlockUpdate={(blockId, block) => {
-                      const blockInfo = findBlockSection(blockId, displayContent);
-                      if (!blockInfo) return;
+                  sections={editableDraft?.sections ?? []}
+                  references={displayContent.references}
+                  lang={lang}
+                  searchQuery={searchQuery}
+                  activeBlockId={activeBlockId}
+                  selectedBlockId={selectedBlockId}
+                  setActiveBlockId={setActiveBlockId}
+                  contentRef={contentRef}
+                  setSearchResults={setSearchResults}
+                  setCurrentSearchIndex={setCurrentSearchIndex}
+                  onBlockClick={handleBlockSelect}
+                  onSectionTitleUpdate={(sectionId, title) => {
+                    const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                    return handleSectionTitleUpdate(sectionId, title, paperId, userPaperId, isPersonalOwner, handleSaveToServerCallback);
+                  }}
+                  onSectionInsert={(targetSectionId, position, parentSectionId) => {
+                    const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                    return handleSectionInsert(targetSectionId, position, parentSectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServerCallback);
+                  }}
+                  onSectionMove={handleSectionMove}
+                  onSectionDelete={async (sectionId) => {
+                    console.log('page.tsx - onSectionDelete 被调用:', { sectionId, paperId, resolvedUserPaperId, isPersonalOwner });
+                    const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                    try {
+                      const result = await handleSectionDelete(sectionId, paperId, userPaperId, isPersonalOwner, handleSaveToServerCallback);
+                      console.log('page.tsx - handleSectionDelete 返回结果:', result);
+                      return result;
+                    } catch (error) {
+                      console.error('page.tsx - handleSectionDelete 出错:', error);
+                      throw error;
+                    }
+                  }}
+                  onSectionAddBlock={(sectionId, type) => {
+                    return handleSectionAddBlock(sectionId, type, lang, paperId, resolvedUserPaperId, isPersonalOwner, handleSaveToServerCallback);
+                  }}
+                  onBlockUpdate={(blockId, block) => {
+                    const blockInfo = findBlockSection(blockId, displayContent);
+                    if (!blockInfo) return;
 
-                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
-                      return handleBlockUpdate(blockId, block, blockInfo.section.id, paperId, userPaperId, isPersonalOwner);
-                    }}
-                    onBlockDuplicate={handleBlockDuplicate}
-                    onBlockDelete={(blockId) => {
-                      const blockInfo = findBlockSection(blockId, displayContent);
-                      if (!blockInfo) return;
+                    const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                    return handleBlockUpdate(blockId, block, blockInfo.section.id, paperId, userPaperId, isPersonalOwner);
+                  }}
+                  onBlockDuplicate={handleBlockDuplicate}
+                  onBlockDelete={(blockId) => {
+                    const blockInfo = findBlockSection(blockId, displayContent);
+                    if (!blockInfo) return;
 
-                      const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
-                      return handleBlockDelete(blockId, blockInfo.section.id, paperId, userPaperId, isPersonalOwner, handleSaveToServerCallback);
-                    }}
-                    onBlockInsert={handleBlockInsert}
-                    onBlockMove={handleBlockMove}
-                    onBlockAddComponent={handleBlockAddComponent}
-                    onParseTextAdd={permissions.canEditContent ? handleParseTextAdd : undefined}
-                    onParseTextComplete={permissions.canEditContent ? (sectionId: string, blocks: any[], afterBlockId: string | undefined, paperData?: any) => handleParseTextComplete(sectionId, blocks, afterBlockId || '', paperData) : undefined}
-                    onSaveToServer={handleSaveToServerCallback}
-                    onParseComplete={handleParseCompleteCallback}
-                    notesByBlock={notesByBlock}
-                    isPersonalOwner={isPersonalOwner}
-                    paperId={paperId}
-                    userPaperId={resolvedUserPaperId}
-                    updateSections={updateSections}
-                    onAddBlockAsSection={permissions.canEditContent ? handleAddBlockAsSection : undefined}
-                    onAddHeadingToSection={permissions.canEditContent ? handleAddHeadingToSection : undefined}
-                    onAddParagraphToSection={permissions.canEditContent ? handleAddParagraphToSection : undefined}
-                    onAddOrderedListToSection={permissions.canEditContent ? handleAddOrderedListToSection : undefined}
-                    onAddUnorderedListToSection={permissions.canEditContent ? handleAddUnorderedListToSection : undefined}
-                    onAddMathToSection={permissions.canEditContent ? handleAddMathToSection : undefined}
-                    onAddFigureToSection={permissions.canEditContent ? handleAddFigureToSection : undefined}
-                    onAddTableToSection={permissions.canEditContent ? handleAddTableToSection : undefined}
+                    const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
+                    return handleBlockDelete(blockId, blockInfo.section.id, paperId, userPaperId, isPersonalOwner, handleSaveToServerCallback);
+                  }}
+                  onBlockInsert={handleBlockInsert}
+                  onBlockMove={handleBlockMove}
+                  onBlockAddComponent={handleBlockAddComponent}
+                  onParseTextAdd={permissions.canEditContent ? handleParseTextAdd : undefined}
+                  onParseTextComplete={permissions.canEditContent ? (sectionId: string, blocks: any[], afterBlockId: string | undefined, paperData?: any) => handleParseTextComplete(sectionId, blocks, afterBlockId || '', paperData) : undefined}
+                  onSaveToServer={handleSaveToServerCallback}
+                  onParseComplete={handleParseCompleteCallback}
+                  notesByBlock={notesByBlock}
+                  isPersonalOwner={isPersonalOwner}
+                  paperId={paperId}
+                  userPaperId={resolvedUserPaperId}
+                  updateSections={updateSections}
+                  onAddBlockAsSection={permissions.canEditContent ? handleAddBlockAsSection : undefined}
+                  onAddHeadingToSection={permissions.canEditContent ? handleAddHeadingToSection : undefined}
+                  onAddParagraphToSection={permissions.canEditContent ? handleAddParagraphToSection : undefined}
+                  onAddOrderedListToSection={permissions.canEditContent ? handleAddOrderedListToSection : undefined}
+                  onAddUnorderedListToSection={permissions.canEditContent ? handleAddUnorderedListToSection : undefined}
+                  onAddMathToSection={permissions.canEditContent ? handleAddMathToSection : undefined}
+                  onAddFigureToSection={permissions.canEditContent ? handleAddFigureToSection : undefined}
+                  onAddTableToSection={permissions.canEditContent ? handleAddTableToSection : undefined}
                   />
 
-                  <PaperReferences
+                  <LazyWrapper>
+                    <PaperReferences
                     references={displayReferences}
                     title={
                       lang === 'both'
@@ -581,9 +728,9 @@ function PaperPageContent() {
                     onReferenceMoveDown={permissions.canEditContent ? handleReferenceMoveDown : undefined}
                     onReferenceAdd={permissions.canEditContent ? handleReferenceAdd : undefined}
                     onParseReferences={permissions.canEditContent ? openParseDialog : undefined}
-                    onSaveReferences={permissions.canEditContent ? saveReferencesToServer : undefined}
                     data-references="true"
                   />
+                  </LazyWrapper>
 
                   {(displayReferences?.length ?? 0) === 0 && <div className="h-4" />}
                 </div>
@@ -593,7 +740,8 @@ function PaperPageContent() {
         </div>
 
         {/* 笔记面板 */}
-        <PaperNotesPanel
+        <LazyWrapper>
+          <PaperNotesPanel
           showNotesPanel={showNotesPanel}
           selectedBlockId={selectedBlockId}
           selectedBlockInfo={selectedBlockInfo}
@@ -612,10 +760,12 @@ function PaperPageContent() {
           handleUpdateNote={handleUpdateNote}
           handleDeleteNote={handleDeleteNote}
           handleCloseNotes={handleCloseNotes}
-        />
+          />
+        </LazyWrapper>
 
         {/* 对话框 */}
-        <PaperDialogs
+        <LazyWrapper>
+          <PaperDialogs
           canEditContent={permissions.canEditContent}
           editingReferenceId={editingReferenceId}
           referenceDraft={referenceDraft}
@@ -649,7 +799,7 @@ function PaperPageContent() {
             setMetadataEditorError(null);
             setIsMetadataEditorOpen(false);
             setMetadataEditorInitial(null);
-            clearEditing();
+            clearCurrentEditing();
           }}
           isAbstractKeywordsEditorOpen={isAbstractKeywordsEditorOpen}
           setIsAbstractKeywordsEditorOpen={setIsAbstractKeywordsEditorOpen}
@@ -666,7 +816,7 @@ function PaperPageContent() {
             setAbstractKeywordsEditorError(null);
             setIsAbstractKeywordsEditorOpen(false);
             setAbstractKeywordsEditorInitial(null);
-            clearEditing();
+            clearCurrentEditing();
           }}
           isParseReferencesOpen={isParseReferencesOpen}
           paperId={paperId}
@@ -674,23 +824,33 @@ function PaperPageContent() {
           isPersonalOwner={isPersonalOwner}
           handleReferencesAdded={handleReferencesAdded}
           closeParseDialog={closeParseDialog}
-        />
+          />
+        </LazyWrapper>
 
         {/* 悬浮目录 */}
-        <PaperTableOfContents
+        <LazyWrapper>
+          <PaperTableOfContents
           paperContent={displayContent}
           containerRef={pageContainerRef}
           onNavigate={handleTOCNavigateCallback}
-        />
+          />
+        </LazyWrapper>
 
         {/* 附件管理抽屉 */}
-        <PaperAttachmentsDrawerDynamic
-          isOpen={isAttachmentsDrawerOpen}
-          onClose={() => setIsAttachmentsDrawerOpen(false)}
+        <PaperAttachmentsDrawer
+          isOpen={localIsAttachmentsDrawerOpen}
+          onClose={() => {
+            console.log('PaperAttachmentsDrawer onClose 被调用');
+            console.log('设置 localIsAttachmentsDrawerOpen 为 false');
+            setLocalIsAttachmentsDrawerOpen(false);
+            console.log('设置 isAttachmentsDrawerOpen 为 false');
+            setIsAttachmentsDrawerOpen(false);
+            console.log('关闭状态更新完成');
+          }}
           paperId={paperId}
           userPaperId={resolvedUserPaperId}
           isPersonalOwner={isPersonalOwner}
-          isAdmin={isAdmin}
+          isAdmin={isAdmin()}
           attachments={attachments}
           onAttachmentsChange={handleAttachmentsChange}
           onSaveToServer={handleSaveToServerCallback}

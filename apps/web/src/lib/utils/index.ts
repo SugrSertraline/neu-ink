@@ -8,6 +8,9 @@ export * from './paperPageUtils';
 export * from './pdfBlockConverters';
 export * from './tableParser';
 
+// 导出性能优化工具函数
+export * from '../../utils/performance';
+
 /** 格式化日期 */
 export function formatDate(
   date: string | Date,

@@ -1,0 +1,1 @@
+export { InlineTextParserEditorWrapper as InlineTextParserEditor } from './InlineTextParserEditor';

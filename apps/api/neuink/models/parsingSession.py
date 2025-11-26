@@ -12,7 +12,8 @@ class ParsingSessionModel:
     
     def __init__(self):
         self.db_service = get_db_service()
-        self.collection_name = "parsing_sessions"
+        from ..config.constants import Collections
+        self.collection_name = Collections.PARSING_SESSIONS
     
     def create_session(
         self,

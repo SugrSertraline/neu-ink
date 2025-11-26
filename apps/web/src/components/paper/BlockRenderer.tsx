@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import type { ComponentProps, MouseEvent, ReactNode } from 'react';
 import {
   BlockContent,
@@ -27,12 +27,12 @@ import {
 } from './utils/inlineContentUtils';
 import katex from 'katex';
 import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
-import { useEditingState } from '@/stores/useEditingState';
+import { useEditorStore } from '@/store/editor/editorStore';
 import BlockEditor from './editor/BlockEditor';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { translationService } from '@/lib/services/translation';
-import { BlockContextMenu } from './PaperContextMenus';
+import { BlockContextMenu } from './PaperContext';
 import { PdfBlockHoverCard } from './PdfBlockHoverCard';
 
 /** ===================== 工具与类型 ===================== */
@@ -323,7 +323,7 @@ const resolveMediaUrl = (src?: string) => {
 
 /** ===================== 主组件 ===================== */
 
-export default function BlockRenderer({
+function BlockRenderer({
   block,
   lang,
   isActive = false,
@@ -364,13 +364,14 @@ export default function BlockRenderer({
   onCreateSectionWithHeading,
 }: BlockRendererProps) {
   const { canEditContent } = usePaperEditPermissionsContext();
-  const { hasUnsavedChanges, setHasUnsavedChanges, switchToEdit, clearEditing } = useEditingState();
+  const { hasUnsavedChanges, setHasUnsavedChanges, switchToEdit, clearCurrentEditing, currentEditingId } = useEditorStore();
   const inlineEditingEnabled = canEditContent && typeof onBlockUpdate === 'function';
 
   const [showToolbar, setShowToolbar] = useState(false);
   const [toolbarPos, setToolbarPos] = useState<{ x: number; y: number } | null>(null);
   const [selectedText, setSelectedText] = useState('');
-  const [isEditing, setIsEditing] = useState(false);
+  // 使用全局状态而不是本地状态，避免状态不同步
+  const isEditing = currentEditingId === block.id;
   const [draftBlock, setDraftBlock] = useState<BlockContent>(() => cloneBlock(block));
   const [isSaving, setIsSaving] = useState(false);
   const [showParseResultsManager, setShowParseResultsManager] = useState(false);
@@ -406,10 +407,10 @@ export default function BlockRenderer({
 
   useEffect(() => {
     if (!inlineEditingEnabled && isEditing) {
-      setIsEditing(false);
+      clearCurrentEditing();
       setDraftBlock(cloneBlock(block));
     }
-  }, [inlineEditingEnabled, isEditing, block]);
+  }, [inlineEditingEnabled, isEditing, block, clearCurrentEditing]);
 
   useEffect(() => {
     if (isEditing && showToolbar) {
@@ -422,13 +423,9 @@ export default function BlockRenderer({
   useEffect(() => {
     if (isEditing) {
       const target = editPanelRef.current ?? blockRef.current;
-      requestAnimationFrame(() => {
-        target?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      });
+      target?.scrollIntoView({ behavior: 'auto', block: 'center' });
     } else if (wasEditingRef.current) {
-      requestAnimationFrame(() => {
-        blockRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      });
+      blockRef.current?.scrollIntoView({ behavior: 'auto', block: 'center' });
     }
     wasEditingRef.current = isEditing;
   }, [isEditing]);
@@ -450,13 +447,13 @@ export default function BlockRenderer({
     [setHighlightedRefs, onCitationClick]
   );
 
-  const inlineRendererBaseProps: InlineRendererBaseProps = {
+  const inlineRendererBaseProps = useMemo(() => ({
     searchQuery,
     highlightedRefs: effectiveHighlightedRefs,
     setHighlightedRefs: handleHighlightedRefs,
     contentRef: effectiveContentRef,
     references,
-  };
+  }), [searchQuery, effectiveHighlightedRefs, handleHighlightedRefs, effectiveContentRef, references]);
 
   const baseClass = `transition-all duration-200 rounded-lg ${
     isActive ? 'bg-blue-50 ring-2 ring-blue-200 shadow-sm' : ''
@@ -464,14 +461,20 @@ export default function BlockRenderer({
 
   const enterEditMode = useCallback(() => {
     if (!inlineEditingEnabled || isEditing) return;
-    const switched = switchToEdit(block.id, {
-      onRequestSave: ({ currentId }) => {
+    
+    // 先设置本地状态，立即响应UI
+    setDraftBlock(cloneBlock(block));
+    
+    // 直接切换编辑状态
+    switchToEdit(block.id, {
+      onRequestSave: ({ currentId }: { currentId: string }) => {
         // TODO: auto-save before switching block
       },
+    }).catch((error) => {
+      // 如果切换失败，恢复原状态
+      console.error('Failed to switch edit mode:', error);
+      setDraftBlock(cloneBlock(block));
     });
-    if (!switched) return;
-    setDraftBlock(cloneBlock(block));
-    setIsEditing(true);
   }, [inlineEditingEnabled, isEditing, block, switchToEdit]);
 
   const handleWrapperClick = useCallback((_event: MouseEvent<HTMLDivElement>) => {
@@ -482,15 +485,13 @@ export default function BlockRenderer({
   const handleCancelEdit = useCallback(() => {
     setDraftBlock(cloneBlock(block));
     setHasUnsavedChanges(false);
-    setIsEditing(false);
-    clearEditing();
-  }, [block, setHasUnsavedChanges, clearEditing]);
+    clearCurrentEditing();
+  }, [block, setHasUnsavedChanges, clearCurrentEditing]);
 
   const handleSaveEdit = useCallback(async () => {
     if (!onBlockUpdate) {
       setDraftBlock(cloneBlock(block));
-      setIsEditing(false);
-      clearEditing();
+      clearCurrentEditing();
       return;
     }
 
@@ -500,8 +501,7 @@ export default function BlockRenderer({
 
     setDraftBlock(cloneBlock(draftBlock));
     setHasUnsavedChanges(false);
-    setIsEditing(false);
-    clearEditing();
+    clearCurrentEditing();
 
     if (onSaveToServer && sectionId) {
       setIsSaving(true);
@@ -514,7 +514,7 @@ export default function BlockRenderer({
         setIsSaving(false);
       }
     }
-  }, [draftBlock, block, onBlockUpdate, setHasUnsavedChanges, clearEditing, onSaveToServer, sectionId]);
+  }, [draftBlock, block, onBlockUpdate, setHasUnsavedChanges, clearCurrentEditing, onSaveToServer, sectionId]);
 
   const handleTextSelection = useCallback(
     (_e: MouseEvent<HTMLElement>) => {
@@ -572,7 +572,7 @@ export default function BlockRenderer({
   }, []);
 
   useEffect(() => {
-    if (!showToolbar) return;
+    if (!showToolbar || isEditing) return; // 在编辑状态下不显示工具栏
 
     const handleGlobalClick = (event: Event) => {
       const mouseEvent = event as unknown as MouseEvent;
@@ -598,14 +598,18 @@ export default function BlockRenderer({
       }
     };
 
-    document.addEventListener('mousedown', handleGlobalClick);
-    document.addEventListener('keydown', handleGlobalKeydown);
+    // 使用防抖避免频繁触发
+    const debounceTimer = setTimeout(() => {
+      document.addEventListener('mousedown', handleGlobalClick);
+      document.addEventListener('keydown', handleGlobalKeydown);
+    }, 100);
 
     return () => {
+      clearTimeout(debounceTimer);
       document.removeEventListener('mousedown', handleGlobalClick);
       document.removeEventListener('keydown', handleGlobalKeydown);
     };
-  }, [showToolbar, selectedText, handleToolbarClose]);
+  }, [showToolbar, selectedText, handleToolbarClose, isEditing]);
 
   const applyStyle = useCallback(
     (styleType: 'bold' | 'italic' | 'underline' | 'color' | 'bg' | 'clear', value?: string) => {
@@ -678,6 +682,9 @@ export default function BlockRenderer({
     // 不使用系统自动计算的编号，直接显示原始标题内容（包含原始编号）
     const numberPart = null;
 
+    // 在编辑状态下禁用文本选择，避免冲突
+    const shouldHandleTextSelection = inlineEditingEnabled && !isEditing && !showToolbar;
+
     const renderContent = () => {
       if (lang === 'both') {
         const enPart = (
@@ -714,8 +721,8 @@ export default function BlockRenderer({
 
     const commonProps = {
       className: `${headingSizes[headingBlock.level]} font-bold text-gray-900 mb-2`,
-      onMouseUp: inlineEditingEnabled && !isEditing ? handleTextSelection : undefined,
-      style: { userSelect: 'text' as const },
+      onMouseUp: shouldHandleTextSelection ? handleTextSelection : undefined,
+      style: { userSelect: shouldHandleTextSelection ? 'text' as const : 'none' as const },
       children: (
         <>
           {numberPart}
@@ -742,7 +749,8 @@ export default function BlockRenderer({
     }
   };
 
-  const renderContent = useCallback(() => {
+  // 优化：将 renderContent 改为 useMemo，减少重新渲染
+  const renderContent = useMemo(() => {
     switch (block.type) {
       case 'heading':
         return renderBilingualHeading(block);
@@ -756,6 +764,9 @@ export default function BlockRenderer({
             justify: 'text-justify',
           }[block.align || 'left'] ?? 'text-left';
 
+        // 在编辑状态下禁用文本选择，避免冲突
+        const shouldHandleTextSelection = inlineEditingEnabled && !isEditing && !showToolbar;
+
         if (lang === 'both') {
           const enContent = block.content?.en ?? [];
           const zhContent = block.content?.zh;
@@ -763,8 +774,8 @@ export default function BlockRenderer({
           return (
             <div
               className={`text-gray-700 leading-relaxed space-y-2 ${alignClass}`}
-              onMouseUp={inlineEditingEnabled && !isEditing ? handleTextSelection : undefined}
-              style={{ userSelect: 'text' }}
+              onMouseUp={shouldHandleTextSelection ? handleTextSelection : undefined}
+              style={{ userSelect: shouldHandleTextSelection ? 'text' as const : 'none' as const }}
             >
               <div className="text-gray-800">
                 <InlineRenderer nodes={enContent} {...inlineRendererBaseProps} />
@@ -785,8 +796,8 @@ export default function BlockRenderer({
           return (
             <p
               className={`text-gray-700 leading-relaxed ${alignClass}`}
-              onMouseUp={inlineEditingEnabled && !isEditing ? handleTextSelection : undefined}
-              style={{ userSelect: 'text' }}
+              onMouseUp={shouldHandleTextSelection ? handleTextSelection : undefined}
+              style={{ userSelect: shouldHandleTextSelection ? 'text' as const : 'none' as const }}
             >
               <InlineRenderer nodes={block.content?.en ?? []} {...inlineRendererBaseProps} />
             </p>
@@ -1232,7 +1243,13 @@ export default function BlockRenderer({
             isPersonalOwner={!!userPaperId}
             userPaperId={userPaperId}
             initialProgress={normalizedProgress}
-            onParsePreview={(data) => {
+            onParsePreview={useCallback((data: {
+              type: 'preview' | 'cancel';
+              blockId: string;
+              parsedBlocks?: any[];
+              sessionId?: string;
+              parseId?: string;
+            }) => {
               console.log('[BlockRenderer] onParsePreview 被调用', {
                 type: data.type,
                 blockId: data.blockId,
@@ -1262,7 +1279,7 @@ export default function BlockRenderer({
                   onParsePreview(data);
                 }
               }
-            }}
+            }, [onParsePreview, parsingBlock.id, parsingBlock.parseId])}
           />
         );
       }
@@ -1283,7 +1300,8 @@ export default function BlockRenderer({
     sectionId,
     isPersonalOwner,
     userPaperId,
-    streamProgressData,
+    showToolbar, // 添加 showToolbar 依赖
+    // 移除 streamProgressData 依赖，避免频繁重新渲染
   ]);
 
   return (
@@ -1300,81 +1318,83 @@ export default function BlockRenderer({
         onMouseLeave={onMouseLeave}
         onClick={handleWrapperClick}
       >
-        {isEditing ? (
-          <div ref={editPanelRef} className="flex flex-col gap-3">
-            <BlockEditor
-              block={draftBlock}
-              lang={lang}
-              references={references}
-              allSections={allSections}
-              onChange={setDraftBlock}
-              onMoveUp={onMoveUp}
-              onMoveDown={onMoveDown}
-              onDelete={() => {
-                onDelete?.();
-                setIsEditing(false);
-                clearEditing();
-              }}
-              onDuplicate={onDuplicate}
-              canMoveUp={canMoveUp}
-              canMoveDown={canMoveDown}
-              onAddBlockAfter={onAddBlockAfter}
-            />
-            <div className="flex justify-end gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 rounded-b-lg">
-              <button
-                type="button"
-                onClick={handleCancelEdit}
-                className="px-4 py-2 rounded border border-gray-300 text-gray-600 hover:bg-gray-100"
-                disabled={isSaving}
-              >
-                取消
-              </button>
-              <button
-                type="button"
-                onClick={handleSaveEdit}
-                disabled={isSaving}
-                className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              >
-                {isSaving ? (
-                  <>
-                    <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
-                    保存中...
-                  </>
-                ) : (
-                  '保存'
-                )}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {renderContent()}
-            {isPersonalOwner && notesCount > 0 && (
-              <div className="absolute -right-1 -top-1 pointer-events-none z-10">
-                <div className="relative">
-                  <div className="absolute inset-0 w-3 h-3 bg-blue-500 rounded-full animate-pulse blur-sm"></div>
-                  <div className="absolute inset-0 w-3 h-3 bg-blue-400 rounded-full animate-pulse blur-md opacity-75"></div>
-                  <div className="relative w-3 h-3 bg-blue-600 rounded-full shadow-lg shadow-blue-500/60 animate-pulse"></div>
-                </div>
-              </div>
-            )}
-            <div className="pointer-events-none absolute right-3 top-3 opacity-0 transition group-hover:opacity-100 flex items-center gap-2">
-              {inlineEditingEnabled && block.type !== 'parsing' && (
+        <div className="relative">
+          {isEditing ? (
+            <div ref={editPanelRef} className="flex flex-col gap-3 animate-in fade-in-0 duration-200">
+              <BlockEditor
+                block={draftBlock}
+                lang={lang}
+                references={references}
+                allSections={allSections}
+                onChange={setDraftBlock}
+                onMoveUp={onMoveUp}
+                onMoveDown={onMoveDown}
+                onDelete={() => {
+                  onDelete?.();
+                  clearCurrentEditing();
+                }}
+                onDuplicate={onDuplicate}
+                canMoveUp={canMoveUp}
+                canMoveDown={canMoveDown}
+                onAddBlockAfter={onAddBlockAfter}
+              />
+              <div className="flex justify-end gap-2 border-t border-gray-200 bg-gray-50 px-4 py-3 rounded-b-lg">
                 <button
                   type="button"
-                  onClick={(event) => {
-                    event.preventDefault();
-                    event.stopPropagation();
-                    enterEditMode();
-                  }}
-                  className="pointer-events-auto rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow hover:bg-blue-700"
+                  onClick={handleCancelEdit}
+                  className="px-4 py-2 rounded border border-gray-300 text-gray-600 hover:bg-gray-100"
+                  disabled={isSaving}
                 >
-                  编辑
+                  取消
                 </button>
-              )}
+                <button
+                  type="button"
+                  onClick={handleSaveEdit}
+                  disabled={isSaving}
+                  className="px-4 py-2 rounded bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                >
+                  {isSaving ? (
+                    <>
+                      <span className="inline-block h-4 w-4 animate-spin rounded-full border-2 border-white border-t-transparent"></span>
+                      保存中...
+                    </>
+                  ) : (
+                    '保存'
+                  )}
+                </button>
+              </div>
             </div>
-          </>
-        )}
+          ) : (
+            <div className="animate-in fade-in-0 duration-200">
+              {renderContent}
+              {isPersonalOwner && notesCount > 0 && (
+                <div className="absolute -right-1 -top-1 pointer-events-none z-10">
+                  <div className="relative">
+                    <div className="absolute inset-0 w-3 h-3 bg-blue-500 rounded-full animate-pulse blur-sm"></div>
+                    <div className="absolute inset-0 w-3 h-3 bg-blue-400 rounded-full animate-pulse blur-md opacity-75"></div>
+                    <div className="relative w-3 h-3 bg-blue-600 rounded-full shadow-lg shadow-blue-500/60 animate-pulse"></div>
+                  </div>
+                </div>
+              )}
+              <div className="pointer-events-none absolute right-3 top-3 opacity-0 transition group-hover:opacity-100 flex items-center gap-2">
+                {inlineEditingEnabled && block.type !== 'parsing' && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      // 直接调用 enterEditMode，它内部已经处理了即时状态设置
+                      enterEditMode();
+                    }}
+                    className="pointer-events-auto rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white shadow hover:bg-blue-700"
+                  >
+                    编辑
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {showToolbar && inlineEditingEnabled && toolbarPos && (
@@ -1433,3 +1453,6 @@ export default function BlockRenderer({
     </>
   );
 }
+
+// 使用 React.memo 优化组件，避免不必要的重新渲染
+export default React.memo(BlockRenderer);

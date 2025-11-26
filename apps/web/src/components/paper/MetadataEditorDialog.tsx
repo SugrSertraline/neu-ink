@@ -63,7 +63,6 @@ interface MetadataEditorDialogProps {
   isSubmitting?: boolean;
   externalError?: string | null;
   userPaperId?: string; // 用于自动保存
-  paperId?: string; // 兼容保留（未使用）
   autoSave?: boolean;
   autoSaveDelay?: number;
 }
@@ -220,7 +219,6 @@ export default function MetadataEditorDialog({
   isSubmitting,
   externalError,
   userPaperId,
-  paperId, // 未使用，仅兼容
   autoSave = false,
   autoSaveDelay = 2000,
 }: MetadataEditorDialogProps) {

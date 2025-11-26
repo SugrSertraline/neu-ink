@@ -12,7 +12,8 @@ class ParseBlocksModel:
     
     def __init__(self):
         self.db = get_db_service()
-        self.collection = "parse_blocks"
+        from ..config.constants import Collections
+        self.collection = Collections.PARSE_BLOCKS
 
     def create_record(
         self,

@@ -1,7 +1,7 @@
 // hooks/usePaperReferences.ts (继续)
 import { useState, useCallback } from 'react';
 import { toast } from 'sonner';
-import { userPaperService } from '@/lib/services/paper';
+import { userPaperService } from '@/lib/services/papers';
 import type { Reference, PaperContent as PaperContentModel } from '@/types/paper';
 import {
   createEmptyReference,

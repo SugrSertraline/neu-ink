@@ -4,30 +4,51 @@ UserPaper 数据模型
 """
 import logging
 from typing import Dict, Any, List, Optional, Tuple
-
-from ..services.db import get_db
-from ..utils.common import generate_id, get_current_time
+from .basePaper import BasePaperModel
 from ..config.constants import Collections
+from ..utils.common import get_current_time
 from .section import find_sections_by_ids
 
 # 初始化logger
 logger = logging.getLogger(__name__)
 
 
-class UserPaperModel:
+class UserPaperModel(BasePaperModel):
     """UserPaper 数据模型类"""
 
-    def __init__(self):
-        """初始化 UserPaper 模型"""
-        self.collection = get_db()[Collections.USER_PAPER]
-        self._ensure_indexes()
+    def get_collection_name(self) -> str:
+        """返回集合名称"""
+        return Collections.USER_PAPER
 
     def _ensure_indexes(self):
         """确保必要的索引存在"""
-        self.collection.create_index("id", unique=True)
-        self.collection.create_index("userId")
-        self.collection.create_index("sourcePaperId")
-        self.collection.create_index([("userId", 1), ("sourcePaperId", 1)])
+        import logging
+        logger = logging.getLogger(__name__)
+        collection_name = self.get_collection_name()
+        
+        logger.info(f"开始为集合 {collection_name} 创建用户论文特有索引")
+        
+        # 先调用父类的索引创建方法
+        super()._ensure_indexes()
+        
+        # 添加用户论文特有的索引
+        try:
+            self.collection.create_index("userId")
+            logger.info(f"集合 {collection_name}: 创建索引 userId")
+        except Exception as e:
+            logger.warning(f"集合 {collection_name}: 创建 userId 索引失败 - {str(e)}")
+            
+        try:
+            self.collection.create_index("sourcePaperId")
+            logger.info(f"集合 {collection_name}: 创建索引 sourcePaperId")
+        except Exception as e:
+            logger.warning(f"集合 {collection_name}: 创建 sourcePaperId 索引失败 - {str(e)}")
+            
+        try:
+            self.collection.create_index([("userId", 1), ("sourcePaperId", 1)])
+            logger.info(f"集合 {collection_name}: 创建复合索引 userId, sourcePaperId")
+        except Exception as e:
+            logger.warning(f"集合 {collection_name}: 创建复合索引失败 - {str(e)}")
         
         # 全文搜索索引 - 添加异常处理避免索引冲突
         try:
@@ -37,87 +58,68 @@ class UserPaperModel:
                 ("abstract.en", "text"),
                 ("abstract.zh", "text"),
             ])
+            logger.info(f"集合 {collection_name}: 创建扩展全文索引 metadata.title, metadata.titleZh, abstract.en, abstract.zh")
         except Exception as e:
             # 如果索引已存在或类似索引已存在，忽略错误
             # 这通常发生在数据库结构变更后，旧索引仍存在的情况
             error_msg = str(e).lower()
+            logger.warning(f"集合 {collection_name}: 创建扩展全文索引失败 - {str(e)}")
             if any(keyword in error_msg for keyword in ["already exists", "indexoptionsconflict", "duplicate"]):
                 # 索引已存在，跳过创建
+                logger.info(f"集合 {collection_name}: 索引已存在，跳过创建")
                 pass
             else:
                 # 其他类型的错误，重新抛出
+                logger.error(f"集合 {collection_name}: 创建索引时发生未知错误 - {str(e)}")
                 raise e
-                
-        self.collection.create_index("customTags")
-        self.collection.create_index("readingStatus")
-        self.collection.create_index("priority")
-        self.collection.create_index("addedAt")
+                 
+        try:
+            self.collection.create_index("customTags")
+            logger.info(f"集合 {collection_name}: 创建索引 customTags")
+        except Exception as e:
+            logger.warning(f"集合 {collection_name}: 创建 customTags 索引失败 - {str(e)}")
+            
+        try:
+            self.collection.create_index("readingStatus")
+            logger.info(f"集合 {collection_name}: 创建索引 readingStatus")
+        except Exception as e:
+            logger.warning(f"集合 {collection_name}: 创建 readingStatus 索引失败 - {str(e)}")
+            
+        try:
+            self.collection.create_index("priority")
+            logger.info(f"集合 {collection_name}: 创建索引 priority")
+        except Exception as e:
+            logger.warning(f"集合 {collection_name}: 创建 priority 索引失败 - {str(e)}")
+            
+        try:
+            self.collection.create_index("addedAt")
+            logger.info(f"集合 {collection_name}: 创建索引 addedAt")
+        except Exception as e:
+            logger.warning(f"集合 {collection_name}: 创建 addedAt 索引失败 - {str(e)}")
+            
         # 新增：阅读相关索引
-        self.collection.create_index("lastReadTime")
-        # 新增：sectionIds索引
-        self.collection.create_index("sectionIds")
+        try:
+            self.collection.create_index("lastReadTime")
+            logger.info(f"集合 {collection_name}: 创建索引 lastReadTime")
+        except Exception as e:
+            logger.warning(f"集合 {collection_name}: 创建 lastReadTime 索引失败 - {str(e)}")
+            
+        logger.info(f"集合 {collection_name} 用户论文特有索引创建完成")
 
-    def create(self, user_paper_data: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        创建新的个人论文库条目（扁平化结构）
-        """
-        user_paper_id = generate_id()
-        current_time = get_current_time()
-
-        user_paper = {
-            "id": user_paper_id,
-            "userId": user_paper_data["userId"],
-            "sourcePaperId": user_paper_data.get("sourcePaperId"),
-            # 扁平化字段
-            "metadata": user_paper_data.get("metadata", {}),
-            "abstract": user_paper_data.get("abstract"),
-            "keywords": user_paper_data.get("keywords", []),
-            "references": user_paper_data.get("references", []),
-            "attachments": user_paper_data.get("attachments", {
-                "pdf": None,
-                "markdown": None,
-                "content_list": None,
-                "model": None,
-                "layout": None
-            }),
-            "sectionIds": user_paper_data.get("sectionIds", []),  # section ID列表
-            "customTags": user_paper_data.get("customTags", []),
-            "readingStatus": user_paper_data.get("readingStatus", "unread"),
-            "priority": user_paper_data.get("priority", "medium"),
-            "readingPosition": user_paper_data.get("readingPosition"),  # blockId 或 None
-            "totalReadingTime": user_paper_data.get("totalReadingTime", 0),  # 秒
-            "lastReadTime": user_paper_data.get("lastReadTime"),  # datetime 或 None
-            "remarks": user_paper_data.get("remarks"),  # 备注
-            "addedAt": current_time,
-            "updatedAt": current_time,
+    def get_specific_fields(self, paper_data: Dict[str, Any]) -> Dict[str, Any]:
+        """获取用户论文特有的字段"""
+        return {
+            "userId": paper_data["userId"],
+            "sourcePaperId": paper_data.get("sourcePaperId"),
+            "customTags": paper_data.get("customTags", []),
+            "readingStatus": paper_data.get("readingStatus", "unread"),
+            "priority": paper_data.get("priority", "medium"),
+            "readingPosition": paper_data.get("readingPosition"),  # blockId 或 None
+            "totalReadingTime": paper_data.get("totalReadingTime", 0),  # 秒
+            "lastReadTime": paper_data.get("lastReadTime"),  # datetime 或 None
+            "remarks": paper_data.get("remarks"),  # 备注
+            "addedAt": get_current_time(),
         }
-
-        self.collection.insert_one(user_paper)
-        # 返回前查询一次，确保不包含任何MongoDB特定对象
-        return self.find_by_id(user_paper_id)
-
-    def find_by_id(self, user_paper_id: str) -> Optional[Dict[str, Any]]:
-        """
-        根据ID查找个人论文，默认包含sections内容
-        
-        Args:
-            user_paper_id: 个人论文ID
-        
-        Returns:
-            个人论文数据，包含完整的sections内容
-        """
-        user_paper = self.collection.find_one({"id": user_paper_id}, {"_id": 0})
-        if not user_paper:
-            return None
-             
-        # 默认从sectionIds查询sections并添加到返回结果中
-        if "sectionIds" in user_paper and user_paper["sectionIds"]:
-            sections = find_sections_by_ids(user_paper["sectionIds"])
-            user_paper["sections"] = sections
-        else:
-            user_paper["sections"] = []
-        
-        return user_paper
 
     def find_by_user_and_source(
         self, user_id: str, source_paper_id: str
@@ -130,18 +132,19 @@ class UserPaperModel:
             {"_id": 0}
         )
 
-    def find_by_user(
+    def find_by_user_or_filters(
         self,
-        user_id: str,
         skip: int,
         limit: int,
         sort_by: str,
         sort_order: int,
-        search: Optional[str] = None,
-        filters: Optional[Dict[str, Any]] = None,
+        search: Optional[str],
+        filters: Optional[Dict[str, Any]],
+        user_id: Optional[str] = None,
+        **kwargs
     ) -> Tuple[List[Dict[str, Any]], int]:
         """
-        查询用户的个人论文库列表
+        根据用户或筛选条件查询论文列表
         """
         base_query = {"userId": user_id}
         
@@ -189,29 +192,28 @@ class UserPaperModel:
         
         return papers, total
 
-    def update(self, user_paper_id: str, update_data: Dict[str, Any]) -> bool:
+    def find_by_user(
+        self,
+        user_id: str,
+        skip: int,
+        limit: int,
+        sort_by: str,
+        sort_order: int,
+        search: Optional[str] = None,
+        filters: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[List[Dict[str, Any]], int]:
         """
-        更新个人论文
+        查询用户的个人论文库列表
         """
-        update_data["updatedAt"] = get_current_time()
-        result = self.collection.update_one(
-            {"id": user_paper_id},
-            {"$set": update_data}
+        return self.find_by_user_or_filters(
+            skip=skip,
+            limit=limit,
+            sort_by=sort_by,
+            sort_order=sort_order,
+            search=search,
+            filters=filters,
+            user_id=user_id
         )
-        return result.modified_count > 0
-
-    def delete(self, user_paper_id: str) -> bool:
-        """
-        删除个人论文
-        """
-        result = self.collection.delete_one({"id": user_paper_id})
-        return result.deleted_count > 0
-
-    def exists(self, user_paper_id: str) -> bool:
-        """
-        检查个人论文是否存在
-        """
-        return self.collection.count_documents({"id": user_paper_id}, limit=1) > 0
 
     def count_by_user(self, user_id: str) -> int:
         """
@@ -257,6 +259,17 @@ class UserPaperModel:
             "fromPublic": from_public,
             "uploaded": uploaded,
         }
+
+    def get_search_filters(self, **kwargs) -> Dict[str, Any]:
+        """获取用户论文特有的搜索过滤条件"""
+        user_id = kwargs.get("user_id")
+        if user_id:
+            return {"userId": user_id}
+        return {}
+
+    def get_projection(self, include_score: bool = False) -> Dict[str, Any]:
+        """获取查询投影"""
+        return self._list_summary_projection(include_score)
 
     @staticmethod
     def _list_summary_projection(include_score: bool = False) -> Dict[str, Any]:

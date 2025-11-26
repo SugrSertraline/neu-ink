@@ -18,7 +18,6 @@ bp = Blueprint("translation", __name__)
 
 
 @bp.route("/quick", methods=["POST"])
-@login_required
 def quick_translation():
     """
     快速翻译接口 - 将英文翻译为中文
@@ -122,7 +121,6 @@ def quick_translation():
 
 
 @bp.route("/models", methods=["GET"])
-@login_required
 def get_available_models():
     """
     获取可用的翻译模型列表

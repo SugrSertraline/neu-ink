@@ -718,6 +718,7 @@ export function PaperAttachmentsDrawer({
   onAddTableToSection,
   sections = [],
 }: PaperAttachmentsDrawerProps) {
+  // 添加调试代码
   const [isUploading, setIsUploading] = useState(false);
 
   // PdfViewer 可见状态，与 Drawer 开关解耦（只要有 pdfUrl 就可见）
@@ -738,26 +739,36 @@ export function PaperAttachmentsDrawer({
   const [contentList, setContentList] = useState<ContentBlock[] | null>(null);
 
   useEffect(() => {
-    const url = attachments.content_list?.url;
-    if (!url) {
-      setContentList(null);
-      return;
-    }
+    const fetchContentList = async () => {
+      if (!paperId && !userPaperId) {
+        setContentList(null);
+        return;
+      }
 
-    let aborted = false;
+      let aborted = false;
 
-    (async () => {
       try {
-        const res = await fetch(url);
-        if (!res.ok) {
-          console.warn('content_list.json 请求失败:', url, res.status);
+        let response;
+        if (isPersonalOwner && userPaperId) {
+          // 使用用户论文API
+          response = await userPaperService.getUserPaperContentList(userPaperId);
+        } else if (paperId) {
+          // 使用管理员论文API
+          response = await adminPaperService.getAdminPaperContentList(paperId);
+        } else {
+          setContentList(null);
+          return;
+        }
+
+        if (response.topCode !== 200) {
+          console.warn('content_list.json 请求失败:', response.topMessage);
           if (!aborted) setContentList(null);
           return;
         }
 
-        const data = (await res.json()) as ContentBlock[];
+        const data = (response.data as any)?.contentList as ContentBlock[];
         if (!aborted) {
-          setContentList(data);
+          setContentList(data || []);
         }
       } catch (e) {
         console.error('加载 content_list.json 失败:', e);
@@ -765,12 +776,14 @@ export function PaperAttachmentsDrawer({
           setContentList(null);
         }
       }
-    })();
 
-    return () => {
-      aborted = true;
+      return () => {
+        aborted = true;
+      };
     };
-  }, [attachments.content_list?.url]);
+
+    fetchContentList();
+  }, [paperId, userPaperId, isPersonalOwner]);
 
   // ===== PDF解析相关状态 =====
   const [isParsing, setIsParsing] = useState(false);

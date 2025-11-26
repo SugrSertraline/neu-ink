@@ -4,7 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { useRouter } from 'next/navigation';
 
-import { usePaperService } from '@/lib/services/paper';
+import { usePaperService } from '@/lib/services/papers';
 import { isSuccess } from '@/lib/http';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import type {
@@ -15,7 +15,7 @@ import type {
   ViewerSource,
   UserPaper,
 } from '@/types/paper';
-import { useTabStore } from '@/stores/useTabStore';
+import { useTabStore } from '@/store/ui/tabStore';
 
 type ViewMode = 'card' | 'table' | 'compact';
 

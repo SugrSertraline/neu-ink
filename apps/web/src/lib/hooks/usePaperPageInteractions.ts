@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect } from 'react';
 import { toast } from 'sonner';
-import { useEditingState } from '@/stores/useEditingState';
-import { adminPaperService, userPaperService } from '@/lib/services/paper';
+import { useEditorStore } from '@/store/editor/editorStore';
+import { adminPaperService, userPaperService } from '@/lib/services/papers';
 import type { PaperContent as PaperContentModel, PaperMetadata as PaperMetadataModel, Reference } from '@/types/paper';
 
 interface UsePaperPageInteractionsProps {
@@ -51,7 +51,7 @@ export function usePaperPageInteractions({
   updateSections,
   handleAddBlocksFromText,
 }: UsePaperPageInteractionsProps) {
-  const { setHasUnsavedChanges: setEditingStateUnsavedChanges, switchToEdit, clearEditing, currentEditingId } = useEditingState();
+  const { setHasUnsavedChanges: setEditorHasUnsavedChanges, switchToEdit, clearCurrentEditing, currentEditingId } = useEditorStore();
 
   // 处理元数据编辑开始
   const handleMetadataEditStart = useCallback((metadata: PaperMetadataModel, setIsMetadataEditorOpen: (open: boolean) => void, setMetadataEditorInitial: (initial: PaperMetadataModel | null) => void, setMetadataEditorError: (error: string | null) => void) => {
@@ -122,9 +122,9 @@ export function usePaperPageInteractions({
           keywords: keywords || prev.keywords,
         };
       });
-      setHasUnsavedChanges(true);
+      setEditorHasUnsavedChanges(true);
     },
-    [setEditableDraft, setHasUnsavedChanges],
+    [setEditableDraft, setEditorHasUnsavedChanges],
   );
 
   // 保存到服务器
@@ -142,8 +142,8 @@ export function usePaperPageInteractions({
   // 处理附件变更
   const handleAttachmentsChange = useCallback((newAttachments: any) => {
     setAttachments(newAttachments);
-    setHasUnsavedChanges(true);
-  }, [setAttachments, setHasUnsavedChanges]);
+    setEditorHasUnsavedChanges(true);
+  }, [setAttachments, setEditorHasUnsavedChanges]);
 
   // 处理元数据覆盖层提交
   const handleMetadataOverlaySubmit = useCallback(
@@ -163,14 +163,14 @@ export function usePaperPageInteractions({
 
         setEditableDraft(nextDraft);
         await handleSaveToServer(nextDraft);
-        clearEditing();
+        clearCurrentEditing();
       } catch (err) {
         const message = err instanceof Error ? err.message : '保存失败，请稍后重试';
         toast.error('元数据保存失败', { description: message });
         throw err; // 重新抛出错误，让调用者处理UI状态更新
       }
     },
-    [editableDraft, paper, handleSaveToServer, clearEditing],
+    [editableDraft, paper, handleSaveToServer, clearCurrentEditing],
   );
 
   // 处理摘要关键词覆盖层提交
@@ -198,7 +198,7 @@ export function usePaperPageInteractions({
 
         setIsAbstractKeywordsEditorOpen(false);
         setAbstractKeywordsEditorInitial(null);
-        clearEditing();
+        clearCurrentEditing();
       } catch (err) {
         const message = err instanceof Error ? err.message : '保存失败，请稍后重试';
         setAbstractKeywordsEditorError(message);
@@ -207,7 +207,7 @@ export function usePaperPageInteractions({
         setIsAbstractKeywordsSubmitting(false);
       }
     },
-    [editableDraft, paper, handleSaveToServer, clearEditing],
+    [editableDraft, paper, handleSaveToServer, clearCurrentEditing],
   );
 
   // 处理块选择
@@ -334,7 +334,7 @@ export function usePaperPageInteractions({
           });
         }
         setIsPublicVisible(newVisibility);
-        setHasUnsavedChanges(false);
+        setEditorHasUnsavedChanges(false);
       } else {
         toast.error('切换可见性失败', {
           description: result.bizMessage ?? '请稍后重试',
@@ -346,7 +346,7 @@ export function usePaperPageInteractions({
         description: message,
       });
     }
-  }, [paperId, paper, setEditableDraft, setHasUnsavedChanges, setIsPublicVisible]);
+  }, [paperId, paper, setEditableDraft, setEditorHasUnsavedChanges, setIsPublicVisible]);
 
   // 处理参考文献添加
   const handleReferencesAdded = useCallback((references: Reference[]) => {
@@ -358,8 +358,8 @@ export function usePaperPageInteractions({
         references: [...(prev.references || []), ...references],
       };
     });
-    setHasUnsavedChanges(true);
-  }, [setEditableDraft, setHasUnsavedChanges]);
+    setEditorHasUnsavedChanges(true);
+  }, [setEditableDraft, setEditorHasUnsavedChanges]);
 
   // 页面卸载时保存阅读进度
   useEffect(() => {
@@ -373,14 +373,14 @@ export function usePaperPageInteractions({
   // 监听块添加成功事件，清除未保存状态
   useEffect(() => {
     const handleBlockAdded = () => {
-      setHasUnsavedChanges(false);
+      setEditorHasUnsavedChanges(false);
     };
 
     window.addEventListener('blockAddedSuccessfully', handleBlockAdded);
     return () => {
       window.removeEventListener('blockAddedSuccessfully', handleBlockAdded);
     };
-  }, [setHasUnsavedChanges]);
+  }, [setEditorHasUnsavedChanges]);
 
   return {
     handleMetadataEditStart,

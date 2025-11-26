@@ -11,19 +11,38 @@ from ..utils.common import generate_id
 from ..models.note import NoteModel
 from ..models.userPaper import UserPaperModel
 from ..config.constants import BusinessCode
+from .baseNoteService import BaseNoteService
+from ..models.context import PaperContext, create_paper_context
 
 
-class NoteService:
+class NoteService(BaseNoteService):
     """Note 业务逻辑服务类"""
 
     def __init__(self) -> None:
-        self.note_model = NoteModel()
-        self.user_paper_model = UserPaperModel()
+        # 先初始化子类属性
+        self._note_model_instance = NoteModel()
+        self._user_paper_model_instance = UserPaperModel()
+        # 为了兼容性，添加note_model属性
+        self.note_model = self._note_model_instance
+        # 再调用父类初始化
+        super().__init__()
+    
+    def _get_note_model(self):
+        """获取笔记模型实例"""
+        return self._note_model_instance
+    
+    def _get_paper_model(self):
+        """获取论文模型实例"""
+        return self._user_paper_model_instance
+    
+    def get_paper_type(self) -> str:
+        """获取论文类型"""
+        return "user"
 
     # ------------------------------------------------------------------
     # 创建笔记
     # ------------------------------------------------------------------
-    def create_note(
+    def create_note_legacy(
         self,
         user_id: str,
         user_paper_id: str,
@@ -32,96 +51,174 @@ class NoteService:
         plain_text: Optional[str] = None,
         note_id: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        创建笔记
-        content 格式为 InlineContent[]
-        """
-        try:
-            # 1. 检查论文是否存在且属于该用户
-            user_paper = self.user_paper_model.find_by_id(user_paper_id)
-            if not user_paper:
-                return self._wrap_failure(
-                    BusinessCode.PAPER_NOT_FOUND,
-                    "论文不存在"
-                )
-
-            if user_paper["userId"] != user_id:
-                return self._wrap_failure(
-                    BusinessCode.PERMISSION_DENIED,
-                    "无权在此论文添加笔记"
-                )
-
-            # 2. 验证 block 是否存在（可选，增强健壮性）
-            if not self._block_exists_in_paper(user_paper, block_id):
-                return self._wrap_failure(
-                    BusinessCode.INVALID_PARAMS,
-                    f"论文中不存在 blockId: {block_id}"
-                )
-
-            # 3. 创建笔记
-            note_data = {
-                "id": note_id or generate_id(),  # 优先使用前端提供的ID
-                "userId": user_id,
-                "userPaperId": user_paper_id,
-                "blockId": block_id,
-                "content": content,
-            }
-            if plain_text is not None:
-                note_data["plainText"] = plain_text
-
-            note = self.note_model.create(note_data)
-            # 确保返回的笔记数据使用前端传入的 ID
-            serialized_note = self._serialize_note(note)
-            return self._wrap_success("笔记创建成功", serialized_note)
-
-        except Exception as exc:  # pylint: disable=broad-except
-            return self._wrap_error(f"创建笔记失败: {exc}")
+        """创建笔记 - 兼容旧接口"""
+        # 创建上下文
+        context = create_paper_context(user_id, "user")
+        context.user_paper_id = user_paper_id
+        
+        # 调用新的创建笔记方法
+        result = super().create_note(context, block_id, content, plain_text, note_id)
+        if result[0]:  # 成功
+            return self._wrap_success(result[1], result[2])
+        else:  # 失败
+            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, result[1])
 
     # ------------------------------------------------------------------
     # 获取笔记列表
     # ------------------------------------------------------------------
-    def get_notes_by_paper(
+    def get_notes_by_paper_legacy(
         self,
         user_id: str,
         user_paper_id: str,
         page: int = 1,
         page_size: int = 100,
     ) -> Dict[str, Any]:
-        """
-        获取某篇论文的所有笔记
-        """
+        """获取某篇论文的所有笔记 - 兼容旧接口"""
+        # 创建上下文
+        context = create_paper_context(user_id, "user")
+        context.user_paper_id = user_paper_id
+        
+        # 调用新的获取笔记方法
+        result = super().get_notes_by_paper(context, page, page_size)
+        if result[0]:  # 成功
+            return self._wrap_success(result[1], result[2])
+        else:  # 失败
+            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, result[1])
+
+    # 新增：支持统一路由的方法
+    def get_notes_by_paper(
+        self,
+        paper_id: str,
+        context: PaperContext,
+        page: int = 1,
+        page_size: int = 100,
+        sort_by: str = "createdAt",
+        sort_order: str = "desc",
+        search: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """获取论文的所有笔记 - 支持上下文感知的新接口"""
         try:
+            # 调用基类方法
+            result = super().get_notes_by_paper(context, page, page_size)
+            if result[0]:  # 成功
+                return self._wrap_success(result[1], result[2])
+            else:  # 失败
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, result[1])
+        except Exception as exc:
+            return self._wrap_error(f"获取笔记失败: {exc}")
+
+    def create_note(
+        self,
+        paper_id: str,
+        context: PaperContext,
+        block_id: str,
+        content: List[Dict[str, Any]],
+        plain_text: Optional[str] = None,
+        note_id: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """创建笔记 - 支持上下文感知的新接口"""
+        try:
+            # 调用基类方法
+            result = super().create_note(context, block_id, content, plain_text, note_id)
+            if result[0]:  # 成功
+                return self._wrap_success(result[1], result[2])
+            else:  # 失败
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, result[1])
+        except Exception as exc:
+            return self._wrap_error(f"创建笔记失败: {exc}")
+
+    def update_note(
+        self,
+        note_id: str,
+        context: PaperContext,
+        update_data: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        """更新笔记 - 支持上下文感知的新接口"""
+        try:
+            # 调用基类方法
+            result = super().update_note(note_id, context, update_data)
+            if result[0]:  # 成功
+                return self._wrap_success(result[1], result[2])
+            else:  # 失败
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, result[1])
+        except Exception as exc:
+            return self._wrap_error(f"更新笔记失败: {exc}")
+
+    def delete_note(
+        self,
+        note_id: str,
+        context: PaperContext,
+    ) -> Dict[str, Any]:
+        """删除笔记 - 支持上下文感知的新接口"""
+        try:
+            # 调用基类方法
+            result = super().delete_note(note_id, context)
+            if result[0]:  # 成功
+                return self._wrap_success(result[1], None)
+            else:  # 失败
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, result[1])
+        except Exception as exc:
+            return self._wrap_error(f"删除笔记失败: {exc}")
+
+    def get_note_detail(
+        self,
+        note_id: str,
+        context: PaperContext,
+    ) -> Dict[str, Any]:
+        """获取笔记详情 - 支持上下文感知的新接口"""
+        try:
+            # 先获取笔记
+            note = self._get_note_model().find_by_id(note_id)
+            if not note:
+                return self._wrap_failure(BusinessCode.NOT_FOUND, "笔记不存在")
+            
             # 权限检查
-            user_paper = self.user_paper_model.find_by_id(user_paper_id)
-            if not user_paper:
-                return self._wrap_failure(
-                    BusinessCode.PAPER_NOT_FOUND,
-                    "论文不存在"
-                )
-
-            if user_paper["userId"] != user_id:
-                return self._wrap_failure(
-                    BusinessCode.PERMISSION_DENIED,
-                    "无权访问此论文的笔记"
-                )
-
-            skip = self._calc_skip(page, page_size)
-            notes, total = self.note_model.find_by_user_paper(
-                user_paper_id=user_paper_id,
-                skip=skip,
-                limit=page_size,
+            if note["userId"] != context.user_id:
+                return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权访问此笔记")
+            
+            return self._wrap_success(
+                "获取笔记详情成功",
+                self._serialize_note(note)
             )
+        except Exception as exc:
+            return self._wrap_error(f"获取笔记详情失败: {exc}")
+
+    def get_user_all_notes(
+        self,
+        context: PaperContext,
+        page: int = 1,
+        page_size: int = 50,
+        sort_by: str = "createdAt",
+        sort_order: str = "desc",
+        search: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """获取用户的所有笔记 - 支持上下文感知的新接口"""
+        try:
+            skip = self._calc_skip(page, page_size)
+            
+            if search:
+                notes, total = self._get_note_model().search_by_content(
+                    user_id=context.user_id,
+                    keyword=search.strip(),
+                    skip=skip,
+                    limit=page_size,
+                )
+            else:
+                notes, total = self._get_note_model().find_by_user(
+                    user_id=context.user_id,
+                    skip=skip,
+                    limit=page_size,
+                )
 
             return self._wrap_success(
-                "获取笔记列表成功",
+                "获取用户笔记成功",
                 {
                     "notes": self._serialize_notes(notes),
                     "pagination": self._build_pagination(total, page, page_size),
                 },
             )
-
-        except Exception as exc:  # pylint: disable=broad-except
-            return self._wrap_error(f"获取笔记列表失败: {exc}")
+        except Exception as exc:
+            return self._wrap_error(f"获取用户笔记失败: {exc}")
 
     def get_notes_by_block(
         self,
@@ -134,7 +231,7 @@ class NoteService:
         """
         try:
             # 权限检查
-            user_paper = self.user_paper_model.find_by_id(user_paper_id)
+            user_paper = self._get_paper_model().find_by_id(user_paper_id)
             if not user_paper:
                 return self._wrap_failure(
                     BusinessCode.PAPER_NOT_FOUND,
@@ -147,7 +244,7 @@ class NoteService:
                     "无权访问此论文的笔记"
                 )
 
-            notes = self.note_model.find_by_block(
+            notes = self._get_note_model().find_by_block(
                 user_paper_id=user_paper_id,
                 block_id=block_id,
             )
@@ -171,7 +268,7 @@ class NoteService:
         """
         try:
             skip = self._calc_skip(page, page_size)
-            notes, total = self.note_model.find_by_user(
+            notes, total = self._get_note_model().find_by_user(
                 user_id=user_id,
                 skip=skip,
                 limit=page_size,
@@ -209,7 +306,7 @@ class NoteService:
                 )
 
             skip = self._calc_skip(page, page_size)
-            notes, total = self.note_model.search_by_content(
+            notes, total = self._get_note_model().search_by_content(
                 user_id=user_id,
                 keyword=keyword.strip(),
                 skip=skip,
@@ -230,97 +327,41 @@ class NoteService:
     # ------------------------------------------------------------------
     # 更新笔记
     # ------------------------------------------------------------------
-    def update_note(
+    def update_note_legacy(
         self,
         note_id: str,
         user_id: str,
         update_data: Dict[str, Any],
     ) -> Dict[str, Any]:
-        """
-        更新笔记内容
-        """
-        try:
-            note = self.note_model.find_by_id(note_id)
-
-            if not note:
-                return self._wrap_failure(
-                    BusinessCode.NOTE_NOT_FOUND,
-                    "笔记不存在"
-                )
-
-            # 权限检查
-            if note["userId"] != user_id:
-                return self._wrap_failure(
-                    BusinessCode.PERMISSION_DENIED,
-                    "无权修改此笔记"
-                )
-
-            # 允许修改 content 与 plainText
-            allowed_fields = {"content", "plainText"}
-            filtered_data = {
-                k: v for k, v in update_data.items() if k in allowed_fields
-            }
-
-            if not filtered_data:
-                return self._wrap_failure(
-                    BusinessCode.INVALID_PARAMS,
-                    "没有可更新的字段"
-                )
-
-            # 更新
-            updated = self.note_model.update(note_id, filtered_data)
-            # 确保返回的笔记数据不为空
-            if updated:
-                return self._wrap_success(
-                    "笔记更新成功",
-                    self._serialize_note(updated),
-                )
-            else:
-                # 如果查询不到更新后的笔记，返回基本成功信息
-                return self._wrap_success(
-                    "笔记更新成功",
-                    {"id": note_id, "message": "笔记已更新但无法获取详细信息"}
-                )
-
-        except Exception as exc:  # pylint: disable=broad-except
-            return self._wrap_error(f"更新笔记失败: {exc}")
+        """更新笔记内容 - 兼容旧接口"""
+        # 创建上下文
+        context = create_paper_context(user_id, "user")
+        
+        # 调用新的更新笔记方法
+        result = super().update_note(note_id, context, update_data)
+        if result[0]:  # 成功
+            return self._wrap_success(result[1], result[2])
+        else:  # 失败
+            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, result[1])
 
     # ------------------------------------------------------------------
     # 删除笔记
     # ------------------------------------------------------------------
-    def delete_note(
+    def delete_note_legacy(
         self,
         note_id: str,
         user_id: str,
     ) -> Dict[str, Any]:
-        """
-        删除笔记
-        """
-        try:
-            # 使用前端传入的note_id（UUID格式）查找笔记
-            note = self.note_model.find_by_id(note_id)
-
-            if not note:
-                return self._wrap_failure(
-                    BusinessCode.NOTE_NOT_FOUND,
-                    f"笔记不存在，ID: {note_id}"
-                )
-
-            # 权限检查
-            if note["userId"] != user_id:
-                return self._wrap_failure(
-                    BusinessCode.PERMISSION_DENIED,
-                    "无权删除此笔记"
-                )
-
-            # 删除
-            if self.note_model.delete(note_id):
-                return self._wrap_success("笔记删除成功", None)
-
-            return self._wrap_error("笔记删除失败")
-
-        except Exception as exc:  # pylint: disable=broad-except
-            return self._wrap_error(f"删除笔记失败: {exc}")
+        """删除笔记 - 兼容旧接口"""
+        # 创建上下文
+        context = create_paper_context(user_id, "user")
+        
+        # 调用新的删除笔记方法
+        result = super().delete_note(note_id, context)
+        if result[0]:  # 成功
+            return self._wrap_success(result[1], None)
+        else:  # 失败
+            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, result[1])
 
     # ------------------------------------------------------------------
     # 批量删除笔记
@@ -335,7 +376,7 @@ class NoteService:
         """
         try:
             # 权限检查
-            user_paper = self.user_paper_model.find_by_id(user_paper_id)
+            user_paper = self._get_paper_model().find_by_id(user_paper_id)
             if not user_paper:
                 return self._wrap_failure(
                     BusinessCode.PAPER_NOT_FOUND,
@@ -348,7 +389,7 @@ class NoteService:
                     "无权删除此论文的笔记"
                 )
 
-            deleted_count = self.note_model.delete_by_user_paper(user_paper_id)
+            deleted_count = self._get_note_model().delete_by_user_paper(user_paper_id)
 
             return self._wrap_success(
                 f"已删除 {deleted_count} 条笔记",

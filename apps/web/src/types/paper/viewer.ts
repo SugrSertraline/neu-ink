@@ -9,3 +9,14 @@ export type ViewerCapabilities = {
   canEditPersonalPaper: boolean;
   canToggleVisibility: boolean;
 };
+
+export type PaperEditPermissions = {
+  source: ViewerSource;
+  canEditPublicPaper: boolean;
+  canEditPersonalPaper: boolean;
+  canAddNotes: boolean;
+  canToggleVisibility: boolean;
+  canEditContent: boolean;
+  canEditStructure: boolean;
+  canAccessEditor: boolean;
+};

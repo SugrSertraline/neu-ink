@@ -4,30 +4,23 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import type {
   Section,
-  InlineContent,
   BlockContent,
   Reference,
-  HeadingBlock,
-  ParagraphBlock,
-  QuoteBlock,
   PaperContent as PaperContentModel,
 } from '@/types/paper';
-import BlockRenderer from './BlockRenderer';
-import BlockEditor from './editor/BlockEditor';
-import InlineTextParserEditor from './editor/InlineTextParserEditor';
-import ParsedBlocksConfirmDialog from './ParsedBlocksConfirmDialog';
-import {
-  SectionContextMenu,
-  BlockContextMenu,
-  RootSectionContextMenu,
-} from './PaperContextMenus';
 import { usePaperEditPermissionsContext } from '@/contexts/PaperEditPermissionsContext';
-import { useEditingState } from '@/stores/useEditingState';
+import { useEditorStore } from '@/store/editor/editorStore';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import { calculateAllNumbers } from './utils/autoNumbering';
 import { toast } from 'sonner';
-import { userPaperService, adminPaperService } from '@/lib/services/paper';
 import { translationService } from '@/lib/services/translation';
+
+// 导入重构后的组件
+import { PaperSection } from './PaperSections';
+import { PaperBlock } from './PaperBlocks';
+import { InlineTextParserEditor } from './PaperParsing';
+import { SectionTitleInlineEditor } from './PaperDialogs/SectionTitleInlineEditor';
+import { RootSectionContextMenu } from './PaperContext';
 
 type Lang = 'en' | 'both';
 
@@ -191,14 +184,8 @@ interface PaperContentProps {
   ) => void;
 }
 
-type ContentBlock = HeadingBlock | ParagraphBlock | QuoteBlock;
-
 const cloneBlock = <T extends BlockContent>(block: T): T =>
   JSON.parse(JSON.stringify(block));
-
-function hasContent(block: BlockContent): block is ContentBlock {
-  return block.type === 'heading' || block.type === 'paragraph' || block.type === 'quote';
-}
 
 export default function PaperContent({
   sections,
@@ -273,7 +260,7 @@ export default function PaperContent({
     );
   };
 
-  const extractInlineText = (nodes?: InlineContent[]): string => {
+  const extractInlineText = (nodes?: any[]): string => {
     if (!nodes?.length) return '';
     const buf: string[] = [];
     for (const n of nodes) {
@@ -311,8 +298,8 @@ export default function PaperContent({
       case 'heading':
       case 'paragraph':
         return [
-          extractInlineText(hasContent(block) ? block.content?.en : []),
-          extractInlineText(hasContent(block) ? block.content?.zh : []),
+          extractInlineText((block as any).content?.en),
+          extractInlineText((block as any).content?.zh),
         ].join(' ');
       case 'math':
         return [
@@ -376,8 +363,8 @@ export default function PaperContent({
           : '';
       case 'quote':
         return [
-          extractInlineText(hasContent(block) ? block.content?.en : []),
-          extractInlineText(hasContent(block) ? block.content?.zh : []),
+          extractInlineText((block as any).content?.en),
+          extractInlineText((block as any).content?.zh),
           (block as any).author || '',
         ].join(' ');
       case 'divider':
@@ -444,7 +431,11 @@ export default function PaperContent({
   const generateSectionNumber = (path: number[]): string => path.join('.');
 
   const { canEditContent } = usePaperEditPermissionsContext();
-  const { isEditing, clearEditing, setHasUnsavedChanges, switchToEdit } = useEditingState();
+  const { currentEditingId, clearCurrentEditing, setHasUnsavedChanges, switchToEdit } = useEditorStore();
+  
+  // 辅助函数
+  const isEditing = useCallback((id: string) => currentEditingId === id, [currentEditingId]);
+  const clearEditing = useCallback(() => clearCurrentEditing(), [clearCurrentEditing]);
   const { confirm, ConfirmDialog } = useConfirmDialog();
   const [renamingSectionId, setRenamingSectionId] = useState<string | null>(null);
   const [hoveredSectionId, setHoveredSectionId] = useState<string | null>(null);
@@ -507,36 +498,48 @@ export default function PaperContent({
 
   const handleBlockEditStart = useCallback(
     async (blockId: string) => {
-      const switched = await switchToEdit(blockId, {
-        beforeSwitch: () => {
-          if (renamingSectionId && renamingSectionId !== blockId) {
-            setRenamingSectionId(null);
-          }
-        },
-        onRequestSave: () => {
-          // TODO: auto-save pending block
-        },
+      requestAnimationFrame(async () => {
+        try {
+          const switched = await switchToEdit(blockId, {
+            beforeSwitch: () => {
+              if (renamingSectionId && renamingSectionId !== blockId) {
+                setRenamingSectionId(null);
+              }
+            },
+            onRequestSave: () => {
+              // TODO: auto-save pending block
+            },
+          });
+          if (!switched) return;
+          setActiveBlockId(blockId);
+        } catch (error) {
+          console.error('切换编辑状态时出错:', error);
+        }
       });
-      if (!switched) return;
-      setActiveBlockId(blockId);
     },
     [switchToEdit, renamingSectionId, setActiveBlockId],
   );
 
   const handleSectionEditStart = useCallback(
     async (sectionId: string) => {
-      const switched = await switchToEdit(sectionId, {
-        beforeSwitch: () => {
-          if (renamingSectionId && renamingSectionId !== sectionId) {
-            setRenamingSectionId(null);
-          }
-        },
-        onRequestSave: () => {
-          // TODO: auto-save pending section
-        },
+      requestAnimationFrame(async () => {
+        try {
+          const switched = await switchToEdit(sectionId, {
+            beforeSwitch: () => {
+              if (renamingSectionId && renamingSectionId !== sectionId) {
+                setRenamingSectionId(null);
+              }
+            },
+            onRequestSave: () => {
+              // TODO: auto-save pending section
+            },
+          });
+          if (!switched) return;
+          setRenamingSectionId(sectionId);
+        } catch (error) {
+          console.error('切换章节编辑状态时出错:', error);
+        }
       });
-      if (!switched) return;
-      setRenamingSectionId(sectionId);
     },
     [switchToEdit, renamingSectionId],
   );
@@ -601,225 +604,6 @@ export default function PaperContent({
     handleParseTextComplete();
   }, [onParseTextComplete, handleParseTextComplete]);
 
-  // 处理解析完成后的预览和确认
-  const handleParsePreview = useCallback((data: {
-    type: 'preview' | 'cancel';
-    blockId: string;
-    parsedBlocks?: BlockContent[];
-    sessionId?: string;
-    parseId?: string;
-  }) => {
-    if (data.type === 'cancel') {
-      // 用户取消,删除 parsing block
-      if (onBlockDelete) {
-        onBlockDelete(data.blockId);
-      }
-      return;
-    }
-    
-    // 如果有parsedBlocks，直接添加到section中（来自ParseResultsManager的确认）
-    if (data.parsedBlocks && data.parsedBlocks.length > 0) {
-      // 找到对应的 section - 通过 parseId 或 blockId 查找
-      const targetSection = sections.find(s =>
-        s.content?.some(b => {
-          // 检查是否是 parsing block 且有对应的 parseId
-          if (b.type === 'parsing' && data.parseId && b.parseId === data.parseId) {
-            return true;
-          }
-          // 或者直接匹配 blockId（兼容旧逻辑）
-          return b.id === data.blockId;
-        })
-      );
-      
-      if (targetSection) {
-        // 直接添加blocks到section中，不显示确认对话框
-        updateSections?.((sections: Section[]) => {
-          let touched = false;
-          
-          const updatedSections = sections.map((section: Section) => {
-            if (section.id !== targetSection.id) return section;
-           
-            touched = true;
-            let currentBlocks = section.content || [];
-           
-            // 查找并删除 parsing block - 使用 parseId 或 blockId
-            currentBlocks = currentBlocks.filter((block: BlockContent) => {
-              // 如果是 parsing block 且有对应的 parseId，删除它
-              if (block.type === 'parsing' && data.parseId && block.parseId === data.parseId) {
-                return false;
-              }
-              // 或者直接匹配 blockId（兼容旧逻辑）
-              if (block.id === data.blockId) {
-                return false;
-              }
-              return true;
-            });
-           
-            // 添加新的blocks
-            const newBlocks = [...currentBlocks, ...data.parsedBlocks!];
-           
-            return {
-              ...section,
-              content: newBlocks
-            };
-          });
-          
-          return { sections: touched ? updatedSections : sections, touched };
-        });
-        
-        toast.success(`成功添加了 ${data.parsedBlocks.length} 个段落`);
-        
-        // 保存到服务器
-        if (onSaveToServer) {
-          // 对于解析结果，我们需要一个特殊的处理，因为它不涉及特定的 block
-          // 这里我们可以传递一个特殊的 block ID 或者修改 API 来处理这种情况
-          onSaveToServer('parse-result', targetSection.id).catch(err => {
-            console.error('保存解析结果失败:', err);
-          });
-        }
-      } else {
-        // 如果找不到对应的section，提示用户
-        toast.error('找不到对应的解析块，请刷新页面后重试');
-      }
-      return;
-    }
-    
-    // 如果没有parsedBlocks但有sessionId或parseId，打开解析结果管理器
-    if (!data.parsedBlocks && (data.sessionId || data.parseId)) {
-      // 找到对应的 parsing block
-      const targetSection = sections.find(s =>
-        s.content?.some(b => b.id === data.blockId)
-      );
-      
-      if (targetSection) {
-        const parsingBlock = targetSection.content?.find(b => b.id === data.blockId);
-        
-        if (parsingBlock && parsingBlock.type === 'parsing') {
-          // 更新 parsing block，显示 ParseResultsManager
-          updateSections?.((sections: Section[]) => {
-            let touched = false;
-            
-            const updatedSections = sections.map((section: Section) => {
-              if (section.id !== targetSection.id) return section;
-              
-              touched = true;
-              const currentBlocks = [...(section.content || [])];
-              const blockIndex = currentBlocks.findIndex(b => b.id === data.blockId);
-              
-              if (blockIndex >= 0) {
-                // 更新 parsing block，添加 parseId 和 sessionId
-                currentBlocks[blockIndex] = {
-                  ...currentBlocks[blockIndex],
-                  parseId: data.parseId,
-                  sessionId: data.sessionId,
-                } as BlockContent;
-              }
-              
-              return {
-                ...section,
-                content: currentBlocks
-              };
-            });
-            
-            return { sections: touched ? updatedSections : sections, touched };
-          });
-        }
-      }
-      return;
-    }
-    
-    // 打开确认对话框（原始流程）
-    if (data.parsedBlocks) {
-      // 找到对应的 section
-      const targetSection = sections.find(s =>
-        s.content?.some(b => b.id === data.blockId)
-      );
-      
-      if (targetSection) {
-        setPendingConfirmation({
-          blockId: data.blockId,
-          sectionId: targetSection.id,
-          parsedBlocks: data.parsedBlocks,
-          sessionId: data.sessionId,
-        });
-        setConfirmDialogOpen(true);
-      }
-    }
-  }, [sections, onBlockDelete, updateSections, onSaveToServer]);
-  
-  // 处理用户确认选择的blocks
-  const handleConfirmParsedBlocks = useCallback(async (selectedBlockIds: string[]) => {
-    if (!pendingConfirmation) return;
-    
-    const { blockId, sectionId, parsedBlocks, sessionId } = pendingConfirmation;
-    
-    // 过滤出用户选择的blocks
-    const selectedBlocks = parsedBlocks.filter(b => selectedBlockIds.includes(b.id));
-    
-    if (selectedBlocks.length === 0) {
-      toast.error('请至少选择一个段落');
-      return;
-    }
-    
-    try {
-      // 调用后端API更新section
-      // 删除 parsing block,添加选中的 blocks
-      updateSections?.((sections: Section[]) => {
-        let touched = false;
-        
-        const updatedSections = sections.map((section: Section) => {
-          if (section.id !== sectionId) return section;
-          
-          touched = true;
-          let currentBlocks = section.content || [];
-          
-          // 删除 parsing block
-          currentBlocks = currentBlocks.filter((block: BlockContent) => block.id !== blockId);
-          
-          // 添加选中的blocks
-          const newBlocks = [...currentBlocks, ...selectedBlocks];
-          
-          return {
-            ...section,
-            content: newBlocks
-          };
-        });
-        
-        return { sections: touched ? updatedSections : sections, touched };
-      });
-      
-      // 关闭对话框
-      setConfirmDialogOpen(false);
-      setPendingConfirmation(null);
-      
-      toast.success(`成功添加了 ${selectedBlocks.length} 个段落`);
-      
-      // 保存到服务器
-      if (onSaveToServer) {
-        // 对于解析结果，我们需要一个特殊的处理，因为它不涉及特定的 block
-        // 这里我们可以传递一个特殊的 block ID 或者修改 API 来处理这种情况
-        onSaveToServer('parse-result', sectionId).catch(err => {
-          console.error('保存解析结果失败:', err);
-        });
-      }
-    } catch (error) {
-      toast.error('保存失败,请重试');
-      console.error('保存解析结果失败:', error);
-    }
-  }, [pendingConfirmation, updateSections, onSaveToServer]);
-  
-  // 处理取消确认
-  const handleCancelConfirmation = useCallback(() => {
-    if (pendingConfirmation) {
-      // 删除 parsing block
-      if (onBlockDelete) {
-        onBlockDelete(pendingConfirmation.blockId);
-      }
-    }
-    setConfirmDialogOpen(false);
-    setPendingConfirmation(null);
-  }, [pendingConfirmation, onBlockDelete]);
-
   // 处理快速翻译功能
   const handleQuickTranslate = useCallback(async (sectionId: string, title: string) => {
     if (!title || !title.trim()) {
@@ -847,10 +631,15 @@ export default function PaperContent({
         // 保存翻译结果到状态
         setTranslationResult({ sectionId, translatedText: result.translatedText });
         
-        // 进入编辑状态
-        await handleSectionEditStart(sectionId);
-        
-        toast.success('翻译完成，已自动填入中文标题');
+        requestAnimationFrame(async () => {
+          try {
+            await handleSectionEditStart(sectionId);
+            toast.success('翻译完成，已自动填入中文标题');
+          } catch (error) {
+            console.error('进入编辑状态时出错:', error);
+            toast.error('进入编辑状态失败，请重试');
+          }
+        });
       } else {
         console.error('翻译响应无效:', result);
         toast.error('翻译失败，请重试');
@@ -862,157 +651,14 @@ export default function PaperContent({
     }
   }, [handleSectionEditStart, paperId, userPaperId, isPersonalOwner, onSaveToServer]);
 
-  // 处理block快速翻译功能
-  // 注意：这个函数现在只是传递给BlockRenderer，实际的翻译逻辑在BlockRenderer中处理
-  const handleBlockQuickTranslate = useCallback(async (block: BlockContent) => {
-    // 这个函数现在只是占位符，实际翻译逻辑在BlockRenderer中处理
-    // 保留这个函数是为了保持接口兼容性
-    console.log('Block快速翻译被调用，但实际处理在BlockRenderer中');
-  }, []);
-
-  // 处理从PdfBlockHoverCard传递过来的"添加为章节"功能
-  const handleAddBlockAsSection = useCallback(async (sectionData: { id: string; title: string; titleZh: string; content: any[] }) => {
-    if (!onAddBlockAsSection) {
-      toast.error('添加章节功能不可用');
-      return;
-    }
-
-    try {
-      // 乐观更新：立即调用父组件回调更新UI
-      onAddBlockAsSection(sectionData);
-      
-      // 显示成功消息（乐观更新的成功）
-      toast.success('章节添加成功');
-    } catch (error) {
-      console.error('添加章节失败:', error);
-      toast.error('添加章节失败，请重试');
-    }
-  }, [onAddBlockAsSection]);
-
-  // 处理ParseProgressBlock的onCompleted回调
-  const handleParseProgressComplete = useCallback((result: any) => {
-    // 处理重新开始的请求
-    if (result.status === 'restart') {
-      // 删除对应的loading block
-      if (onBlockDelete) {
-        onBlockDelete(result.blockId);
-      }
-      return;
-    }
-    
-    // 处理解析完成的情况 - 现在使用ParseResultsManager
-    if (result.status === 'completed') {
-      // 检查是否有parseId，如果有则使用新的解析流程
-      if (result.parseId) {
-        // 不再显示toast和自动打开对话框
-        
-        // 更新parsing block为已完成状态，包含parseId
-        updateSections?.((sections: Section[]) => {
-          let touched = false;
-          
-          const updatedSections = sections.map((section: Section) => {
-            const parsingBlockIndex = section.content?.findIndex((block: BlockContent) =>
-              block.id === result.blockId || (block.type === 'parsing' && block.id === result.tempBlockId)
-            );
-            
-            if (parsingBlockIndex !== undefined && parsingBlockIndex >= 0) {
-              touched = true;
-              const currentBlocks = [...(section.content || [])];
-              const parsingBlock = currentBlocks[parsingBlockIndex];
-              
-              // 确保这是一个 parsing block
-              if (parsingBlock.type === 'parsing') {
-                // 更新 parsing block 为已完成状态，包含parseId
-                const updatedBlock: BlockContent = {
-                  ...parsingBlock,
-                  stage: 'completed' as const,
-                  message: '解析完成，请查看结果并选择要保存的内容',
-                  parseId: result.parseId,
-                  tempBlockId: result.tempBlockId,
-                };
-                
-                currentBlocks[parsingBlockIndex] = updatedBlock;
-              }
-              
-              return {
-                ...section,
-                content: currentBlocks
-              };
-            }
-            
-            return section;
-          });
-          
-          return { sections: touched ? updatedSections : sections, touched };
-        });
-        
-        return;
-      }
-      
-      // 旧的处理逻辑：检查是否有解析结果（addedBlocks 或 blocks），如果有则走确认流程
-      const parsedBlocks = result.addedBlocks || result.blocks;
-      
-      if (parsedBlocks && parsedBlocks.length > 0) {
-        updateSections?.((sections: Section[]) => {
-          let touched = false;
-          
-          const updatedSections = sections.map((section: Section) => {
-            const parsingBlockIndex = section.content?.findIndex((block: BlockContent) =>
-              block.id === result.blockId
-            );
-            
-            if (parsingBlockIndex !== undefined && parsingBlockIndex >= 0) {
-              touched = true;
-              const currentBlocks = [...(section.content || [])];
-              const parsingBlock = currentBlocks[parsingBlockIndex];
-              
-              // 确保这是一个 parsing block
-              if (parsingBlock.type === 'parsing') {
-                // 更新 parsing block 为待确认状态
-                const updatedBlock: BlockContent = {
-                  ...parsingBlock,
-                  stage: 'pending_confirmation' as const,
-                  message: '解析完成,请确认',
-                  parsedBlocks: parsedBlocks,
-                  sessionId: result.sessionId,
-                };
-                
-                currentBlocks[parsingBlockIndex] = updatedBlock;
-              }
-              
-              return {
-                ...section,
-                content: currentBlocks
-              };
-            }
-            
-            return section;
-          });
-          
-          return { sections: touched ? updatedSections : sections, touched };
-        });
-        
-        return;
-      }
-      
-      // 只有在没有解析结果但有完整 paper 数据时才直接更新
-      if (result.paper && result.paper.sections) {
-        // 调用父组件的 onParseTextComplete，传递完整的 paper 数据
-        if (onParseTextComplete) {
-          onParseTextComplete(result.sectionId, result.blocks || [], undefined, result.paper);
-        }
-        
-        // 显示成功消息
-        toast.success('解析完成，论文内容已更新');
-        return;
-      }
-    }
-    
-    // 其他完成状态的处理
-    onParseComplete?.(result);
-  }, [onParseComplete, onBlockDelete, updateSections, onParseTextComplete]);
-
-  const renderedTree = useMemo(() => {
+  // 将渲染函数移到useMemo外部，避免在渲染过程中创建新函数
+  const renderSection = useCallback((
+    section: Section,
+    path: number[],
+    siblings: Section[],
+    index: number,
+    parentSectionId: string | null,
+  ): React.ReactNode => {
     // 辅助函数：从 contentWithNumbers 中找到对应 ID 的章节
     const findSectionById = (id: string, sections: Section[]): Section | null => {
       for (const section of sections) {
@@ -1021,167 +667,109 @@ export default function PaperContent({
       return null;
     };
 
-    const renderSection = (
-      section: Section,
-      path: number[],
-      siblings: Section[],
-      index: number,
-      parentSectionId: string | null,
-    ): React.ReactNode => {
-      // 获取带有编号的章节
-      const numberedSection = findSectionById(section.id, contentWithNumbers.sections) || section;
-      const sectionNumber = generateSectionNumber(path);
-      const hasZhTitle = !!numberedSection.titleZh?.trim();
-      const normalizedZh = (numberedSection.titleZh ?? '').trim();
-      const sectionMargin = Math.max(0, (path.length - 1) * 24);
-      const isRenaming = renamingSectionId === numberedSection.id;
-      const isFirstSibling = index === 0;
-      const isLastSibling = index === siblings.length - 1;
+    // 获取带有编号的章节
+    const numberedSection = findSectionById(section.id, contentWithNumbers.sections) || section;
+    const sectionNumber = generateSectionNumber(path);
+    const isRenaming = renamingSectionId === numberedSection.id;
+    const isFirstSibling = index === 0;
+    const isLastSibling = index === siblings.length - 1;
 
-      return (
-        <section
-          key={numberedSection.id}
-          id={numberedSection.id}
-          className="relative overflow-hidden rounded-2xl border border-white/45 bg-linear-to-tr from-white/30 via-white/15 to-white/35 p-6 shadow-[0_30px_60px_rgba(15,23,42,0.18)] backdrop-blur-[18px] transition-all duration-300 dark:border-white/10 dark:from-slate-900/60 dark:via-slate-900/45 dark:to-slate-900/55 space-y-4"
-          style={{ marginLeft: sectionMargin }}
-        >
-          <SectionContextMenu
-            onRename={canEditContent ? () => handleSectionEditStart(numberedSection.id) : undefined}
-            onAddSectionBefore={
-              canEditContent && onSectionInsert
-                ? () => onSectionInsert(numberedSection.id, 'above', parentSectionId)
-                : undefined
-            }
-            onAddSectionAfter={
-              canEditContent && onSectionInsert
-                ? () => onSectionInsert(numberedSection.id, 'below', parentSectionId)
-                : undefined
-            }
-            onAddBlock={
-              canEditContent && onSectionAddBlock
-                ? (type) => onSectionAddBlock(numberedSection.id, type)
-                : undefined
-            }
-            onStartTextParse={canEditContent ? () => handleStartTextParse(numberedSection.id) : undefined}
-            onQuickTranslate={canEditContent ? () => handleQuickTranslate(numberedSection.id, String(numberedSection.title)) : undefined}
-            onMoveUp={
-              canEditContent && onSectionMove && !isFirstSibling
-                ? () => onSectionMove(numberedSection.id, 'up', parentSectionId)
-                : undefined
-            }
-            onMoveDown={
-              canEditContent && onSectionMove && !isLastSibling
-                ? () => onSectionMove(numberedSection.id, 'down', parentSectionId)
-                : undefined
-            }
-            onDelete={
-              canEditContent
-                ? async () => {
-                    const confirmed = await confirm({
-                      title: '删除章节',
-                      description: '确定删除该章节及其所有内容吗？此操作不可撤销。',
-                      confirmText: '删除',
-                      cancelText: '取消',
-                      variant: 'destructive',
-                      onConfirm: () => Promise.resolve(),
-                    });
-                    if (confirmed) {
-                      onSectionDelete?.(numberedSection.id);
-                      if (renamingSectionId === numberedSection.id) setRenamingSectionId(null);
-                    }
-                  }
-                : undefined
-            }
-          >
-            <div
-              className={`flex items-baseline gap-3 flex-wrap cursor-context-menu rounded-md transition-colors ${hoveredSectionId === section.id ? 'bg-gray-100 dark:bg-gray-800' : ''}`}
-              onMouseEnter={() => setHoveredSectionId(section.id)}
-              onMouseLeave={() => setHoveredSectionId(null)}
-            >
-              <span className="text-blue-600 dark:text-blue-400 text-2xl font-bold">{sectionNumber}.</span>
-              <h2 className="text-2xl font-bold text-gray-900 dark:text-white flex items-baseline gap-3">
-                <span>{highlightText(String(numberedSection.title ?? ''), searchQuery)}</span>
-                <span className="text-gray-400 mx-1">/</span>
-                {hasZhTitle ? (
-                  <span className="rounded px-1 bg-gray-50 text-gray-700">
-                    {highlightText(String(normalizedZh), searchQuery)}
-                  </span>
-                ) : (
-                  <span className="rounded px-1 bg-gray-100 text-gray-500 italic">
-                    该标题组件未配置中文
-                  </span>
-                )}
-              </h2>
-            </div>
-          </SectionContextMenu>
-
-          {canEditContent && isRenaming && (
+    return (
+      <PaperSection
+        key={numberedSection.id}
+        section={section}
+        numberedSection={numberedSection}
+        sectionNumber={sectionNumber}
+        path={path}
+        siblings={siblings}
+        index={index}
+        parentSectionId={parentSectionId}
+        searchQuery={searchQuery}
+        canEditContent={canEditContent}
+        renamingSectionId={renamingSectionId}
+        hoveredSectionId={hoveredSectionId}
+        isRenaming={isRenaming}
+        isFirstSibling={isFirstSibling}
+        isLastSibling={isLastSibling}
+        onSectionEditStart={handleSectionEditStart}
+        onSectionInsert={onSectionInsert || (() => {})}
+        onSectionMove={onSectionMove || (() => {})}
+        onSectionDelete={onSectionDelete || (() => {})}
+        onSectionAddBlock={onSectionAddBlock || (() => {})}
+        onStartTextParse={handleStartTextParse}
+        onQuickTranslate={handleQuickTranslate}
+        onSectionRenameConfirm={handleSectionRenameConfirm}
+        setRenamingSectionId={setRenamingSectionId}
+        setHoveredSectionId={setHoveredSectionId}
+        setTranslationResult={setTranslationResult}
+        translationResult={translationResult}
+        lang={lang}
+        sectionTitleEditor={
+          isRenaming ? (
             <SectionTitleInlineEditor
               key={numberedSection.id}
               initialTitle={numberedSection}
               lang={lang}
               onCancel={() => {
-                setRenamingSectionId(null);
-                setTranslationResult(null);
+                requestAnimationFrame(() => {
+                  setRenamingSectionId(null);
+                  setTranslationResult(null);
+                });
               }}
               onConfirm={(title) => {
                 handleSectionRenameConfirm(numberedSection.id, title);
-                setTranslationResult(null);
+                requestAnimationFrame(() => {
+                  setTranslationResult(null);
+                });
               }}
               externalZhValue={translationResult?.sectionId === numberedSection.id ? translationResult.translatedText : undefined}
             />
-          )}
+          ) : undefined
+        }
+      >
+        {numberedSection.content?.map((block, blockIndex) => {
+          const isEditingBlock = isEditing(block.id);
+          const isSelected = selectedBlockId === block.id;
+          const isActive = isSelected || activeBlockId === block.id;
 
-          <div className="space-y-4">
-            {numberedSection.content?.map((block, blockIndex) => {
-              const isEditingBlock = isEditing(block.id);
-              const isSelected = selectedBlockId === block.id;
-              const isActive = isSelected || activeBlockId === block.id;
-
-              const blockContent = isEditingBlock ? (
-                <BlockEditor
+          // 检查是否需要显示内联文本解析编辑器
+          const showBlockTextParser = canEditContent && textParseBlockId === block.id;
+          
+          if (showBlockTextParser) {
+            return (
+              <React.Fragment key={block.id}>
+                <PaperBlock
+                  key={block.id}
                   block={block}
-                  onChange={updatedBlock => onBlockUpdate?.(block.id, updatedBlock)}
-                  onMoveUp={() => onBlockMove?.(block.id, 'up')}
-                  onMoveDown={() => onBlockMove?.(block.id, 'down')}
-                  onDelete={() => onBlockDelete?.(block.id)}
-                  onDuplicate={() => onBlockDuplicate?.(block.id)}
-                  canMoveUp={blockIndex > 0}
-                  canMoveDown={blockIndex < (section.content?.length ?? 0) - 1}
-                  references={references}
-                  allSections={sections}
-                  onSaveToServer={async (blockId, sectionId) => {
-                    if (onSaveToServer) {
-                      await onSaveToServer(blockId, sectionId);
-                    }
-                  }}
-                />
-              ) : (
-                <BlockRenderer
-                  block={block}
-                  lang={lang}
+                  sectionId={numberedSection.id}
+                  sectionTitle={String(numberedSection.title || numberedSection.titleZh || '未命名章节')}
+                  blockIndex={blockIndex}
+                  totalBlocks={numberedSection.content?.length || 0}
                   searchQuery={searchQuery}
-                  isActive={isActive}
-                  onMouseEnter={() => setActiveBlockId(block.id)}
-                  onMouseLeave={() => {
-                    if (!isSelected) setActiveBlockId(null);
-                  }}
-                  contentRef={contentRef}
                   references={references}
-                  onBlockUpdate={updatedBlock => onBlockUpdate?.(block.id, updatedBlock)}
-                  onSaveToServer={async (blockId, sectionId) => {
-                    if (onSaveToServer) {
-                      await onSaveToServer(blockId, sectionId);
-                    }
-                  }}
-                  notesCount={notesByBlock[block.id]?.length || 0}
+                  canEditContent={canEditContent}
                   isPersonalOwner={isPersonalOwner}
                   paperId={paperId}
-                  sectionId={numberedSection.id}
-                  onParseComplete={handleParseProgressComplete}
-                  onParsePreview={handleParsePreview}
                   userPaperId={userPaperId}
-                  streamProgressData={streamProgressData}
+                  activeBlockId={activeBlockId}
+                  selectedBlockId={selectedBlockId || null}
+                  contentRef={contentRef}
+                  notesCount={notesByBlock[block.id]?.length || 0}
+                  lang={lang}
+                  setActiveBlockId={setActiveBlockId}
+                  onBlockClick={onBlockClick}
+                  onBlockEditStart={handleBlockEditStart}
+                  onBlockUpdate={onBlockUpdate || (() => {})}
+                  onBlockDuplicate={onBlockDuplicate || (() => {})}
+                  onBlockDelete={onBlockDelete || (() => {})}
+                  onBlockInsert={onBlockInsert || (() => {})}
+                  onBlockMove={onBlockMove || (() => {})}
+                  onBlockAddComponent={onBlockAddComponent || (() => {})}
+                  onStartTextParse={handleStartBlockTextParse}
+                  onAddSectionBelow={(sectionId: string) => (onBlockInsert || (() => {}))(sectionId, 'below')}
+                  onSaveToServer={onSaveToServer || (() => Promise.resolve())}
+                  onParseComplete={onParseComplete || (() => {})}
+                  onParsePreview={(data: any) => (onParseTextComplete || (() => {}))(data.sectionId, data.blocks, data.afterBlockId, data.paperData)}
                   onAddBlockAsSection={onAddBlockAsSection}
                   onAddHeadingToSection={onAddHeadingToSection}
                   onAddParagraphToSection={onAddParagraphToSection}
@@ -1192,193 +780,91 @@ export default function PaperContent({
                   onAddTableToSection={onAddTableToSection}
                   onCreateSectionWithHeading={onCreateSectionWithHeading}
                   allSections={sections}
+                  streamProgressData={streamProgressData}
                 />
-              );
-
-              const blockShell = (
-                <div
-                  id={block.id}
-                  data-block-id={block.id}
-                  className={`rounded-md transition-colors ${isActive ? 'ring-2 ring-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : ''}`}
-                  style={{
-                    // 让 scrollIntoView 对齐到"头部下方 16px"
-                    scrollMarginTop: 'calc(var(--app-header-h, 0px) + 16px)',
+                <InlineTextParserEditor
+                  sectionId={numberedSection.id}
+                  sectionTitle={String(numberedSection.title || numberedSection.titleZh || '未命名章节')}
+                  context="block"
+                  blockId={block.id}
+                  onParseText={async (text: string, afterBlockId?: string, isStreaming?: boolean) => {
+                    if (isStreaming) {
+                      // 支持流式传输，返回一个特殊的Promise
+                      return new Promise<{ success: boolean; error?: string }>((resolve) => {
+                        // 这个Promise不会被resolve，因为流式传输会通过EventSource处理
+                        // 实际结果会通过onCancel回调来关闭编辑器
+                      });
+                    } else {
+                      // 传统方式
+                      return onParseTextAdd?.(numberedSection.id, text, block.id) || Promise.resolve({ success: false });
+                    }
                   }}
-                  onClick={
-                    !isEditingBlock && onBlockClick
-                      ? () => {
-                          const selection = window.getSelection();
-                          if (selection && selection.toString()) return;
-                          onBlockClick(block.id);
-                        }
-                      : undefined
+                  onCancel={handleParseTextComplete}
+                  paperId={paperId || ''}
+                  userPaperId={userPaperId}
+                  onParseComplete={(blocks, paperData) =>
+                    handleStreamParseComplete(numberedSection.id, blocks, block.id, paperData)
                   }
-                >
-                  {blockContent}
-                </div>
-              );
+                  onProgressUpdate={(progressData: StreamProgressData) =>
+                    handleStreamProgressUpdate(numberedSection.id, progressData)
+                  }
+                />
+              </React.Fragment>
+            );
+          }
 
-              // 检查是否需要显示内联文本解析编辑器
-              const showBlockTextParser = canEditContent && textParseBlockId === block.id;
-              
-              if (showBlockTextParser) {
-                return (
-                  <React.Fragment key={block.id}>
-                    <div
-                      id={block.id}
-                      data-block-id={block.id}
-                      className={`rounded-md transition-colors ${isActive ? 'ring-2 ring-yellow-400 bg-yellow-50 dark:bg-yellow-900/20' : ''}`}
-                      style={{
-                        scrollMarginTop: 'calc(var(--app-header-h, 0px) + 16px)',
-                      }}
-                      onClick={
-                        !isEditingBlock && onBlockClick
-                          ? () => {
-                              const selection = window.getSelection();
-                              if (selection && selection.toString()) return;
-                              onBlockClick(block.id);
-                            }
-                          : undefined
-                      }
-                    >
-                      {blockContent}
-                    </div>
-                    <InlineTextParserEditor
-                      sectionId={numberedSection.id}
-                      sectionTitle={String(numberedSection.title || numberedSection.titleZh || '未命名章节')}
-                      context="block"
-                      blockId={block.id}
-                      onParseText={async (text: string, afterBlockId?: string, isStreaming?: boolean) => {
-                        if (isStreaming) {
-                          // 支持流式传输，返回一个特殊的Promise
-                          return new Promise<{ success: boolean; error?: string }>((resolve) => {
-                            // 这个Promise不会被resolve，因为流式传输会通过EventSource处理
-                            // 实际结果会通过onCancel回调来关闭编辑器
-                          });
-                        } else {
-                          // 传统方式
-                          return onParseTextAdd?.(numberedSection.id, text, block.id) || Promise.resolve({ success: false });
-                        }
-                      }}
-                      onCancel={handleParseTextComplete}
-                      paperId={paperId || ''}
-                      userPaperId={userPaperId}
-                      onParseComplete={(blocks, paperData) =>
-                        handleStreamParseComplete(numberedSection.id, blocks, block.id, paperData)
-                      }
-                      onProgressUpdate={(progressData: StreamProgressData) =>
-                        handleStreamProgressUpdate(numberedSection.id, progressData)
-                      }
-                    />
-                  </React.Fragment>
-                );
-              }
-
-              return (
-                <React.Fragment key={block.id}>
-                  {isEditingBlock ? (
-                    blockShell
-                  ) : (
-                    <BlockContextMenu
-                      sectionId={numberedSection.id}
-                      sectionTitle={String(numberedSection.title || numberedSection.titleZh || '未命名章节')}
-                      block={block}
-                      paperId={paperId}
-                      userPaperId={userPaperId}
-                      isUserPaper={isPersonalOwner}
-                      onEdit={
-                        canEditContent
-                          ? () => {
-                              handleBlockEditStart(block.id);
-                            }
-                          : undefined
-                      }
-                      onInsertAbove={canEditContent ? () => onBlockInsert?.(block.id, 'above') : undefined}
-                      onInsertBelow={canEditContent ? () => onBlockInsert?.(block.id, 'below') : undefined}
-                      onMoveUp={canEditContent ? () => onBlockMove?.(block.id, 'up') : undefined}
-                      onMoveDown={canEditContent ? () => onBlockMove?.(block.id, 'down') : undefined}
-                      onDuplicate={canEditContent ? () => onBlockDuplicate?.(block.id) : undefined}
-                      onAddComponentAfter={
-                        canEditContent ? type => onBlockAddComponent?.(block.id, type) : undefined
-                      }
-                      onStartTextParse={canEditContent ? () => handleStartBlockTextParse(numberedSection.id, block.id) : undefined}
-                      onQuickTranslate={canEditContent ? () => {
-                        // 快速翻译逻辑现在在 BlockContextMenu 中处理
-                        console.log('快速翻译被点击，逻辑在 BlockContextMenu 中处理');
-                      } : undefined}
-                      onAddSectionBelow={
-                        canEditContent && onSectionInsert
-                          ? () => onSectionInsert(numberedSection.id, 'below', null)
-                          : undefined
-                      }
-                      onBlockUpdate={canEditContent ? (updatedBlock) => onBlockUpdate?.(block.id, updatedBlock) : undefined}
-                      onDelete={
-                        canEditContent
-                          ? async () => {
-                              const confirmed = await confirm({
-                                title: '删除内容块',
-                                description: '确定删除该内容块吗？此操作不可撤销。',
-                                confirmText: '删除',
-                                cancelText: '取消',
-                                variant: 'destructive',
-                                onConfirm: () => Promise.resolve(),
-                              });
-                              if (confirmed) {
-                                onBlockDelete?.(block.id);
-                                if (isEditing(block.id)) clearEditing();
-                              }
-                            }
-                          : undefined
-                      }
-                    >
-                      {blockShell}
-                    </BlockContextMenu>
-                  )}
-                </React.Fragment>
-              );
-            })}
-          </div>
-
-          {canEditContent && textParseSectionId === numberedSection.id && (
-            <InlineTextParserEditor
-              sectionId={numberedSection.id}
-              sectionTitle={String(numberedSection.title || numberedSection.titleZh || '未命名章节')}
-              context="section"
-              onParseText={async (text: string, afterBlockId?: string, isStreaming?: boolean) => {
-                if (isStreaming) {
-                  // 支持流式传输，返回一个特殊的Promise
-                  return new Promise<{ success: boolean; error?: string }>((resolve) => {
-                    // 这个Promise不会被resolve，因为流式传输会通过EventSource处理
-                    // 实际结果会通过onCancel回调来关闭编辑器
-                  });
-                } else {
-                  // 传统方式
-                  return onParseTextAdd?.(numberedSection.id, text) || Promise.resolve({ success: false });
-                }
-              }}
-              onCancel={handleParseTextComplete}
-              paperId={paperId || ''}
-              userPaperId={userPaperId}
-              onParseComplete={(blocks, paperData) =>
-                handleStreamParseComplete(numberedSection.id, blocks, undefined, paperData)
-              }
-              onProgressUpdate={(progressData: StreamProgressData) =>
-                handleStreamProgressUpdate(numberedSection.id, progressData)
-              }
-            />
-          )}
-
-        </section>
-      );
-    };
-
-    return contentWithNumbers.sections.map((section, index) =>
-      renderSection(section, [index + 1], contentWithNumbers.sections, index, null),
+          return (
+            <React.Fragment key={block.id}>
+              <PaperBlock
+                block={block}
+                sectionId={numberedSection.id}
+                sectionTitle={String(numberedSection.title || numberedSection.titleZh || '未命名章节')}
+                blockIndex={blockIndex}
+                totalBlocks={numberedSection.content?.length || 0}
+                searchQuery={searchQuery}
+                references={references}
+                canEditContent={canEditContent}
+                isPersonalOwner={isPersonalOwner}
+                paperId={paperId}
+                userPaperId={userPaperId}
+                activeBlockId={activeBlockId}
+                selectedBlockId={selectedBlockId || null}
+                contentRef={contentRef}
+                notesCount={notesByBlock[block.id]?.length || 0}
+                lang={lang}
+                setActiveBlockId={setActiveBlockId}
+                onBlockClick={onBlockClick}
+                onBlockEditStart={handleBlockEditStart}
+                onBlockUpdate={onBlockUpdate || (() => {})}
+                onBlockDuplicate={onBlockDuplicate || (() => {})}
+                onBlockDelete={onBlockDelete || (() => {})}
+                onBlockInsert={onBlockInsert || (() => {})}
+                onBlockMove={onBlockMove || (() => {})}
+                onBlockAddComponent={onBlockAddComponent || (() => {})}
+                onStartTextParse={handleStartBlockTextParse}
+                onAddSectionBelow={(sectionId: string) => (onBlockInsert || (() => {}))(sectionId, 'below')}
+                onSaveToServer={onSaveToServer || (() => Promise.resolve())}
+                onParseComplete={onParseComplete || (() => {})}
+                onParsePreview={(data: any) => (onParseTextComplete || (() => {}))(data.sectionId, data.blocks, data.afterBlockId, data.paperData)}
+                onAddBlockAsSection={onAddBlockAsSection}
+                onAddHeadingToSection={onAddHeadingToSection}
+                onAddParagraphToSection={onAddParagraphToSection}
+                onAddOrderedListToSection={onAddOrderedListToSection}
+                onAddUnorderedListToSection={onAddUnorderedListToSection}
+                onAddMathToSection={onAddMathToSection}
+                onAddFigureToSection={onAddFigureToSection}
+                onAddTableToSection={onAddTableToSection}
+                onCreateSectionWithHeading={onCreateSectionWithHeading}
+                allSections={sections}
+                streamProgressData={streamProgressData}
+              />
+            </React.Fragment>
+          );
+        })}
+      </PaperSection>
     );
   }, [
-    contentWithNumbers, // 添加这个依赖项
-    sections,
-    lang,
+    contentWithNumbers.sections,
     searchQuery,
     references,
     activeBlockId,
@@ -1386,41 +872,63 @@ export default function PaperContent({
     canEditContent,
     renamingSectionId,
     hoveredSectionId,
-    onSectionInsert,
-    onSectionMove,
-    onSectionDelete,
-    onSectionAddBlock,
-    onBlockDuplicate,
-    onBlockDelete,
-    onBlockInsert,
-    onBlockMove,
-    onBlockAppendSubsection,
-    onBlockAddComponent,
-    onBlockUpdate,
-    onParseTextAdd,
+    textParseBlockId,
+    textParseSectionId,
+    isEditing,
+    notesByBlock,
+    isPersonalOwner,
+    paperId,
+    userPaperId,
+    streamProgressData,
+    lang,
+    translationResult,
+    // 回调函数
     handleSectionEditStart,
     handleSectionRenameConfirm,
     handleBlockEditStart,
     handleStartTextParse,
     handleParseTextComplete,
-    textParseSectionId,
-    textParseBlockId,
     handleStartBlockTextParse,
-    isEditing,
-    clearEditing,
-    setHoveredSectionId,
-      onBlockClick,
-    contentRef,
-    onSaveToServer,
-    notesByBlock,
-    isPersonalOwner,
     handleStreamParseComplete,
-    handleParseProgressComplete,
-    paperId,
-    userPaperId,
-    onParseComplete,
+    handleStreamProgressUpdate,
     handleQuickTranslate,
+    setActiveBlockId,
+    onBlockClick,
+    onSectionInsert,
+    onSectionMove,
+    onSectionDelete,
+    onSectionAddBlock,
+    onBlockUpdate,
+    onBlockDuplicate,
+    onBlockDelete,
+    onBlockInsert,
+    onBlockMove,
+    onBlockAddComponent,
+    onParseTextAdd,
+    onParseComplete,
+    onSaveToServer,
+    onAddBlockAsSection,
+    onAddHeadingToSection,
+    onAddParagraphToSection,
+    onAddOrderedListToSection,
+    onAddUnorderedListToSection,
+    onAddMathToSection,
+    onAddFigureToSection,
+    onAddTableToSection,
+    onCreateSectionWithHeading,
+    sections,
+    setRenamingSectionId,
+    setHoveredSectionId,
+    setTranslationResult,
+    contentRef,
   ]);
+
+  const renderedTree = useMemo(() => {
+    // 使用稳定化的渲染函数，避免在渲染过程中触发状态更新
+    return contentWithNumbers.sections.map((section, index) =>
+      renderSection(section, [index + 1], contentWithNumbers.sections, index, null),
+    );
+  }, [contentWithNumbers.sections, renderSection]);
 
   const emptyState = canEditContent && onSectionInsert ? (
     <RootSectionContextMenu onAddSection={() => onSectionInsert(null, 'below', null)}>
@@ -1440,324 +948,6 @@ export default function PaperContent({
     <>
       <div className="space-y-8">{contentWithNumbers.sections.length ? renderedTree : emptyState}</div>
       <ConfirmDialog />
-      {pendingConfirmation && (
-        <ParsedBlocksConfirmDialog
-          open={confirmDialogOpen}
-          onOpenChange={setConfirmDialogOpen}
-          blocks={pendingConfirmation.parsedBlocks}
-          onConfirm={handleConfirmParsedBlocks}
-          onCancel={handleCancelConfirmation}
-        />
-      )}
     </>
   );
-}
-
-function SectionTitleInlineEditor({
-  initialTitle,
-  lang,
-  onCancel,
-  onConfirm,
-  externalZhValue,
-}: {
-  initialTitle: Section;
-  lang: Lang;
-  onCancel: () => void;
-  onConfirm: (title: { en: string; zh: string }) => void;
-  externalZhValue?: string;
-}) {
-  const [en, setEn] = useState(initialTitle.title ?? '');
-  const [zh, setZh] = useState(initialTitle.titleZh ?? '');
-  const { setHasUnsavedChanges } = useEditingState();
-
-  // 当外部提供中文值时，更新中文标题
-  useEffect(() => {
-    if (externalZhValue !== undefined) {
-      setZh(externalZhValue);
-    }
-  }, [externalZhValue]);
-
-  useEffect(() => {
-    const hasChanges = en !== (initialTitle.title ?? '') || zh !== (initialTitle.titleZh ?? '');
-    setHasUnsavedChanges(hasChanges);
-  }, [en, zh, initialTitle, setHasUnsavedChanges]);
-
-  return (
-    <div className="mt-2 rounded-lg border border-blue-200 bg-blue-50/70 p-4 shadow-sm space-y-3">
-      <div className="space-y-1">
-        <label className="block text-xs font-semibold text-blue-600">English Title</label>
-        <input
-          className="w-full rounded border border-blue-200 px-3 py-2 text-sm"
-          value={en}
-          onChange={(event) => setEn(event.target.value)}
-          placeholder="English title"
-        />
-      </div>
-      <div className="space-y-1">
-        <label className="block text-xs font-semibold text-blue-600">中文标题</label>
-        <input
-          className="w-full rounded border border-blue-200 px-3 py-2 text-sm"
-          value={zh}
-          onChange={(event) => setZh(event.target.value)}
-          placeholder="中文标题"
-        />
-      </div>
-      <div className="flex justify-end gap-2">
-        <button
-          type="button"
-          className="rounded-full bg-white px-4 py-1.5 text-sm text-blue-600 hover:bg-blue-100"
-          onClick={onCancel}
-        >
-          取消
-        </button>
-        <button
-          type="button"
-          className="rounded-full bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
-          onClick={() => onConfirm({ en, zh })}
-        >
-          完成编辑
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function InlineBlockEditor({
-  block,
-  lang,
-  onSave,
-  onCancel,
-}: {
-  block: BlockContent;
-  lang: Lang;
-  onSave: (block: BlockContent) => void;
-  onCancel: () => void;
-}) {
-  const allowZh = lang === 'both';
-  const [draft, setDraft] = useState<BlockContent>(() => cloneBlock(block));
-  const [error, setError] = useState<string | null>(null);
-
-  useEffect(() => {
-    setDraft(cloneBlock(block));
-  }, [block]);
-
-  const commit = () => {
-    setError(null);
-    switch (draft.type) {
-      case 'paragraph':
-      case 'heading':
-      case 'quote': {
-        const b: ContentBlock = draft as ContentBlock;
-        const en = inlineToPlain(b.content?.en).trim();
-        const zh = inlineToPlain(b.content?.zh).trim();
-        if (!en && !zh) {
-          setError('至少保留一种语言的内容');
-          return;
-        }
-        break;
-      }
-      case 'math':
-        if (!(draft as any).latex?.trim()) {
-          setError('LaTeX 不能为空');
-          return;
-        }
-        break;
-      case 'code':
-        if (!(draft as any).code?.trim()) {
-          setError('代码内容不能为空');
-          return;
-        }
-        break;
-      default:
-        break;
-    }
-    onSave(draft);
-  };
-
-  const renderEditor = () => {
-    switch (draft.type) {
-      case 'paragraph':
-      case 'quote':
-      case 'heading': {
-        const b = draft as ContentBlock;
-
-        return (
-          <div className="space-y-3">
-            <TextAreaField
-              label="English Content"
-              value={inlineToPlain(b.content?.en)}
-              onChange={(value) =>
-                setDraft((prev) => {
-                  const p = prev as ContentBlock;
-                  const nextContent = { ...(p.content ?? {}), en: plainToInline(value) };
-                  const next: ContentBlock = { ...p, content: nextContent };
-                  return next as BlockContent;
-                })
-              }
-              minRows={draft.type === 'heading' ? 2 : 4}
-            />
-            <TextAreaField
-              label="中文内容"
-              value={inlineToPlain(b.content?.zh)}
-              onChange={(value) =>
-                setDraft((prev) => {
-                  const p = prev as ContentBlock;
-                  const nextContent = { ...(p.content ?? {}), zh: plainToInline(value) };
-                  const next: ContentBlock = { ...p, content: nextContent };
-                  return next as BlockContent;
-                })
-              }
-              minRows={draft.type === 'heading' ? 2 : 4}
-            />
-            {draft.type === 'quote' && (
-              <div className="space-y-1">
-                <label className="block text-xs font-semibold text-blue-600">引用来源</label>
-                <input
-                  value={(draft as any).author ?? ''}
-                  onChange={(event) =>
-                    setDraft((prev) => {
-                      const p = prev as any;
-                      return { ...p, author: event.target.value } as BlockContent;
-                    })
-                  }
-                  className="w-full rounded border border-blue-200 px-3 py-2 text-sm"
-                  placeholder="作者 / 来源"
-                />
-              </div>
-            )}
-          </div>
-        );
-      }
-      case 'math':
-        return (
-          <TextAreaField
-            label="LaTeX"
-            value={(draft as any).latex ?? ''}
-            onChange={(value) =>
-              setDraft((prev) => {
-                const p = prev as any;
-                return { ...p, latex: value } as BlockContent;
-              })
-            }
-            minRows={6}
-            monospace
-            placeholder="输入行间公式 LaTeX"
-          />
-        );
-      case 'code':
-        return (
-          <div className="space-y-3">
-            <div className="space-y-1">
-              <label className="block text-xs font-semibold text-blue-600">语言</label>
-              <input
-                value={(draft as any).language ?? ''}
-                onChange={(event) =>
-                  setDraft((prev) => {
-                    const p = prev as any;
-                    return { ...p, language: event.target.value } as BlockContent;
-                  })
-                }
-                className="w-40 rounded border border-blue-200 px-3 py-2 text-sm"
-              />
-            </div>
-            <TextAreaField
-              label="代码内容"
-              value={(draft as any).code ?? ''}
-              onChange={(value) =>
-                setDraft((prev) => {
-                  const p = prev as any;
-                  return { ...p, code: value } as BlockContent;
-                })
-              }
-              minRows={12}
-              monospace
-            />
-          </div>
-        );
-      default:
-        return (
-          <div className="rounded border border-blue-200 bg-blue-50/60 p-4 text-sm text-blue-600">
-            当前类型暂不支持在阅读界面直接编辑，请在完整编辑器中操作。
-          </div>
-        );
-    }
-  };
-
-  return (
-    <div className="mt-3 rounded-lg border border-blue-300 bg-white p-4 shadow-lg space-y-3">
-      {renderEditor()}
-      {error && <p className="text-sm text-red-500">{error}</p>}
-      <div className="flex justify-end gap-2 pt-2">
-        <button
-          type="button"
-          className="rounded-full bg-slate-100 px-4 py-1.5 text-sm text-slate-600 hover:bg-slate-200"
-          onClick={onCancel}
-        >
-          取消
-        </button>
-        <button
-          type="button"
-          className="rounded-full bg-blue-600 px-4 py-1.5 text-sm text-white hover:bg-blue-700"
-          onClick={commit}
-        >
-          保存
-        </button>
-      </div>
-    </div>
-  );
-}
-
-function TextAreaField({
-  label,
-  value,
-  onChange,
-  minRows = 4,
-  monospace,
-  placeholder,
-}: {
-  label: string;
-  value: string;
-  onChange: (value: string) => void;
-  minRows?: number;
-  monospace?: boolean;
-  placeholder?: string;
-}) {
-  return (
-    <div className="space-y-1">
-      <label className="block text-xs font-semibold text-blue-600">{label}</label>
-      <textarea
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        className={`w-full rounded border border-blue-200 px-3 py-2 text-sm ${monospace ? 'font-mono' : ''}`}
-        rows={minRows}
-        placeholder={placeholder}
-      />
-    </div>
-  );
-}
-
-function inlineToPlain(nodes?: InlineContent[]): string {
-  if (!nodes?.length) return '';
-  return nodes
-    .map((node) => {
-      switch (node.type) {
-        case 'text':
-          return node.content ?? '';
-        case 'inline-math':
-          return node.latex ?? '';
-        case 'link':
-          return inlineToPlain(node.children);
-        case 'citation':
-          return node.displayText ?? '';
-        default:
-          return '';
-      }
-    })
-    .join('');
-}
-
-function plainToInline(text: string): InlineContent[] {
-  const trimmed = text ?? '';
-  if (!trimmed) return [];
-  return [{ type: 'text', content: trimmed }];
 }

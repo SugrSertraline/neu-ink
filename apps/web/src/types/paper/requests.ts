@@ -223,6 +223,7 @@ export interface UpdateSectionResult {
 // —— 响应：删除section结果 ——
 export interface DeleteSectionResult {
   deletedSectionId: string;
+  paper?: import('./models').Paper | import('./models').UserPaper;  // 添加可选的paper字段，用于前端更新状态
 }
 
 // —— 请求：更新block ——

@@ -55,7 +55,7 @@ export const publicPaperService = {
     filters: PublicPaperFilters = {}
   ): Promise<UnifiedResult<PaperListData>> {
     return callAndNormalize<PaperListData>(
-      apiClient.get(`/public/papers${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
+      apiClient.get(`/public-papers${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
     );
   },
 
@@ -64,7 +64,7 @@ export const publicPaperService = {
    */
   getPublicPaperDetail(paperId: string): Promise<UnifiedResult<Paper>> {
     return callAndNormalize<Paper>(
-      apiClient.get(`/public/papers/${paperId}`)
+      apiClient.get(`/public-papers/${paperId}`)
     );
   },
 
@@ -73,7 +73,7 @@ export const publicPaperService = {
    */
   getPublicPaperContent(paperId: string): Promise<UnifiedResult<PaperContent>> {
     return callAndNormalize<PaperContent>(
-      apiClient.get(`/public/papers/${paperId}/content`)
+      apiClient.get(`/public-papers/${paperId}/content`)
     );
   },
 };
@@ -87,7 +87,7 @@ export const userPaperService = {
     filters: UserPaperFilters = {}
   ): Promise<UnifiedResult<UserPaperListData>> {
     return callAndNormalize<UserPaperListData>(
-      apiClient.get(`/user/papers${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
+      apiClient.get(`/papers/user${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
     );
   },
 
@@ -96,7 +96,7 @@ export const userPaperService = {
    */
   addToLibrary(request: AddToLibraryRequest): Promise<UnifiedResult<UserPaper>> {
     return callAndNormalize<UserPaper>(
-      apiClient.post('/user/papers', request)
+      apiClient.post('/papers/user', request)
     );
   },
 
@@ -105,19 +105,44 @@ export const userPaperService = {
    */
   getUserPaperDetail(userPaperId: string): Promise<UnifiedResult<UserPaper>> {
     return callAndNormalize<UserPaper>(
-      apiClient.get(`/user/papers/${userPaperId}`)
+      apiClient.get(`/papers/user/${userPaperId}`)
     );
   },
 
   /**
-   * 更新阅读进度（快速接口）
+   * 更新个人论文的metadata
    */
-  updateReadingProgress(
+  updateUserPaperMetadata(
     userPaperId: string,
-    progress: UpdateReadingProgressRequest
+    metadata: any
   ): Promise<UnifiedResult<UserPaper>> {
     return callAndNormalize<UserPaper>(
-      apiClient.patch(`/user/papers/${userPaperId}/progress`, progress)
+      apiClient.put(`/papers/user/${userPaperId}/metadata`, { metadata })
+    );
+  },
+
+  /**
+   * 更新个人论文的abstract和keywords
+   */
+  updateUserPaperAbstractKeywords(
+    userPaperId: string,
+    abstract: { en: string; zh: string },
+    keywords: string[]
+  ): Promise<UnifiedResult<UserPaper>> {
+    return callAndNormalize<UserPaper>(
+      apiClient.put(`/papers/user/${userPaperId}/abstract-keywords`, { abstract, keywords })
+    );
+  },
+
+  /**
+   * 更新个人论文的references
+   */
+  updateUserPaperReferences(
+    userPaperId: string,
+    references: any[]
+  ): Promise<UnifiedResult<UserPaper>> {
+    return callAndNormalize<UserPaper>(
+      apiClient.put(`/papers/user/${userPaperId}/references`, { references })
     );
   },
 
@@ -126,16 +151,7 @@ export const userPaperService = {
    */
   deleteUserPaper(userPaperId: string): Promise<UnifiedResult<DeleteResult>> {
     return callAndNormalize<DeleteResult>(
-      apiClient.delete(`/user/papers/${userPaperId}`)
-    );
-  },
-
-  /**
-   * 获取用户统计信息
-   */
-  getUserStatistics(): Promise<UnifiedResult<UserStatistics>> {
-    return callAndNormalize<UserStatistics>(
-      apiClient.get('/user/papers/statistics')
+      apiClient.delete(`/papers/user/${userPaperId}`)
     );
   },
 
@@ -144,7 +160,7 @@ export const userPaperService = {
    */
   createPaperFromText(request: CreatePaperFromTextRequest): Promise<UnifiedResult<UserPaper>> {
     return callAndNormalize<UserPaper>(
-      apiClient.post('/user/papers/create-from-text', request)
+      apiClient.post('/papers/user', request)
     );
   },
 
@@ -153,7 +169,7 @@ export const userPaperService = {
    */
   createPaperFromMetadata(request: CreatePaperFromMetadataRequest): Promise<UnifiedResult<UserPaper>> {
     return callAndNormalize<UserPaper>(
-      apiClient.post('/user/papers/create-from-metadata', request)
+      apiClient.post('/papers/user', request)
     );
   },
 
@@ -166,7 +182,7 @@ export const userPaperService = {
     request: AddBlockToSectionRequest
   ): Promise<UnifiedResult<AddBlockToSectionResult>> {
     return callAndNormalize<AddBlockToSectionResult>(
-      apiClient.post(`/user/papers/${userPaperId}/sections/${sectionId}/add-block`, request)
+      apiClient.post(`/sections/user/${userPaperId}/sections/${sectionId}/add-block`, request)
     );
   },
 
@@ -179,7 +195,7 @@ export const userPaperService = {
     request: AddBlockFromTextToSectionRequest
   ): Promise<UnifiedResult<AddBlockFromTextToSectionResult>> {
     return callAndNormalize<AddBlockFromTextToSectionResult>(
-      apiClient.post(`/user/papers/${userPaperId}/sections/${sectionId}/add-block-from-text`, request)
+      apiClient.post(`/sections/user/${userPaperId}/sections/${sectionId}/add-block-from-text`, request)
     );
   },
 
@@ -198,7 +214,7 @@ export const userPaperService = {
     }
   ): Promise<UnifiedResult<import('@/types/paper/requests').AddSectionResult>> {
     return callAndNormalize<import('@/types/paper/requests').AddSectionResult>(
-      apiClient.post(`/user/papers/${userPaperId}/add-section`, {
+      apiClient.post(`/sections/user/${userPaperId}/add-section`, {
         sectionData,
         position: options?.position ?? -1
       })
@@ -214,7 +230,7 @@ export const userPaperService = {
     updateData: UpdateSectionRequest
   ): Promise<UnifiedResult<UpdateSectionResult>> {
     return callAndNormalize<UpdateSectionResult>(
-      apiClient.put(`/user/papers/${userPaperId}/sections/${sectionId}`, updateData)
+      apiClient.put(`/sections/user/${userPaperId}/sections/${sectionId}`, updateData)
     );
   },
 
@@ -225,9 +241,19 @@ export const userPaperService = {
     userPaperId: string,
     sectionId: string
   ): Promise<UnifiedResult<DeleteSectionResult>> {
-    return callAndNormalize<DeleteSectionResult>(
-      apiClient.delete(`/user/papers/${userPaperId}/sections/${sectionId}`)
+    console.log('【服务步骤1】paper.ts deleteSection 被调用:', userPaperId, sectionId);
+    const url = `/sections/user/${userPaperId}/sections/${sectionId}`;
+    console.log('【服务步骤2】请求URL:', url);
+    console.log('【服务步骤3】准备调用 apiClient.delete');
+    console.log('【服务步骤3.1】apiClient 对象:', typeof apiClient);
+    console.log('【服务步骤3.2】apiClient.delete 方法:', typeof apiClient.delete);
+    
+    const result = callAndNormalize<DeleteSectionResult>(
+      apiClient.delete(url)
     );
+    
+    console.log('【服务步骤4】paper.ts deleteSection 返回结果:', result);
+    return result;
   },
 
   /**
@@ -240,7 +266,7 @@ export const userPaperService = {
     updateData: UpdateBlockRequest
   ): Promise<UnifiedResult<UpdateBlockResult>> {
     return callAndNormalize<UpdateBlockResult>(
-      apiClient.put(`/user/papers/${userPaperId}/sections/${sectionId}/blocks/${blockId}`, updateData)
+      apiClient.put(`/sections/user/${userPaperId}/sections/${sectionId}/blocks/${blockId}`, updateData)
     );
   },
 
@@ -253,7 +279,7 @@ export const userPaperService = {
     blockId: string
   ): Promise<UnifiedResult<DeleteBlockResult>> {
     return callAndNormalize<DeleteBlockResult>(
-      apiClient.delete(`/user/papers/${userPaperId}/sections/${sectionId}/blocks/${blockId}`)
+      apiClient.delete(`/sections/user/${userPaperId}/sections/${sectionId}/blocks/${blockId}`)
     );
   },
 
@@ -265,19 +291,19 @@ export const userPaperService = {
     request: ParseReferencesRequest
   ): Promise<UnifiedResult<AddReferencesToPaperResult>> {
     return callAndNormalize<AddReferencesToPaperResult>(
-      apiClient.post(`/user/papers/${userPaperId}/parse-references`, request)
+      apiClient.post(`/parsing/user/${userPaperId}/parse-references`, request)
     );
   },
 
   /**
    * 更新个人论文的参考文献
    */
-  updateUserPaperReferences(
+  updateUserPaperReferencesOld(
     userPaperId: string,
     references: any[]
   ): Promise<UnifiedResult<{ references: any[]; totalReferences: number; paper: any }>> {
     return callAndNormalize<{ references: any[]; totalReferences: number; paper: any }>(
-      apiClient.put(`/user/papers/${userPaperId}/references`, { references })
+      apiClient.put(`/papers/user/${userPaperId}/references`, { references })
     );
   },
 
@@ -290,7 +316,7 @@ export const userPaperService = {
     blockId: string
   ): Promise<UnifiedResult<CheckBlockParsingStatusResult>> {
     return callAndNormalize<CheckBlockParsingStatusResult>(
-      apiClient.get(`/user/papers/${userPaperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
+      apiClient.get(`/papers/user/${userPaperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
     );
   },
 
@@ -301,7 +327,7 @@ export const userPaperService = {
     paperId: string
   ): Promise<UnifiedResult<{ inLibrary: boolean; userPaperId: string | null }>> {
     return callAndNormalize<{ inLibrary: boolean; userPaperId: string | null }>(
-      apiClient.get(`/user/papers/check-in-library?paperId=${paperId}`)
+      apiClient.get(`/papers/user/check-in-library?paperId=${paperId}`)
     );
   },
 
@@ -310,10 +336,12 @@ export const userPaperService = {
    */
   getParseResult(
     paperId: string,
-    parseId: string
+    parseId: string,
+    isAdmin: boolean = false
   ): Promise<UnifiedResult<ParseResult>> {
+    const prefix = isAdmin ? '/admin/papers' : '/user/papers';
     return callAndNormalize<ParseResult>(
-      apiClient.get(`/user/papers/${paperId}/parse-results/${parseId}`)
+      apiClient.get(`${prefix}/${paperId}/parse-results/${parseId}`)
     );
   },
 
@@ -323,10 +351,12 @@ export const userPaperService = {
   confirmParseResult(
     paperId: string,
     parseId: string,
-    request: ConfirmParseResultRequest
+    request: ConfirmParseResultRequest,
+    isAdmin: boolean = false
   ): Promise<UnifiedResult<ConfirmParseResultResult>> {
+    const prefix = isAdmin ? '/admin/papers' : '/user/papers';
     return callAndNormalize<ConfirmParseResultResult>(
-      apiClient.post(`/user/papers/${paperId}/parse-results/${parseId}/confirm`, request)
+      apiClient.post(`${prefix}/${paperId}/parse-results/${parseId}/confirm`, request)
     );
   },
 
@@ -335,10 +365,12 @@ export const userPaperService = {
    */
   discardParseResult(
     paperId: string,
-    parseId: string
+    parseId: string,
+    isAdmin: boolean = false
   ): Promise<UnifiedResult<DiscardParseResultResult>> {
+    const prefix = isAdmin ? '/admin/papers' : '/user/papers';
     return callAndNormalize<DiscardParseResultResult>(
-      apiClient.post(`/user/papers/${paperId}/parse-results/${parseId}/discard`, {})
+      apiClient.post(`${prefix}/${paperId}/parse-results/${parseId}/discard`, {})
     );
   },
 
@@ -347,10 +379,12 @@ export const userPaperService = {
    */
   saveAllParseResult(
     paperId: string,
-    parseId: string
+    parseId: string,
+    isAdmin: boolean = false
   ): Promise<UnifiedResult<SaveAllParseResultResult>> {
+    const prefix = isAdmin ? '/admin/papers' : '/user/papers';
     return callAndNormalize<SaveAllParseResultResult>(
-      apiClient.post(`/user/papers/${paperId}/parse-results/${parseId}/save-all`, {})
+      apiClient.post(`${prefix}/${paperId}/parse-results/${parseId}/save-all`, {})
     );
   },
 
@@ -362,7 +396,7 @@ export const userPaperService = {
     attachments: import('@/types/paper/models').PaperAttachments
   ): Promise<UnifiedResult<UserPaper>> {
     return callAndNormalize<UserPaper>(
-      apiClient.put(`/user/papers/${userPaperId}/attachments`, { attachments })
+      apiClient.put(`/papers/user/${userPaperId}/attachments`, { attachments })
     );
   },
 
@@ -374,7 +408,7 @@ export const userPaperService = {
      attachmentType: 'pdf' | 'markdown'
    ): Promise<UnifiedResult<UserPaper>> {
      return callAndNormalize<UserPaper>(
-       apiClient.delete(`/user/papers/${userPaperId}/attachments/${attachmentType}`)
+       apiClient.delete(`/papers/user/${userPaperId}/attachments/${attachmentType}`)
      );
    },
 
@@ -390,7 +424,7 @@ export const userPaperService = {
      formData.append('type', 'pdf');
      
      return callAndNormalize<{ url: string; key: string; size: number; uploadedAt: string }>(
-       apiClient.upload(`/user/papers/${userPaperId}/upload-pdf`, formData)
+       apiClient.upload(`/papers/user/${userPaperId}/upload-pdf`, formData)
      );
   },
 
@@ -413,7 +447,7 @@ export const userPaperService = {
      }
      
      return callAndNormalize<{ userPaper: UserPaper; taskId: string; message: string }>(
-       apiClient.upload('/user/papers/create-from-pdf', formData)
+       apiClient.upload('/papers/user/create-from-pdf', formData)
      );
   },
 
@@ -421,12 +455,12 @@ export const userPaperService = {
    * 获取管理员论文的content_list.json文件内容
    */
   getAdminPaperContentList(
-    paperId: string
+   paperId: string
   ): Promise<UnifiedResult<{ contentList: any; attachment: any }>> {
-    return callAndNormalize<{ contentList: any; attachment: any }>(
-      apiClient.get(`/admin/papers/${paperId}/content-list`)
-    );
-  },
+   return callAndNormalize<{ contentList: any; attachment: any }>(
+     apiClient.get(`/papers/admin/${paperId}/content-list`)
+   );
+ },
 
 
   /**
@@ -436,7 +470,7 @@ export const userPaperService = {
     userPaperId: string
   ): Promise<UnifiedResult<{ contentList: any; attachment: any }>> {
     return callAndNormalize<{ contentList: any; attachment: any }>(
-      apiClient.get(`/user/papers/${userPaperId}/content-list`)
+      apiClient.get(`/papers/user/${userPaperId}/content-list`)
     );
   },
 
@@ -447,7 +481,7 @@ export const userPaperService = {
     userPaperId: string
   ): Promise<UnifiedResult<{ pdfContent: string; attachment: any }>> {
     return callAndNormalize<{ pdfContent: string; attachment: any }>(
-      apiClient.get(`/user/papers/${userPaperId}/pdf-content`)
+      apiClient.get(`/papers/user/${userPaperId}/pdf-content`)
     );
   },
 
@@ -458,7 +492,7 @@ export const userPaperService = {
    userPaperId: string
  ): Promise<UnifiedResult<{ markdownContent: string; attachment: any }>> {
    return callAndNormalize<{ markdownContent: string; attachment: any }>(
-     apiClient.get(`/user/papers/${userPaperId}/markdown-content`)
+     apiClient.get(`/papers/user/${userPaperId}/markdown-content`)
    );
  },
 };
@@ -470,7 +504,7 @@ export const noteService = {
    */
   createNote(request: CreateNoteRequest): Promise<UnifiedResult<Note>> {
     return callAndNormalize<Note>(
-      apiClient.post('/notes', request)
+      apiClient.post('/notes/user/default', request)
     );
   },
 
@@ -482,7 +516,7 @@ export const noteService = {
     filters: NoteFilters = {}
   ): Promise<UnifiedResult<NoteListData>> {
     return callAndNormalize<NoteListData>(
-      apiClient.get(`/notes/paper/${userPaperId}${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
+      apiClient.get(`/notes/user/${userPaperId}${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
     );
   },
 
@@ -494,7 +528,7 @@ export const noteService = {
     blockId: string
   ): Promise<UnifiedResult<{ notes: Note[] }>> {
     return callAndNormalize<{ notes: Note[] }>(
-      apiClient.get(`/notes/paper/${userPaperId}/block/${blockId}`)
+      apiClient.get(`/notes/user/${userPaperId}/block/${blockId}`)
     );
   },
 
@@ -503,7 +537,7 @@ export const noteService = {
    */
   getUserNotes(filters: NoteFilters = {}): Promise<UnifiedResult<NoteListData>> {
     return callAndNormalize<NoteListData>(
-      apiClient.get(`/notes/user${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
+      apiClient.get(`/notes/user/default${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
     );
   },
 
@@ -515,7 +549,7 @@ export const noteService = {
     filters: Omit<NoteFilters, 'keyword'> = {}
   ): Promise<UnifiedResult<NoteListData>> {
     return callAndNormalize<NoteListData>(
-      apiClient.get(`/notes/search${buildSearchParams({ keyword, ...filters }) ? '?' + buildSearchParams({ keyword, ...filters }) : ''}`)
+      apiClient.get(`/notes/user/default/search${buildSearchParams({ keyword, ...filters }) ? '?' + buildSearchParams({ keyword, ...filters }) : ''}`)
     );
   },
 
@@ -527,7 +561,7 @@ export const noteService = {
     data: UpdateNoteRequest
   ): Promise<UnifiedResult<Note>> {
     return callAndNormalize<Note>(
-      apiClient.put(`/notes/${noteId}`, data)
+      apiClient.put(`/notes/user/${noteId}`, data)
     );
   },
 
@@ -536,7 +570,7 @@ export const noteService = {
    */
   deleteNote(noteId: string): Promise<UnifiedResult<null>> {
     return callAndNormalize<null>(
-      apiClient.delete(`/notes/${noteId}`)
+      apiClient.delete(`/notes/user/${noteId}`)
     );
   },
 
@@ -545,7 +579,7 @@ export const noteService = {
    */
   deleteNotesByPaper(userPaperId: string): Promise<UnifiedResult<DeleteResult>> {
     return callAndNormalize<DeleteResult>(
-      apiClient.delete(`/notes/paper/${userPaperId}`)
+      apiClient.delete(`/notes/user/${userPaperId}`)
     );
   },
 };
@@ -562,7 +596,7 @@ export const adminPaperService = {
     } = {}
   ): Promise<UnifiedResult<PaperListData>> {
     return callAndNormalize<PaperListData>(
-      apiClient.get(`/admin/papers${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
+      apiClient.get(`/papers/admin${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
     );
   },
 
@@ -571,7 +605,7 @@ export const adminPaperService = {
    */
   createPaper(data: Partial<Paper>): Promise<UnifiedResult<Paper>> {
     return callAndNormalize<Paper>(
-      apiClient.post('/admin/papers', data)
+      apiClient.post('/papers/admin', data)
     );
   },
 
@@ -580,13 +614,13 @@ export const adminPaperService = {
    */
   deletePaper(paperId: string): Promise<UnifiedResult<null>> {
     return callAndNormalize<null>(
-      apiClient.delete(`/admin/papers/${paperId}`)
+      apiClient.delete(`/papers/admin/${paperId}`)
     );
   },
 
   /**
-    * 获取统计信息
-    */
+     * 获取统计信息
+     */
   getStatistics(): Promise<UnifiedResult<{
     total: number;
     public: number;
@@ -597,22 +631,59 @@ export const adminPaperService = {
       public: number;
       private: number;
     }>(
-      apiClient.get('/admin/papers/statistics')
+      apiClient.get('/papers/admin/statistics')
     );
   },
 
   /**
-    * 从文本创建管理员论文
-    */
+     * 从文本创建管理员论文
+     */
   createPaperFromText(request: CreatePaperFromTextRequest): Promise<UnifiedResult<Paper>> {
     return callAndNormalize<Paper>(
-      apiClient.post('/admin/papers/create-from-text', request)
+      apiClient.post('/papers/admin', request)
     );
   },
 
   async getAdminPaperDetail(paperId: string): Promise<UnifiedResult<Paper>> {
     return callAndNormalize<Paper>(
-      apiClient.get(`/admin/papers/${paperId}`)
+      apiClient.get(`/papers/admin/${paperId}`)
+    );
+  },
+
+  /**
+   * 更新管理员论文的metadata
+   */
+  updateAdminPaperMetadata(
+    paperId: string,
+    metadata: any
+  ): Promise<UnifiedResult<Paper>> {
+    return callAndNormalize<Paper>(
+      apiClient.put(`/papers/admin/${paperId}/metadata`, { metadata })
+    );
+  },
+
+  /**
+   * 更新管理员论文的abstract和keywords
+   */
+  updateAdminPaperAbstractKeywords(
+    paperId: string,
+    abstract: { en: string; zh: string },
+    keywords: string[]
+  ): Promise<UnifiedResult<Paper>> {
+    return callAndNormalize<Paper>(
+      apiClient.put(`/papers/admin/${paperId}/abstract-keywords`, { abstract, keywords })
+    );
+  },
+
+  /**
+   * 更新管理员论文的references
+   */
+  updateAdminPaperReferences(
+    paperId: string,
+    references: any[]
+  ): Promise<UnifiedResult<Paper>> {
+    return callAndNormalize<Paper>(
+      apiClient.put(`/papers/admin/${paperId}/references`, { references })
     );
   },
 
@@ -625,7 +696,7 @@ export const adminPaperService = {
     request: AddBlockToSectionRequest
   ): Promise<UnifiedResult<AddBlockToSectionResult>> {
     return callAndNormalize<AddBlockToSectionResult>(
-      apiClient.post(`/admin/papers/${paperId}/sections/${sectionId}/add-block`, request)
+      apiClient.post(`/sections/admin/${paperId}/sections/${sectionId}/add-block`, request)
     );
   },
 
@@ -638,7 +709,7 @@ export const adminPaperService = {
     request: AddBlockFromTextToSectionRequest
   ): Promise<UnifiedResult<AddBlockFromTextToSectionResult>> {
     return callAndNormalize<AddBlockFromTextToSectionResult>(
-      apiClient.post(`/admin/papers/${paperId}/sections/${sectionId}/add-block-from-text`, request)
+      apiClient.post(`/sections/admin/${paperId}/sections/${sectionId}/add-block-from-text`, request)
     );
   },
 
@@ -657,7 +728,7 @@ export const adminPaperService = {
     }
   ): Promise<UnifiedResult<import('@/types/paper/requests').AddSectionResult>> {
     return callAndNormalize<import('@/types/paper/requests').AddSectionResult>(
-      apiClient.post(`/admin/papers/${paperId}/add-section`, {
+      apiClient.post(`/sections/admin/${paperId}/add-section`, {
         sectionData,
         position: options?.position ?? -1
       })
@@ -673,7 +744,7 @@ export const adminPaperService = {
     updateData: UpdateSectionRequest
   ): Promise<UnifiedResult<UpdateSectionResult>> {
     return callAndNormalize<UpdateSectionResult>(
-      apiClient.put(`/admin/papers/${paperId}/sections/${sectionId}`, updateData)
+      apiClient.put(`/sections/admin/${paperId}/sections/${sectionId}`, updateData)
     );
   },
 
@@ -685,7 +756,7 @@ export const adminPaperService = {
     sectionId: string
   ): Promise<UnifiedResult<DeleteSectionResult>> {
     return callAndNormalize<DeleteSectionResult>(
-      apiClient.delete(`/admin/papers/${paperId}/sections/${sectionId}`)
+      apiClient.delete(`/sections/admin/${paperId}/sections/${sectionId}`)
     );
   },
 
@@ -699,7 +770,7 @@ export const adminPaperService = {
     updateData: UpdateBlockRequest
   ): Promise<UnifiedResult<UpdateBlockResult>> {
     return callAndNormalize<UpdateBlockResult>(
-      apiClient.put(`/admin/papers/${paperId}/sections/${sectionId}/blocks/${blockId}`, updateData)
+      apiClient.put(`/sections/admin/${paperId}/sections/${sectionId}/blocks/${blockId}`, updateData)
     );
   },
 
@@ -712,7 +783,7 @@ export const adminPaperService = {
     blockId: string
   ): Promise<UnifiedResult<DeleteBlockResult>> {
     return callAndNormalize<DeleteBlockResult>(
-      apiClient.delete(`/admin/papers/${paperId}/sections/${sectionId}/blocks/${blockId}`)
+      apiClient.delete(`/sections/admin/${paperId}/sections/${sectionId}/blocks/${blockId}`)
     );
   },
 
@@ -724,7 +795,7 @@ export const adminPaperService = {
     request: UpdatePaperVisibilityRequest
   ): Promise<UnifiedResult<UpdatePaperVisibilityResult>> {
     return callAndNormalize<UpdatePaperVisibilityResult>(
-      apiClient.put(`/admin/papers/${paperId}/visibility`, request)
+      apiClient.put(`/papers/admin/${paperId}/visibility`, request)
     );
   },
 
@@ -732,10 +803,11 @@ export const adminPaperService = {
    * 解析参考文献
    */
   parseReferences(
+    paperId: string,
     request: ParseReferencesRequest
   ): Promise<UnifiedResult<ParseReferencesResult>> {
     return callAndNormalize<ParseReferencesResult>(
-      apiClient.post('/admin/papers/parse-references', request)
+      apiClient.post(`/parsing/admin/${paperId}/parse-references`, request)
     );
   },
 
@@ -747,7 +819,7 @@ export const adminPaperService = {
     request: ParseReferencesRequest
   ): Promise<UnifiedResult<AddReferencesToPaperResult>> {
     return callAndNormalize<AddReferencesToPaperResult>(
-      apiClient.post(`/admin/papers/${paperId}/parse-references`, request)
+      apiClient.post(`/parsing/admin/${paperId}/parse-references`, request)
     );
   },
 
@@ -759,7 +831,7 @@ export const adminPaperService = {
     request: AddReferencesToPaperRequest
   ): Promise<UnifiedResult<AddReferencesToPaperResult>> {
     return callAndNormalize<AddReferencesToPaperResult>(
-      apiClient.post(`/admin/papers/${paperId}/add-references`, request)
+      apiClient.post(`/papers/admin/${paperId}/add-references`, request)
     );
   },
 
@@ -772,7 +844,7 @@ export const adminPaperService = {
     blockId: string
   ): Promise<UnifiedResult<CheckBlockParsingStatusResult>> {
     return callAndNormalize<CheckBlockParsingStatusResult>(
-      apiClient.get(`/admin/papers/${paperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
+      apiClient.get(`/sections/admin/${paperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
     );
   },
 
@@ -781,10 +853,12 @@ export const adminPaperService = {
    */
   getParseResult(
     paperId: string,
-    parseId: string
+    parseId: string,
+    isAdmin: boolean = true
   ): Promise<UnifiedResult<ParseResult>> {
+    const prefix = isAdmin ? '/admin/papers' : '/user/papers';
     return callAndNormalize<ParseResult>(
-      apiClient.get(`/admin/papers/${paperId}/parse-results/${parseId}`)
+      apiClient.get(`${prefix}/${paperId}/parse-results/${parseId}`)
     );
   },
 
@@ -794,10 +868,12 @@ export const adminPaperService = {
   confirmParseResult(
     paperId: string,
     parseId: string,
-    request: ConfirmParseResultRequest
+    request: ConfirmParseResultRequest,
+    isAdmin: boolean = true
   ): Promise<UnifiedResult<ConfirmParseResultResult>> {
+    const prefix = isAdmin ? '/admin/papers' : '/user/papers';
     return callAndNormalize<ConfirmParseResultResult>(
-      apiClient.post(`/admin/papers/${paperId}/parse-results/${parseId}/confirm`, request)
+      apiClient.post(`${prefix}/${paperId}/parse-results/${parseId}/confirm`, request)
     );
   },
 
@@ -806,10 +882,12 @@ export const adminPaperService = {
    */
   discardParseResult(
     paperId: string,
-    parseId: string
+    parseId: string,
+    isAdmin: boolean = true
   ): Promise<UnifiedResult<DiscardParseResultResult>> {
+    const prefix = isAdmin ? '/admin/papers' : '/user/papers';
     return callAndNormalize<DiscardParseResultResult>(
-      apiClient.post(`/admin/papers/${paperId}/parse-results/${parseId}/discard`, {})
+      apiClient.post(`${prefix}/${paperId}/parse-results/${parseId}/discard`, {})
     );
   },
 
@@ -818,10 +896,12 @@ export const adminPaperService = {
    */
   saveAllParseResult(
     paperId: string,
-    parseId: string
+    parseId: string,
+    isAdmin: boolean = true
   ): Promise<UnifiedResult<SaveAllParseResultResult>> {
+    const prefix = isAdmin ? '/admin/papers' : '/user/papers';
     return callAndNormalize<SaveAllParseResultResult>(
-      apiClient.post(`/admin/papers/${paperId}/parse-results/${parseId}/save-all`, {})
+      apiClient.post(`${prefix}/${paperId}/parse-results/${parseId}/save-all`, {})
     );
   },
 
@@ -833,7 +913,7 @@ export const adminPaperService = {
     attachments: import('@/types/paper/models').PaperAttachments
   ): Promise<UnifiedResult<Paper>> {
     return callAndNormalize<Paper>(
-      apiClient.put(`/admin/papers/${paperId}/attachments`, { attachments })
+      apiClient.put(`/papers/admin/${paperId}/attachments`, { attachments })
     );
   },
 
@@ -845,7 +925,7 @@ export const adminPaperService = {
      attachmentType: 'pdf' | 'markdown'
    ): Promise<UnifiedResult<Paper>> {
      return callAndNormalize<Paper>(
-       apiClient.delete(`/admin/papers/${paperId}/attachments/${attachmentType}`)
+       apiClient.delete(`/papers/admin/${paperId}/attachments/${attachmentType}`)
      );
    },
 
@@ -861,7 +941,7 @@ export const adminPaperService = {
     formData.append('type', 'pdf');
     
     return callAndNormalize<{ url: string; key: string; size: number; uploadedAt: string }>(
-       apiClient.upload(`/admin/papers/${paperId}/upload-pdf`, formData)
+       apiClient.upload(`/papers/admin/${paperId}/upload-pdf`, formData)
      );
   },
 
@@ -884,7 +964,7 @@ export const adminPaperService = {
      }
      
      return callAndNormalize<{ paper: Paper; taskId: string; message: string }>(
-       apiClient.upload('/admin/papers/create-from-pdf', formData)
+       apiClient.upload('/papers/admin/create-from-pdf', formData)
      );
   },
 
@@ -895,8 +975,8 @@ export const adminPaperService = {
    paperId: string
  ): Promise<UnifiedResult<{ pdfContent: string; attachment: any }>> {
    return callAndNormalize<{ pdfContent: string; attachment: any }>(
-     apiClient.get(`/admin/papers/${paperId}/pdf-content`)
-   );
+      apiClient.get(`/papers/admin/${paperId}/pdf-content`)
+    );
   },
 
   /**
@@ -906,25 +986,22 @@ export const adminPaperService = {
    paperId: string
   ): Promise<UnifiedResult<{ markdownContent: string; attachment: any }>> {
    return callAndNormalize<{ markdownContent: string; attachment: any }>(
-      apiClient.get(`/admin/papers/${paperId}/markdown-content`)
-    );
+      apiClient.get(`/papers/admin/${paperId}/markdown-content`)
+   );
   },
+
+ /**
+  * 获取管理员论文的content_list.json文件内容
+  */
+ getAdminPaperContentList(
+  paperId: string
+ ): Promise<UnifiedResult<{ contentList: any; attachment: any }>> {
+   return callAndNormalize<{ contentList: any; attachment: any }>(
+     apiClient.get(`/papers/admin/${paperId}/content-list`)
+   );
+ },
 };
 
-// —— 统一导出（兼容旧代码） —— //
-export const paperService = {
-  // 公共论文
-  ...publicPaperService,
-  
-  // 个人论文
-  ...userPaperService,
-  
-  // 笔记
-  ...noteService,
-  
-  // 管理员
-  ...adminPaperService,
-};
 
 // —— 内存缓存 —— //
 export class PaperCache {

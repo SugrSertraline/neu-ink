@@ -1,6 +1,6 @@
 import { useCallback } from 'react';
 import { toast } from 'sonner';
-import { adminPaperService, userPaperService } from '@/lib/services/paper';
+import { adminPaperService, userPaperService } from '@/lib/services/papers';
 
 interface UsePaperSectionOperationsProps {
   paperId: string;

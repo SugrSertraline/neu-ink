@@ -6,6 +6,29 @@ import {
   ResponseCode,
   BusinessCode,
 } from '@/types/api';
+
+// 导出基础响应创建函数
+export function createSuccessResponse<T>(data: T, message?: string) {
+  return {
+    code: 200, // 默认成功状态码
+    data,
+    success: true,
+    message: message || '操作成功',
+  };
+}
+
+export function createErrorResponse(error: any) {
+  return {
+    code: error?.status || 500, // 使用错误状态码或默认500
+    data: null as any, // 使用 any 类型来兼容 ApiResponse<never>
+    success: false,
+    message: error?.message || error || '请求失败',
+    error: error,
+  };
+}
+
+// 导出 ApiResponse 类型
+export type { ApiResponse } from '@/types/api';
 import { apiClient } from './client';
 import { toast } from 'sonner';
 import { ERROR_CODES, ERROR_MESSAGES, getErrorMessage } from '@/types/paper/constants';
@@ -24,9 +47,12 @@ export function normalize<T = any>(res: ApiResponse<T | BusinessResponse<T>>): U
   const topCode = (res.code ?? ResponseCode.SUCCESS) as number;
   const topMessage = res.message ?? '';
 
-  // 处理双重嵌套的业务响应格式
-  // 由于 client.ts 已经包装了一层，所以 res.data 可能是 {code: 200, data: {code: 0, data: {...}, message: "..."}}
+  // 处理新的API响应格式
+  // 新API格式：{code: 200, message: "操作成功", data: {...}}
+  // 旧API格式可能包含双重嵌套：{code: 200, data: {code: 0, data: {...}, message: "..."}}
   let actualData = res.data;
+  let bizCode = BusinessCode.SUCCESS;
+  let bizMessage = '操作成功';
   
   // 检查是否有双重嵌套，如果有则提取内层
   if (actualData && typeof actualData === 'object' && 'data' in actualData &&
@@ -38,22 +64,48 @@ export function normalize<T = any>(res: ApiResponse<T | BusinessResponse<T>>): U
   if (isBusinessEnvelope<T>(actualData)) {
     // 确保业务响应的数据被正确提取，特别是ID字段
     const businessData = actualData.data;
+    bizCode = actualData.code;
+    bizMessage = actualData.message;
     
     return {
       topCode,
       topMessage,
-      bizCode: actualData.code,
-      bizMessage: actualData.message,
+      bizCode,
+      bizMessage,
       data: businessData,
       raw: res as ApiResponse<any>,
     };
   }
 
+  // 检查是否是新的API格式，直接返回data
+  if (actualData && typeof actualData === 'object' && !('code' in actualData) && !('message' in actualData)) {
+    return {
+      topCode,
+      topMessage,
+      bizCode: BusinessCode.SUCCESS,
+      bizMessage: topMessage || '操作成功',
+      data: actualData as T,
+      raw: res as ApiResponse<any>,
+    };
+  }
+
+  // 处理错误情况
+  if (topCode !== ResponseCode.SUCCESS && topCode !== ResponseCode.CREATED) {
+    // 如果HTTP状态码不是成功，则尝试从data中提取错误信息
+    if (actualData && typeof actualData === 'object' && 'code' in actualData && typeof actualData.code === 'number') {
+      bizCode = actualData.code as BusinessCode;
+      bizMessage = (actualData as any).message || topMessage;
+    } else {
+      bizCode = topCode as BusinessCode;
+      bizMessage = topMessage;
+    }
+  }
+
   return {
     topCode,
     topMessage,
-    bizCode: BusinessCode.SUCCESS,
-    bizMessage: '操作成功',
+    bizCode,
+    bizMessage,
     data: actualData as T,
     raw: res as ApiResponse<any>,
   };
@@ -132,8 +184,11 @@ export async function callAndNormalize<T>(
   p: Promise<ApiResponse<any>>,
 ): Promise<AuthAwareResult<T>> {
   try {
+    console.log('callAndNormalize 开始等待Promise');
     const res = await p;
+    console.log('callAndNormalize 收到响应:', res);
     const uni = normalize<T>(res) as UnifiedResult<T> & { authReset?: boolean };
+    console.log('callAndNormalize 标准化后的结果:', uni);
 
     if (shouldResetAuth(uni.topCode, uni.bizCode)) {
       markAuthReset(uni);

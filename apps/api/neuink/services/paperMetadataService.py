@@ -217,8 +217,8 @@ class PaperMetadataService:
             }
 
             # 创建论文
-            from ..models.paper import PaperModel
-            paper_model = PaperModel()
+            from ..models.adminPaper import AdminPaperModel
+            paper_model = AdminPaperModel()
             paper_data["createdBy"] = creator_id
             
             # 如果paper_data中包含sections，需要先创建sections并更新paper
@@ -323,8 +323,8 @@ class PaperMetadataService:
             }
 
             # 创建论文
-            from ..models.paper import PaperModel
-            paper_model = PaperModel()
+            from ..models.adminPaper import AdminPaperModel
+            paper_model = AdminPaperModel()
             paper_data["createdBy"] = creator_id
             
             # 如果paper_data中包含sections，需要先创建sections并更新paper

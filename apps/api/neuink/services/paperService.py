@@ -6,7 +6,7 @@ import time
 import logging
 import json
 from typing import Dict, Any, Optional, List, Tuple, Generator
-from ..models.paper import PaperModel
+from ..models.adminPaper import AdminPaperModel
 from ..config.constants import BusinessCode
 from ..utils.llm_utils import get_llm_utils
 from ..utils.common import get_current_time, generate_id
@@ -16,18 +16,29 @@ from .paperContentService import PaperContentService
 from .paperTranslationService import PaperTranslationService
 from .paperMetadataService import get_paper_metadata_service
 from .referenceExtractorService import get_reference_extractor_service
+from .basePaperService import BasePaperService
+from ..models.context import PaperContext, check_paper_permission, create_paper_context
 
 # 初始化logger
 logger = logging.getLogger(__name__)
 
 
-class PaperService:
+class PaperService(BasePaperService):
     """Paper 业务逻辑服务类 - 主服务"""
 
     def __init__(self) -> None:
-        self.paper_model = PaperModel()
+        super().__init__()
+        self.paper_model = AdminPaperModel()
         self.content_service = PaperContentService(self.paper_model)
         self.translation_service = PaperTranslationService(self.paper_model)
+    
+    def get_paper_model(self):
+        """获取论文模型实例"""
+        return self.paper_model
+    
+    def get_paper_type(self) -> str:
+        """获取论文类型"""
+        return "admin"
 
     # ------------------------------------------------------------------
     # 公共论文库
@@ -117,6 +128,9 @@ class PaperService:
             skip = self._calc_skip(page, page_size)
             sort_direction = self._parse_sort_order(sort_order)
 
+            # 添加调试日志
+            logger.info(f"get_admin_papers - user_id: {user_id}, sort_by: {sort_by}, sort_order: {sort_order}, search: {search}, filters: {filters}")
+
             papers, total = self.paper_model.find_admin_papers(
                 user_id=user_id,
                 skip=skip,
@@ -127,6 +141,14 @@ class PaperService:
                 filters=filters or {},
             )
 
+            # 添加调试日志
+            logger.info(f"get_admin_papers - 查询结果: papers数量: {len(papers)}, total: {total}")
+
+            # 确保每个论文都有 sections 字段，即使是空数组
+            for paper in papers:
+                if "sections" not in paper:
+                    paper["sections"] = []
+
             return self._wrap_success(
                 "获取论文列表成功",
                 {
@@ -135,6 +157,7 @@ class PaperService:
                 },
             )
         except Exception as exc:  # pylint: disable=broad-except
+            logger.error(f"get_admin_papers - 异常: {exc}")
             return self._wrap_error(f"获取论文列表失败: {exc}")
 
     def get_admin_paper_detail(self, paper_id: str, user_id: str) -> Dict[str, Any]:
@@ -148,9 +171,10 @@ class PaperService:
         
         return self._wrap_success("获取论文成功", paper)
 
-    def create_paper(self, paper_data: Dict[str, Any], creator_id: str) -> Dict[str, Any]:
+    def create_paper(self, paper_data: Dict[str, Any], context: PaperContext) -> Dict[str, Any]:
+        """创建论文 - 支持上下文感知"""
         try:
-            paper_data["createdBy"] = creator_id
+            paper_data["createdBy"] = context.user_id
             
             # 如果paper_data中包含sections，需要先创建sections并更新paper
             sections_data = paper_data.pop("sections", [])
@@ -180,6 +204,11 @@ class PaperService:
             return self._wrap_success("论文创建成功", paper)
         except Exception as exc:  # pylint: disable=broad-except
             return self._wrap_error(f"创建论文失败: {exc}")
+    
+    def create_paper_legacy(self, paper_data: Dict[str, Any], creator_id: str) -> Dict[str, Any]:
+        """创建论文 - 兼容旧接口"""
+        context = create_paper_context(creator_id, "admin")
+        return self.create_paper(paper_data, context)
 
     def parse_paper_from_text(self, text: str) -> Dict[str, Any]:
         """
@@ -322,75 +351,54 @@ class PaperService:
         user_id: Optional[str] = None,
         is_admin: bool = False,
     ) -> Dict[str, Any]:
-        paper = self.paper_model.find_by_id(paper_id)
-        if not paper:
-            return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+        """获取论文 - 兼容旧接口"""
+        # 创建上下文
+        context = create_paper_context(user_id or "", "admin")
+        context.is_admin = is_admin
+        
+        # 调用新的获取论文方法
+        result = self.get_paper(paper_id, context)
+        if result[0]:  # 成功
+            return self._wrap_success(result[1], result[2])
+        else:  # 失败
+            return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, result[1])
 
-        if not paper["isPublic"] and not is_admin and user_id and paper["createdBy"] != user_id:
-            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权访问此论文")
-
-        # 获取sections数据
-        paper = self._load_sections_for_paper(paper)
-
-        # 自动检查并补全翻译 - 已禁用
-        # paper = self._auto_check_and_complete_translation(paper)
-
-        return self._wrap_success("获取论文成功", paper)
-
-    def update_paper(
+    def update_paper_legacy(
         self,
         paper_id: str,
         update_data: Dict[str, Any],
         user_id: str,
         is_admin: bool = False,
     ) -> Dict[str, Any]:
-        paper = self.paper_model.find_by_id(paper_id)
-        if not paper:
-            return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
+        """更新论文 - 兼容旧接口"""
+        # 创建上下文
+        context = create_paper_context(user_id, "admin")
+        context.is_admin = is_admin
+        
+        # 调用新的更新论文方法
+        result = self.update_paper(paper_id, update_data, context)
+        if result[0]:  # 成功
+            return self._wrap_success(result[1], result[2])
+        else:  # 失败
+            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, result[1])
 
-        # 管理员可以修改所有论文（公开和私有的）
-        if not is_admin and paper["createdBy"] != user_id:
-            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权修改此论文")
-
-        for field in ["id", "createdBy", "createdAt"]:
-            update_data.pop(field, None)
-
-        if self.paper_model.update(paper_id, update_data):
-            updated = self.paper_model.find_by_id(paper_id)
-            return self._wrap_success("论文更新成功", updated)
-
-        return self._wrap_error("论文更新失败")
-
-    def delete_paper(
+    def delete_paper_legacy(
         self,
         paper_id: str,
         user_id: str,
         is_admin: bool = False,
     ) -> Dict[str, Any]:
-        paper = self.paper_model.find_by_id(paper_id)
-        if not paper:
-            return self._wrap_failure(BusinessCode.PAPER_NOT_FOUND, "论文不存在")
-
-        # 管理员可以删除所有论文（公开和私有的）
-        if not is_admin and paper["createdBy"] != user_id:
-            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, "无权删除此论文")
-
-        # 删除所有相关的sections
-        from ..models.section import get_section_model
-        section_model = get_section_model()
-        section_model.delete_by_paper_id(paper_id)
-
-        # 删除附件文件
-        deleted_attachments = self._delete_paper_attachments(paper)
-
-        # 删除论文
-        if self.paper_model.delete(paper_id):
-            message = "论文删除成功"
-            if deleted_attachments > 0:
-                message += f"，同时删除了 {deleted_attachments} 个附件文件"
-            return self._wrap_success(message, None)
-
-        return self._wrap_error("论文删除失败")
+        """删除论文 - 兼容旧接口"""
+        # 创建上下文
+        context = create_paper_context(user_id, "admin")
+        context.is_admin = is_admin
+        
+        # 调用新的删除论文方法
+        result = self.delete_paper(paper_id, context)
+        if result[0]:  # 成功
+            return self._wrap_success(result[1], None)
+        else:  # 失败
+            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, result[1])
 
     def update_paper_visibility(
         self,
@@ -1301,8 +1309,12 @@ class PaperService:
                 return 0
                 
             # 获取七牛云服务
-            from ..services.qiniuService import get_qiniu_service
-            qiniu_service = get_qiniu_service()
+            try:
+                from ..services.qiniuService import get_qiniu_service
+                qiniu_service = get_qiniu_service()
+            except ImportError as e:
+                print(f"警告: 七牛云服务不可用，跳过文件删除: {str(e)}")
+                return 0
             
             deleted_count = 0
             

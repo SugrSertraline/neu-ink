@@ -320,7 +320,7 @@ export default function ParseResultsManager({
       const interval = setInterval(pollParseStatus, 2000);
       return () => clearInterval(interval);
     }
-  }, [isOpen, parseId, parseResult?.status, sectionId, paperId, userPaperId]);
+  }, [isOpen, parseId, parseResult?.status === 'processing' ? 'processing' : null, sectionId, paperId, userPaperId]);
 
   const glowButtonFilled =
     'rounded-xl bg-gradient-to-r from-[#28418A]/92 via-[#28418A]/88 to-[#28418A]/92 ' +

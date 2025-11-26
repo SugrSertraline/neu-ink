@@ -5,8 +5,8 @@ import { useRouter } from 'next/navigation';
 import { toast } from 'sonner';
 
 import { useAuth } from '@/contexts/AuthContext';
-import { useTabStore } from '@/stores/useTabStore';
-import { usePaperService } from '@/lib/services/paper';
+import { useTabStore } from '@/store/ui/tabStore';
+import { usePaperService } from '@/lib/services/papers';
 import { isSuccess } from '@/lib/http';
 import { useConfirmDialog } from '@/components/ui/confirm-dialog';
 import type {
@@ -125,6 +125,11 @@ export function usePublicLibraryController() {
   const { addTab, setActiveTab } = useTabStore();
   const { publicPaperService, adminPaperService, userPaperService, paperCache } = usePaperService();
   const { confirm, ConfirmDialog } = useConfirmDialog();
+  
+  // 添加调试日志
+  useEffect(() => {
+    console.log('usePublicLibraryController - 认证状态:', { isAuthenticated, isAdmin });
+  }, [isAuthenticated, isAdmin]);
 
   const [viewMode, setViewMode] = useState<ViewMode>('card');
 
@@ -234,8 +239,16 @@ export function usePublicLibraryController() {
       }
 
       const rawList = payload.papers;
+      
+      // 添加调试日志
+      console.log('管理员论文列表原始数据:', rawList);
+      console.log('论文数量:', rawList.length);
+      
       const mappedList = rawList.map(transformPaperToListItem);
       const filteredList = applyClientSideFilters(mappedList);
+
+      console.log('转换后的论文列表:', mappedList);
+      console.log('过滤后的论文列表:', filteredList);
 
       setPapers(filteredList);
       setTotalCount(payload.pagination?.total ?? mappedList.length);
@@ -314,7 +327,10 @@ export function usePublicLibraryController() {
 
   const navigateToLogin = useCallback(() => {
     setShowLoginHint(false);
-    router.push('/login');
+    // 保存当前页面路径作为登录后的跳转目标
+    const currentPath = window.location.pathname + window.location.search;
+    console.log('navigateToLogin - 当前路径:', currentPath);
+    router.push(`/login?from=${encodeURIComponent(currentPath)}`);
   }, [router]);
 
   const openPaper = useCallback(

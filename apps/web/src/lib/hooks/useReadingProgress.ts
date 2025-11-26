@@ -1,7 +1,7 @@
 // 自动保存阅读进度的 Hook
 
 import { useEffect, useRef, useCallback } from 'react';
-import { userPaperService } from '../services/paper';  // ✅ 修复：使用相对路径
+import { userPaperService } from '../services/papers/user';  // 修复：使用正确的导入路径
 
 interface UseReadingProgressOptions {
   userPaperId: string;

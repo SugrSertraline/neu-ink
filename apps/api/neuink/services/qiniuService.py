@@ -7,7 +7,8 @@ import uuid
 import time
 from datetime import datetime
 from typing import Dict, Any, Optional, Tuple
-from qiniu import Auth, put_data, put_file, etag, urlsafe_base64_encode
+# 延迟导入 qiniu 模块，避免在模块加载时就出现错误
+# from qiniu import Auth, put_data, put_file, etag, urlsafe_base64_encode
 import json
 
 from ..config.constants import QiniuConfig, BusinessCode
@@ -28,8 +29,18 @@ class QiniuService:
         if not all([self.access_key, self.secret_key, self.bucket_name, self.domain]):
             raise ValueError("七牛云配置不完整，请检查环境变量: QINIU_ACCESS_KEY, QINIU_SECRET_KEY, QINIU_BUCKET_NAME, QINIU_DOMAIN")
         
-        # 初始化七牛云认证
-        self.auth = Auth(self.access_key, self.secret_key)
+        # 延迟初始化七牛云认证
+        self.auth = None
+        self._init_auth()
+    
+    def _init_auth(self):
+        """初始化七牛云认证"""
+        if self.auth is None:
+            try:
+                from qiniu import Auth
+                self.auth = Auth(self.access_key, self.secret_key)
+            except ImportError as e:
+                raise ImportError(f"无法导入七牛云模块，请确保已安装 qiniu 库: {str(e)}")
     
     def generate_upload_token(self, key: str, expires: int = 3600, overwrite: bool = True) -> str:
         """
@@ -43,6 +54,9 @@ class QiniuService:
         Returns:
             上传凭证字符串
         """
+        # 确保认证已初始化
+        self._init_auth()
+        
         # 生成上传策略
         policy = QiniuConfig.UPLOAD_POLICY.copy()
         policy['expires'] = expires
@@ -137,6 +151,9 @@ class QiniuService:
             上传结果，包含文件URL等信息
         """
         try:
+            # 导入七牛云模块
+            from qiniu import put_data
+            
             # 生成文件存储路径
             key = self.generate_file_key(file_extension, prefix, file_type, filename, paper_id)
             
@@ -199,6 +216,9 @@ class QiniuService:
             上传结果，包含文件URL等信息
         """
         try:
+            # 导入七牛云模块
+            from qiniu import put_file
+            
             # 生成文件存储路径
             key = self.generate_file_key(file_extension, prefix)
             
@@ -245,6 +265,9 @@ class QiniuService:
             删除结果
         """
         try:
+            # 确保认证已初始化
+            self._init_auth()
+            
             from qiniu import BucketManager
             
             # 初始化资源管理器
@@ -282,6 +305,9 @@ class QiniuService:
             文件信息
         """
         try:
+            # 确保认证已初始化
+            self._init_auth()
+            
             from qiniu import BucketManager
             
             # 初始化资源管理器
@@ -484,14 +510,12 @@ def get_qiniu_service() -> QiniuService:
     """获取七牛云服务实例（单例模式）"""
     global _qiniu_service
     if _qiniu_service is None:
-        _qiniu_service = QiniuService()
-    return _qiniu_service
-
-
-def is_qiniu_configured() -> bool:
-    """检查七牛云是否已配置"""
-    required_env_vars = ['QINIU_ACCESS_KEY', 'QINIU_SECRET_KEY', 'QINIU_BUCKET_NAME', 'QINIU_DOMAIN']
-    return all(os.getenv(var) for var in required_env_vars)
+        try:
+            _qiniu_service = QiniuService()
+        except ImportError as e:
+            raise ImportError(f"无法初始化七牛云服务，请确保已安装 qiniu 库: {str(e)}")
+        except ValueError as e:
+            raise ValueError(f"七牛云配置错误: {str(e)}")
     return _qiniu_service
 
 

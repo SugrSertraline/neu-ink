@@ -60,11 +60,11 @@ class TranslationService {
   }
 
   /**
-   * 翻译block（管理员论文）
+   * 翻译用户论文块
    */
-  async translateAdminBlock(paperId: string, request: BlockTranslationRequest): Promise<BlockTranslationResponse> {
+  async translateUserPaperBlock(userPaperId: string, request: BlockTranslationRequest): Promise<BlockTranslationResponse> {
     const normalized = await callAndNormalize<BlockTranslationResponse>(
-      apiClient.post<BlockTranslationResponse>(`/admin/papers/${paperId}/translate-block`, request)
+      apiClient.post<BlockTranslationResponse>(`/parsing/user/${userPaperId}/translate-block`, request)
     );
     
     if (!isSuccess(normalized)) {
@@ -75,11 +75,11 @@ class TranslationService {
   }
 
   /**
-   * 翻译block（用户论文）
+   * 翻译管理员论文块
    */
-  async translateUserPaperBlock(entryId: string, request: BlockTranslationRequest): Promise<BlockTranslationResponse> {
+  async translateAdminBlock(paperId: string, request: BlockTranslationRequest): Promise<BlockTranslationResponse> {
     const normalized = await callAndNormalize<BlockTranslationResponse>(
-      apiClient.post<BlockTranslationResponse>(`/user/papers/${entryId}/translate-block`, request)
+      apiClient.post<BlockTranslationResponse>(`/parsing/admin/${paperId}/translate-block`, request)
     );
     
     if (!isSuccess(normalized)) {
