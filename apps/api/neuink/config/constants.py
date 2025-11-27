@@ -99,6 +99,7 @@ class Collections:
     SECTION = "Section"
     PARSE_BLOCKS = "ParseBlocks"
     PARSING_SESSIONS = "ParsingSessions"
+    PDF_PARSE_TASKS = "PdfParseTasks"  # PDF解析任务集合
 
 
 # 论文状态

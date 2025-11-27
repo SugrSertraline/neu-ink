@@ -418,12 +418,12 @@ export const userPaperService = {
   uploadUserPaperPdf(
      userPaperId: string,
      file: File
-   ): Promise<UnifiedResult<{ url: string; key: string; size: number; uploadedAt: string }>> {
+  ): Promise<UnifiedResult<{ url: string; key: string; size: number; uploadedAt: string; taskId?: string; status?: string; message?: string }>> {
      const formData = new FormData();
      formData.append('file', file);
      formData.append('type', 'pdf');
      
-     return callAndNormalize<{ url: string; key: string; size: number; uploadedAt: string }>(
+     return callAndNormalize<{ url: string; key: string; size: number; uploadedAt: string; taskId?: string; status?: string; message?: string }>(
        apiClient.upload(`/papers/user/${userPaperId}/upload-pdf`, formData)
      );
   },
@@ -495,6 +495,28 @@ export const userPaperService = {
      apiClient.get(`/papers/user/${userPaperId}/markdown-content`)
    );
  },
+
+/**
+ * 获取用户论文PDF解析状态
+ */
+getUserPaperPdfParseStatus(
+  userPaperId: string
+): Promise<UnifiedResult<{ hasTask: boolean; task?: any; message?: string }>> {
+  return callAndNormalize<{ hasTask: boolean; task?: any; message?: string }>(
+    apiClient.get(`/papers/user/${userPaperId}/pdf-parse-status`)
+  );
+},
+
+/**
+ * 获取用户论文PDF解析任务列表
+ */
+getUserPaperPdfParseTasks(
+  userPaperId: string
+): Promise<UnifiedResult<{ tasks: any[] }>> {
+  return callAndNormalize<{ tasks: any[] }>(
+    apiClient.get(`/papers/user/${userPaperId}/pdf-parse-tasks`)
+  );
+},
 };
 
 // —— 笔记服务 —— //
@@ -935,12 +957,12 @@ export const adminPaperService = {
   uploadAdminPaperPdf(
     paperId: string,
     file: File
-  ): Promise<UnifiedResult<{ url: string; key: string; size: number; uploadedAt: string }>> {
+  ): Promise<UnifiedResult<{ url: string; key: string; size: number; uploadedAt: string; taskId?: string; status?: string; message?: string }>> {
     const formData = new FormData();
     formData.append('file', file);
     formData.append('type', 'pdf');
     
-    return callAndNormalize<{ url: string; key: string; size: number; uploadedAt: string }>(
+    return callAndNormalize<{ url: string; key: string; size: number; uploadedAt: string; taskId?: string; status?: string; message?: string }>(
        apiClient.upload(`/papers/admin/${paperId}/upload-pdf`, formData)
      );
   },
@@ -998,6 +1020,28 @@ export const adminPaperService = {
  ): Promise<UnifiedResult<{ contentList: any; attachment: any }>> {
    return callAndNormalize<{ contentList: any; attachment: any }>(
      apiClient.get(`/papers/admin/${paperId}/content-list`)
+   );
+ },
+
+ /**
+  * 获取管理员论文PDF解析状态
+  */
+ getAdminPaperPdfParseStatus(
+   paperId: string
+ ): Promise<UnifiedResult<{ hasTask: boolean; task?: any; message?: string }>> {
+   return callAndNormalize<{ hasTask: boolean; task?: any; message?: string }>(
+     apiClient.get(`/papers/admin/${paperId}/pdf-parse-status`)
+   );
+ },
+
+ /**
+  * 获取管理员论文PDF解析任务列表
+  */
+ getAdminPaperPdfParseTasks(
+   paperId: string
+ ): Promise<UnifiedResult<{ tasks: any[] }>> {
+   return callAndNormalize<{ tasks: any[] }>(
+     apiClient.get(`/papers/admin/${paperId}/pdf-parse-tasks`)
    );
  },
 };

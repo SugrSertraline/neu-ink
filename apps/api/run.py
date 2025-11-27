@@ -15,6 +15,6 @@ if __name__ == "__main__":
     # 本地开发启动
     # 在Windows环境下添加额外的参数确保输出不被缓冲
     if sys.platform == "win32":
-        app.run(host="0.0.0.0", port=5000, debug=True, use_reloader=False)
+        app.run(host="0.0.0.0", port=5050, debug=True, use_reloader=False)
     else:
-        app.run(host="0.0.0.0", port=5000, debug=True)
+        app.run(host="0.0.0.0", port=5050, debug=True)

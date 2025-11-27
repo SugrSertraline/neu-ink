@@ -304,7 +304,25 @@ export default function AttachmentPreview({
         }
         
         // 解码base64内容
-        const markdownContent = atob(result.data.markdownContent);
+        let markdownContent;
+        try {
+          // 使用更现代的base64解码方法
+          if (typeof Buffer !== 'undefined') {
+            // Node.js环境
+            markdownContent = Buffer.from(result.data.markdownContent, 'base64').toString('utf8');
+          } else {
+            // 浏览器环境
+            const binaryString = window.atob(result.data.markdownContent);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            markdownContent = new TextDecoder('utf-8').decode(bytes);
+          }
+        } catch (error) {
+          console.error('解码base64内容失败:', error);
+          throw new Error('解码Markdown内容失败');
+        }
         setContent(markdownContent);
       } else {
         // PDF文件不获取内容，只显示预览

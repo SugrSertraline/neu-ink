@@ -3,7 +3,7 @@ import { ApiResponse } from '@/types/api';
 import { ApiError } from './errors';
 
 // 新的API基础配置，适配后端API文档
-const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5000';
+const API_BASE = process.env.NEXT_PUBLIC_API_BASE || 'http://localhost:5050';
 const API_PREFIX = process.env.NEXT_PUBLIC_API_PREFIX || '/api/v1';
 const AUTH_STORAGE_KEY = 'auth_token';
 

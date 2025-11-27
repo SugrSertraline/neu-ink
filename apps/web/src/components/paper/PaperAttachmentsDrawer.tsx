@@ -795,8 +795,43 @@ export function PaperAttachmentsDrawer({
 
   // ===== PDF解析进度检查函数 =====
   const handleCheckParsingProgress = async () => {
-    // 由于后端已移除PDF解析接口，这里只显示提示信息
-    toast.info('PDF解析功能已集成到上传流程中，上传PDF后会自动解析');
+    try {
+      let result;
+      if (isPersonalOwner && userPaperId) {
+        result = await userPaperService.getUserPaperPdfParseStatus(userPaperId);
+      } else if (paperId) {
+        result = await adminPaperService.getAdminPaperPdfParseStatus(paperId);
+      } else {
+        toast.error('无法检查解析进度：缺少论文ID');
+        return;
+      }
+
+      if (result.bizCode === 0) {
+        const { hasTask, task, message } = result.data;
+        
+        if (hasTask && task) {
+          setParsingTaskId(task.id);
+          setParsingProgress(task.progress || 0);
+          setParsingMessage(task.message || 'PDF解析中');
+          setIsParsing(true);
+          
+          if (task.status === 'completed') {
+            toast.success('PDF解析已完成');
+          } else if (task.status === 'failed') {
+            toast.error(`PDF解析失败: ${task.error || '未知错误'}`);
+          } else {
+            toast.info(`PDF解析状态: ${task.message || '进行中'}`);
+          }
+        } else {
+          toast.info(message || '没有找到PDF解析任务');
+        }
+      } else {
+        toast.error(result.bizMessage || '检查解析进度失败');
+      }
+    } catch (error) {
+      console.error('检查解析进度失败:', error);
+      toast.error('检查解析进度失败，请稍后重试');
+    }
   };
 
   // 进入抽屉时不再检查进行中的解析任务
@@ -874,7 +909,23 @@ export function PaperAttachmentsDrawer({
             uploadedAt: result.data.uploadedAt,
           },
         });
-        toast.success('PDF上传成功');
+        
+        // 如果上传成功且返回了解析任务信息，设置解析状态
+        if (result.data.taskId) {
+          setParsingTaskId(result.data.taskId);
+          setParsingProgress(0);
+          setParsingMessage(result.data.message || 'PDF解析已开始');
+          setIsParsing(true);
+          
+          // 根据状态显示不同的提示
+          if (result.data.status === 'processing') {
+            toast.success('PDF上传成功，解析已开始');
+          } else if (result.data.status === 'failed') {
+            toast.error('PDF上传成功，但解析失败');
+          }
+        } else {
+          toast.success('PDF上传成功');
+        }
       } else {
         toast.error(result.bizMessage || 'PDF上传失败');
       }

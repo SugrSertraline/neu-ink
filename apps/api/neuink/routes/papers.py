@@ -1,6 +1,9 @@
 # neuink/api/routes/papers.py
 import logging
 import json
+import os
+import uuid
+from werkzeug.utils import secure_filename
 from flask import request, g, Blueprint
 from neuink.models.context import create_paper_context
 from neuink.services.paperService import get_paper_service
@@ -13,6 +16,16 @@ from neuink.utils.common import (
     internal_error_response,
 )
 from neuink.config.constants import BusinessCode
+
+# 导入七牛云服务相关模块
+try:
+    from ..services.qiniuService import get_qiniu_service, is_qiniu_configured
+    QINIU_AVAILABLE = True
+except ImportError as e:
+    QINIU_AVAILABLE = False
+    get_qiniu_service = None
+    is_qiniu_configured = None
+    print(f"警告: 七牛云服务不可用，相关功能将被禁用: {str(e)}")
 
 logger = logging.getLogger(__name__)
 
@@ -1140,4 +1153,1259 @@ def debug_admin_paper_attachments(paper_id):
 
     except Exception as exc:
         logger.error(f"调试管理员论文附件服务器错误 - paper_id: {paper_id}, error: {str(exc)}", exc_info=True)
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+# ------------------------------------------------------------------
+# PDF上传和解析相关路由
+# ------------------------------------------------------------------
+
+@bp.route("/user/<user_paper_id>/upload-pdf", methods=["POST"])
+@login_required
+def upload_user_paper_pdf(user_paper_id):
+    """
+    用户论文PDF上传接口
+    """
+    try:
+        logger.info(f"用户论文PDF上传 - user_paper_id: {user_paper_id}, user_id: {g.current_user['user_id']}")
+        
+        # 验证文件是否存在
+        if 'file' not in request.files:
+            return bad_request_response("没有上传文件")
+        
+        file = request.files['file']
+        if file.filename == '':
+            return bad_request_response("没有选择文件")
+        
+        # 验证文件类型
+        if not file.filename.lower().endswith('.pdf'):
+            return bad_request_response("只支持PDF文件")
+        
+        # 获取用户论文详情
+        service = get_user_paper_service()
+        result = service.get_user_paper_detail(
+            user_paper_id=user_paper_id,
+            user_id=g.current_user["user_id"]
+        )
+        
+        if result["code"] != BusinessCode.SUCCESS:
+            return bad_request_response(result["message"])
+        
+        user_paper = result["data"]
+        
+        # 获取七牛云服务实例
+        try:
+            from ..services.qiniuService import get_qiniu_service
+            qiniu_service = get_qiniu_service()
+        except ImportError as e:
+            return internal_error_response(f"七牛云服务不可用: {str(e)}")
+        
+        # 读取文件数据
+        file_data = file.read()
+        
+        # 上传PDF到七牛云
+        pdf_result = qiniu_service.upload_file_data(
+            file_data=file_data,
+            file_extension=".pdf",
+            file_type="unified_paper",
+            filename=f"{user_paper_id}.pdf",
+            paper_id=user_paper_id,
+            overwrite=True
+        )
+        
+        if not pdf_result["success"]:
+            return internal_error_response(f"PDF上传失败: {pdf_result['error']}")
+        
+        # 更新论文附件
+        current_attachments = user_paper.get("attachments", {})
+        updated_attachments = current_attachments.copy()
+        updated_attachments["pdf"] = {
+            "url": pdf_result["url"],
+            "key": pdf_result["key"],
+            "size": pdf_result["size"],
+            "uploadedAt": pdf_result["uploadedAt"]
+        }
+        
+        # 更新用户论文附件
+        update_result = service.update_user_paper(
+            entry_id=user_paper_id,
+            user_id=g.current_user["user_id"],
+            update_data={"attachments": updated_attachments}
+        )
+        
+        if update_result["code"] != BusinessCode.SUCCESS:
+            return internal_error_response(f"更新论文附件失败: {update_result['message']}")
+        
+        # 创建PDF解析任务
+        from ..models.pdfParseTask import get_pdf_parse_task_model
+        from ..services.mineruService import get_mineru_service
+        
+        task_model = get_pdf_parse_task_model()
+        mineru_service = get_mineru_service()
+        
+        # 创建解析任务
+        task = task_model.create_task(
+            paper_id=user_paper_id,
+            user_id=g.current_user["user_id"],
+            pdf_url=pdf_result["url"],
+            is_admin=False,
+            user_paper_id=user_paper_id
+        )
+        
+        # 提交MinerU解析任务
+        mineru_result = mineru_service.submit_parsing_task(pdf_result["url"])
+        
+        if mineru_result["success"]:
+            # 更新任务状态
+            task_model.update_task_status(
+                task_id=task["id"],
+                status="processing",
+                message="PDF解析已提交，正在处理中...",
+                mineru_task_id=mineru_result["task_id"]
+            )
+            
+            return success_response({
+                "taskId": task["id"],
+                "status": "processing",
+                "message": "PDF上传成功，解析已开始",
+                "pdfAttachment": updated_attachments["pdf"]
+            }, "PDF上传成功")
+        else:
+            # 如果MinerU提交失败，更新任务状态为失败
+            task_model.update_task_status(
+                task_id=task["id"],
+                status="failed",
+                message=f"提交解析任务失败: {mineru_result['error']}",
+                error=mineru_result["error"]
+            )
+            
+            return success_response({
+                "taskId": task["id"],
+                "status": "failed",
+                "message": f"PDF上传成功，但解析失败: {mineru_result['error']}",
+                "pdfAttachment": updated_attachments["pdf"]
+            }, "PDF上传成功，但解析失败")
+    
+    except Exception as exc:
+        logger.error(f"用户论文PDF上传异常 - user_paper_id: {user_paper_id}, error: {str(exc)}", exc_info=True)
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/admin/<paper_id>/upload-pdf", methods=["POST"])
+@login_required
+def upload_admin_paper_pdf(paper_id):
+    """
+    管理员论文PDF上传接口
+    """
+    try:
+        logger.info(f"管理员论文PDF上传 - paper_id: {paper_id}, user_id: {g.current_user['user_id']}")
+        
+        # 验证文件是否存在
+        if 'file' not in request.files:
+            return bad_request_response("没有上传文件")
+        
+        file = request.files['file']
+        if file.filename == '':
+            return bad_request_response("没有选择文件")
+        
+        # 验证文件类型
+        if not file.filename.lower().endswith('.pdf'):
+            return bad_request_response("只支持PDF文件")
+        
+        # 获取管理员论文详情
+        service = get_paper_service()
+        result = service.get_admin_paper_detail(
+            paper_id=paper_id,
+            user_id=g.current_user["user_id"]
+        )
+        
+        if result["code"] != BusinessCode.SUCCESS:
+            return bad_request_response(result["message"])
+        
+        paper = result["data"]
+        
+        # 获取七牛云服务实例
+        try:
+            from ..services.qiniuService import get_qiniu_service
+            qiniu_service = get_qiniu_service()
+        except ImportError as e:
+            return internal_error_response(f"七牛云服务不可用: {str(e)}")
+        
+        # 读取文件数据
+        file_data = file.read()
+        
+        # 上传PDF到七牛云
+        pdf_result = qiniu_service.upload_file_data(
+            file_data=file_data,
+            file_extension=".pdf",
+            file_type="unified_paper",
+            filename=f"{paper_id}.pdf",
+            paper_id=paper_id,
+            overwrite=True
+        )
+        
+        if not pdf_result["success"]:
+            return internal_error_response(f"PDF上传失败: {pdf_result['error']}")
+        
+        # 更新论文附件
+        current_attachments = paper.get("attachments", {})
+        updated_attachments = current_attachments.copy()
+        updated_attachments["pdf"] = {
+            "url": pdf_result["url"],
+            "key": pdf_result["key"],
+            "size": pdf_result["size"],
+            "uploadedAt": pdf_result["uploadedAt"]
+        }
+        
+        # 更新管理员论文附件
+        update_result = service.update_paper_attachments(
+            paper_id=paper_id,
+            attachments=updated_attachments,
+            user_id=g.current_user["user_id"],
+            is_admin=True
+        )
+        
+        if update_result["code"] != BusinessCode.SUCCESS:
+            return internal_error_response(f"更新论文附件失败: {update_result['message']}")
+        
+        # 创建PDF解析任务
+        from ..models.pdfParseTask import get_pdf_parse_task_model
+        from ..services.mineruService import get_mineru_service
+        
+        task_model = get_pdf_parse_task_model()
+        mineru_service = get_mineru_service()
+        
+        # 创建解析任务
+        task = task_model.create_task(
+            paper_id=paper_id,
+            user_id=g.current_user["user_id"],
+            pdf_url=pdf_result["url"],
+            is_admin=True
+        )
+        
+        # 提交MinerU解析任务
+        mineru_result = mineru_service.submit_parsing_task(pdf_result["url"])
+        
+        if mineru_result["success"]:
+            # 更新任务状态
+            task_model.update_task_status(
+                task_id=task["id"],
+                status="processing",
+                message="PDF解析已提交，正在处理中...",
+                mineru_task_id=mineru_result["task_id"]
+            )
+            
+            return success_response({
+                "taskId": task["id"],
+                "status": "processing",
+                "message": "PDF上传成功，解析已开始",
+                "pdfAttachment": updated_attachments["pdf"]
+            }, "PDF上传成功")
+        else:
+            # 如果MinerU提交失败，更新任务状态为失败
+            task_model.update_task_status(
+                task_id=task["id"],
+                status="failed",
+                message=f"提交解析任务失败: {mineru_result['error']}",
+                error=mineru_result["error"]
+            )
+            
+            return success_response({
+                "taskId": task["id"],
+                "status": "failed",
+                "message": f"PDF上传成功，但解析失败: {mineru_result['error']}",
+                "pdfAttachment": updated_attachments["pdf"]
+            }, "PDF上传成功，但解析失败")
+    
+    except Exception as exc:
+        logger.error(f"管理员论文PDF上传异常 - paper_id: {paper_id}, error: {str(exc)}", exc_info=True)
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/user/<user_paper_id>/pdf-parse-status", methods=["GET"])
+@login_required
+def get_user_paper_pdf_parse_status(user_paper_id):
+    """
+    获取用户论文PDF解析状态
+    """
+    try:
+        logger.info(f"获取用户论文PDF解析状态 - user_paper_id: {user_paper_id}, user_id: {g.current_user['user_id']}")
+        
+        # 验证用户论文是否存在
+        service = get_user_paper_service()
+        result = service.get_user_paper_detail(
+            user_paper_id=user_paper_id,
+            user_id=g.current_user["user_id"]
+        )
+        
+        if result["code"] != BusinessCode.SUCCESS:
+            return bad_request_response(result["message"])
+        
+        # 获取PDF解析任务
+        from ..models.pdfParseTask import get_pdf_parse_task_model
+        from ..services.mineruService import get_mineru_service
+        
+        task_model = get_pdf_parse_task_model()
+        mineru_service = get_mineru_service()
+        
+        # 获取最新的解析任务
+        tasks = task_model.get_paper_tasks(
+            paper_id=user_paper_id,
+            is_admin=False
+        )
+        
+        if not tasks:
+            return success_response({
+                "hasTask": False,
+                "message": "没有找到PDF解析任务"
+            }, "没有找到PDF解析任务")
+        
+        # 获取最新的任务
+        latest_task = tasks[0]
+        
+        # 如果任务状态是processing，查询MinerU状态
+        if latest_task["status"] == "processing" and latest_task.get("mineruTaskId"):
+            mineru_status = mineru_service.get_parsing_status(latest_task["mineruTaskId"])
+            
+            if mineru_status["success"]:
+                # 更新任务状态
+                task_model.update_task_status(
+                    task_id=latest_task["id"],
+                    status=mineru_status["status"],
+                    progress=mineru_status.get("progress", 0),
+                    message=mineru_status.get("message", "")
+                )
+                
+                latest_task["status"] = mineru_status["status"]
+                latest_task["progress"] = mineru_status.get("progress", 0)
+                latest_task["message"] = mineru_status.get("message", "")
+                
+                # 如果MinerU解析完成，启动后台任务处理结果
+                if mineru_status["status"] == "completed" and mineru_status.get("full_zip_url"):
+                    from ..utils.background_tasks import get_task_manager
+                    
+                    task_manager = get_task_manager()
+                    
+                    # 定义后台处理任务
+                    def process_mineru_result():
+                        try:
+                            # 获取七牛云服务实例
+                            from ..services.qiniuService import get_qiniu_service
+                            qiniu_service = get_qiniu_service()
+                            
+                            # 下载并处理MinerU结果
+                            result = mineru_service.fetch_markdown_content_and_upload(
+                                result_url=mineru_status["full_zip_url"],
+                                paper_id=user_paper_id,
+                                qiniu_service=qiniu_service
+                            )
+                            
+                            if result["success"]:
+                                # 更新论文附件
+                                new_attachments = result["data"]["attachments"]
+                                
+                                # 获取当前论文附件
+                                paper_result = service.get_user_paper_detail(
+                                    user_paper_id=user_paper_id,
+                                    user_id=g.current_user["user_id"]
+                                )
+                                
+                                if paper_result["code"] == BusinessCode.SUCCESS:
+                                    paper = paper_result["data"]
+                                    current_attachments = paper.get("attachments", {})
+                                    
+                                    # 合并附件信息 - 确保正确更新每个附件类型
+                                    for attachment_type, attachment_data in new_attachments.items():
+                                        if attachment_data:  # 只更新非空的附件
+                                            current_attachments[attachment_type] = attachment_data
+                                    
+                                    # 更新论文附件
+                                    service.update_user_paper(
+                                        entry_id=user_paper_id,
+                                        user_id=g.current_user["user_id"],
+                                        update_data={"attachments": current_attachments}
+                                    )
+                                    
+                                    # 更新任务状态为完成
+                                    task_model.update_task_status(
+                                        task_id=latest_task["id"],
+                                        status="completed",
+                                        progress=100,
+                                        message="PDF解析完成，结果已上传"
+                                    )
+                                else:
+                                    # 更新任务状态为失败
+                                    task_model.update_task_status(
+                                        task_id=latest_task["id"],
+                                        status="failed",
+                                        message="更新论文附件失败"
+                                    )
+                            else:
+                                # 更新任务状态为失败
+                                task_model.update_task_status(
+                                    task_id=latest_task["id"],
+                                    status="failed",
+                                    message=f"处理解析结果失败: {result['error']}",
+                                    error=result["error"]
+                                )
+                        except Exception as e:
+                            logger.error(f"处理MinerU结果异常: {str(e)}", exc_info=True)
+                            # 更新任务状态为失败
+                            task_model.update_task_status(
+                                task_id=latest_task["id"],
+                                status="failed",
+                                message=f"处理解析结果异常: {str(e)}",
+                                error=str(e)
+                            )
+                    
+                    # 提交后台任务
+                    task_manager.submit_task(
+                        task_id=f"process_mineru_{latest_task['id']}",
+                        func=process_mineru_result,
+                        callback=lambda task_id, result: None
+                    )
+        
+        return success_response({
+            "hasTask": True,
+            "task": latest_task
+        }, "获取PDF解析状态成功")
+    
+    except Exception as exc:
+        logger.error(f"获取用户论文PDF解析状态异常 - user_paper_id: {user_paper_id}, error: {str(exc)}", exc_info=True)
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/admin/<paper_id>/pdf-parse-status", methods=["GET"])
+@login_required
+def get_admin_paper_pdf_parse_status(paper_id):
+    """
+    获取管理员论文PDF解析状态
+    """
+    try:
+        logger.info(f"获取管理员论文PDF解析状态 - paper_id: {paper_id}, user_id: {g.current_user['user_id']}")
+        
+        # 验证管理员论文是否存在
+        service = get_paper_service()
+        result = service.get_admin_paper_detail(
+            paper_id=paper_id,
+            user_id=g.current_user["user_id"]
+        )
+        
+        if result["code"] != BusinessCode.SUCCESS:
+            return bad_request_response(result["message"])
+        
+        # 获取PDF解析任务
+        from ..models.pdfParseTask import get_pdf_parse_task_model
+        from ..services.mineruService import get_mineru_service
+        
+        task_model = get_pdf_parse_task_model()
+        mineru_service = get_mineru_service()
+        
+        # 获取最新的解析任务
+        tasks = task_model.get_paper_tasks(
+            paper_id=paper_id,
+            is_admin=True
+        )
+        
+        if not tasks:
+            return success_response({
+                "hasTask": False,
+                "message": "没有找到PDF解析任务"
+            }, "没有找到PDF解析任务")
+        
+        # 获取最新的任务
+        latest_task = tasks[0]
+        
+        # 如果任务状态是processing，查询MinerU状态
+        if latest_task["status"] == "processing" and latest_task.get("mineruTaskId"):
+            mineru_status = mineru_service.get_parsing_status(latest_task["mineruTaskId"])
+            
+            if mineru_status["success"]:
+                # 更新任务状态
+                task_model.update_task_status(
+                    task_id=latest_task["id"],
+                    status=mineru_status["status"],
+                    progress=mineru_status.get("progress", 0),
+                    message=mineru_status.get("message", "")
+                )
+                
+                latest_task["status"] = mineru_status["status"]
+                latest_task["progress"] = mineru_status.get("progress", 0)
+                latest_task["message"] = mineru_status.get("message", "")
+                
+                # 如果MinerU解析完成，启动后台任务处理结果
+                if mineru_status["status"] == "completed" and mineru_status.get("full_zip_url"):
+                    from ..utils.background_tasks import get_task_manager
+                    
+                    task_manager = get_task_manager()
+                    
+                    # 定义后台处理任务
+                    def process_mineru_result():
+                        try:
+                            # 获取七牛云服务实例
+                            from ..services.qiniuService import get_qiniu_service
+                            qiniu_service = get_qiniu_service()
+                            
+                            # 下载并处理MinerU结果
+                            result = mineru_service.fetch_markdown_content_and_upload(
+                                result_url=mineru_status["full_zip_url"],
+                                paper_id=paper_id,
+                                qiniu_service=qiniu_service
+                            )
+                            
+                            if result["success"]:
+                                # 更新论文附件
+                                new_attachments = result["data"]["attachments"]
+                                
+                                # 获取当前论文附件
+                                paper_result = service.get_admin_paper_detail(
+                                    paper_id=paper_id,
+                                    user_id=g.current_user["user_id"]
+                                )
+                                
+                                if paper_result["code"] == BusinessCode.SUCCESS:
+                                    paper = paper_result["data"]
+                                    current_attachments = paper.get("attachments", {})
+                                    
+                                    # 合并附件信息 - 确保正确更新每个附件类型
+                                    for attachment_type, attachment_data in new_attachments.items():
+                                        if attachment_data:  # 只更新非空的附件
+                                            current_attachments[attachment_type] = attachment_data
+                                    
+                                    # 更新论文附件
+                                    service.update_paper_attachments(
+                                        paper_id=paper_id,
+                                        attachments=current_attachments,
+                                        user_id=g.current_user["user_id"],
+                                        is_admin=True
+                                    )
+                                    
+                                    # 更新任务状态为完成
+                                    task_model.update_task_status(
+                                        task_id=latest_task["id"],
+                                        status="completed",
+                                        progress=100,
+                                        message="PDF解析完成，结果已上传"
+                                    )
+                                else:
+                                    # 更新任务状态为失败
+                                    task_model.update_task_status(
+                                        task_id=latest_task["id"],
+                                        status="failed",
+                                        message="更新论文附件失败"
+                                    )
+                            else:
+                                # 更新任务状态为失败
+                                task_model.update_task_status(
+                                    task_id=latest_task["id"],
+                                    status="failed",
+                                    message=f"处理解析结果失败: {result['error']}",
+                                    error=result["error"]
+                                )
+                        except Exception as e:
+                            logger.error(f"处理MinerU结果异常: {str(e)}", exc_info=True)
+                            # 更新任务状态为失败
+                            task_model.update_task_status(
+                                task_id=latest_task["id"],
+                                status="failed",
+                                message=f"处理解析结果异常: {str(e)}",
+                                error=str(e)
+                            )
+                    
+                    # 提交后台任务
+                    task_manager.submit_task(
+                        task_id=f"process_mineru_{latest_task['id']}",
+                        func=process_mineru_result,
+                        callback=lambda task_id, result: None
+                    )
+        
+        return success_response({
+            "hasTask": True,
+            "task": latest_task
+        }, "获取PDF解析状态成功")
+    
+    except Exception as exc:
+        logger.error(f"获取管理员论文PDF解析状态异常 - paper_id: {paper_id}, error: {str(exc)}", exc_info=True)
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/user/<user_paper_id>/markdown-content", methods=["GET"])
+@login_required
+def get_user_paper_markdown_content(user_paper_id):
+    """
+    获取用户论文的Markdown文件内容（base64格式）
+    """
+    try:
+        logger.info(f"获取用户论文Markdown内容 - user_paper_id: {user_paper_id}, user_id: {g.current_user['user_id']}")
+        
+        # 验证用户论文是否存在
+        service = get_user_paper_service()
+        result = service.get_user_paper_detail(
+            user_paper_id=user_paper_id,
+            user_id=g.current_user["user_id"]
+        )
+        
+        if result["code"] != BusinessCode.SUCCESS:
+            return bad_request_response(result["message"])
+        
+        user_paper = result["data"]
+        attachments = user_paper.get("attachments", {})
+        markdown_attachment = attachments.get("markdown", {})
+        
+        if not markdown_attachment or not markdown_attachment.get("url"):
+            return bad_request_response("论文没有Markdown附件")
+        
+        # 获取七牛云服务实例
+        try:
+            from ..services.qiniuService import get_qiniu_service
+            qiniu_service = get_qiniu_service()
+        except ImportError as e:
+            return internal_error_response(f"七牛云服务不可用: {str(e)}")
+        
+        # 从七牛云获取Markdown文件内容
+        markdown_result = qiniu_service.fetch_file_content(markdown_attachment.get("url"))
+        
+        if not markdown_result["success"]:
+            return internal_error_response(f"获取Markdown内容失败: {markdown_result.get('error', '未知错误')}")
+        
+        return success_response({
+            "markdownContent": markdown_result["content"],
+            "attachment": markdown_attachment
+        }, "成功获取Markdown内容")
+    
+    except Exception as exc:
+        logger.error(f"获取用户论文Markdown内容异常 - user_paper_id: {user_paper_id}, error: {str(exc)}", exc_info=True)
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/admin/<paper_id>/markdown-content", methods=["GET"])
+@login_required
+def get_admin_paper_markdown_content(paper_id):
+    """
+    获取管理员论文的Markdown文件内容（base64格式）
+    """
+    try:
+        logger.info(f"获取管理员论文Markdown内容 - paper_id: {paper_id}, user_id: {g.current_user['user_id']}")
+        
+        # 验证管理员论文是否存在
+        service = get_paper_service()
+        result = service.get_admin_paper_detail(
+            paper_id=paper_id,
+            user_id=g.current_user["user_id"]
+        )
+        
+        if result["code"] != BusinessCode.SUCCESS:
+            return bad_request_response(result["message"])
+        
+        paper = result["data"]
+        attachments = paper.get("attachments", {})
+        markdown_attachment = attachments.get("markdown", {})
+        
+        if not markdown_attachment or not markdown_attachment.get("url"):
+            return bad_request_response("论文没有Markdown附件")
+        
+        # 获取七牛云服务实例
+        try:
+            from ..services.qiniuService import get_qiniu_service
+            qiniu_service = get_qiniu_service()
+        except ImportError as e:
+            return internal_error_response(f"七牛云服务不可用: {str(e)}")
+        
+        # 从七牛云获取Markdown文件内容
+        markdown_result = qiniu_service.fetch_file_content(markdown_attachment.get("url"))
+        
+        if not markdown_result["success"]:
+            return internal_error_response(f"获取Markdown内容失败: {markdown_result.get('error', '未知错误')}")
+        
+        return success_response({
+            "markdownContent": markdown_result["content"],
+            "attachment": markdown_attachment
+        }, "成功获取Markdown内容")
+    
+    except Exception as exc:
+        logger.error(f"获取管理员论文Markdown内容异常 - paper_id: {paper_id}, error: {str(exc)}", exc_info=True)
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/user/<user_paper_id>/pdf-parse-tasks", methods=["GET"])
+@login_required
+def get_user_paper_pdf_parse_tasks(user_paper_id):
+    """
+    获取用户论文PDF解析任务列表
+    """
+    try:
+        logger.info(f"获取用户论文PDF解析任务列表 - user_paper_id: {user_paper_id}, user_id: {g.current_user['user_id']}")
+        
+        # 验证用户论文是否存在
+        service = get_user_paper_service()
+        result = service.get_user_paper_detail(
+            user_paper_id=user_paper_id,
+            user_id=g.current_user["user_id"]
+        )
+        
+        if result["code"] != BusinessCode.SUCCESS:
+            return bad_request_response(result["message"])
+        
+        # 获取PDF解析任务
+        from ..models.pdfParseTask import get_pdf_parse_task_model
+        task_model = get_pdf_parse_task_model()
+        
+        tasks = task_model.get_paper_tasks(
+            paper_id=user_paper_id,
+            is_admin=False
+        )
+        
+        return success_response({
+            "tasks": tasks
+        }, "获取PDF解析任务列表成功")
+    
+    except Exception as exc:
+        logger.error(f"获取用户论文PDF解析任务列表异常 - user_paper_id: {user_paper_id}, error: {str(exc)}", exc_info=True)
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/admin/<paper_id>/pdf-parse-tasks", methods=["GET"])
+@login_required
+def get_admin_paper_pdf_parse_tasks(paper_id):
+    """
+    获取管理员论文PDF解析任务列表
+    """
+    try:
+        logger.info(f"获取管理员论文PDF解析任务列表 - paper_id: {paper_id}, user_id: {g.current_user['user_id']}")
+        
+        # 验证管理员论文是否存在
+        service = get_paper_service()
+        result = service.get_admin_paper_detail(
+            paper_id=paper_id,
+            user_id=g.current_user["user_id"]
+        )
+        
+        if result["code"] != BusinessCode.SUCCESS:
+            return bad_request_response(result["message"])
+        
+        # 获取PDF解析任务
+        from ..models.pdfParseTask import get_pdf_parse_task_model
+        task_model = get_pdf_parse_task_model()
+        
+        tasks = task_model.get_paper_tasks(
+            paper_id=paper_id,
+            is_admin=True
+        )
+        
+        return success_response({
+            "tasks": tasks
+        }, "获取PDF解析任务列表成功")
+    
+    except Exception as exc:
+        logger.error(f"获取管理员论文PDF解析任务列表异常 - paper_id: {paper_id}, error: {str(exc)}", exc_info=True)
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+# ------------------------------------------------------------------
+# 文件上传相关路由（从upload.py迁移）
+# ------------------------------------------------------------------
+
+def allowed_file(filename, allowed_extensions=None):
+    """
+    检查文件扩展名是否允许
+    
+    Args:
+        filename: 文件名
+        allowed_extensions: 允许的扩展名列表，默认为图片格式
+        
+    Returns:
+        是否允许上传
+    """
+    if allowed_extensions is None:
+        allowed_extensions = {'png', 'jpg', 'jpeg', 'gif', 'webp', 'pdf'}
+    
+    return '.' in filename and \
+           filename.rsplit('.', 1)[1].lower() in allowed_extensions
+
+
+@bp.route("/upload/image", methods=["POST"])
+@login_required
+def upload_image():
+    """
+    上传图片到七牛云
+    
+    请求格式: multipart/form-data
+    参数:
+        file: 图片文件
+        
+    返回示例:
+        {
+            "code": 0,
+            "message": "上传成功",
+            "data": {
+                "url": "https://your-domain.com/papers/images/12345678_abc123.jpg",
+                "key": "papers/images/12345678_abc123.jpg",
+                "size": 102400,
+                "contentType": "image/jpeg",
+                "uploadedAt": "2023-12-01T10:00:00.000Z"
+            }
+        }
+    """
+    try:
+        # 检查七牛云服务是否可用
+        if not QINIU_AVAILABLE:
+            return bad_request_response("七牛云服务不可用，请检查安装和配置")
+        
+        # 检查七牛云是否已配置
+        if not is_qiniu_configured():
+            return bad_request_response("七牛云存储未配置，请联系管理员")
+        
+        # 检查是否有文件上传
+        if 'file' not in request.files:
+            return bad_request_response("没有选择文件")
+        
+        file = request.files['file']
+        
+        # 检查文件名是否为空
+        if file.filename == '':
+            return bad_request_response("没有选择文件")
+        
+        # 检查文件类型是否允许
+        if not allowed_file(file.filename):
+            return bad_request_response("不支持的文件类型，仅支持: png, jpg, jpeg, gif, webp")
+        
+        # 获取文件扩展名
+        filename = secure_filename(file.filename)
+        file_extension = os.path.splitext(filename)[1].lower()
+        
+        # 读取文件数据
+        file_data = file.read()
+        
+        # 获取七牛云服务实例
+        qiniu_service = get_qiniu_service()
+        
+        # 验证文件
+        is_valid, error_message = qiniu_service.validate_file(file_data, file_extension)
+        if not is_valid:
+            return bad_request_response(error_message)
+        
+        # 上传文件到七牛云，使用图片路径前缀
+        upload_result = qiniu_service.upload_file_data(file_data, file_extension, file_type="image")
+        
+        if upload_result["success"]:
+            return success_response(upload_result, "图片上传成功")
+        else:
+            error_msg = f"图片上传失败: {upload_result['error']}"
+            return internal_error_response(error_msg)
+             
+    except Exception as exc:
+        import traceback
+        error_msg = f"服务器错误: {exc}"
+        return internal_error_response(error_msg)
+
+
+@bp.route("/upload/pdf", methods=["POST"])
+@login_required
+def upload_pdf():
+    """
+    上传PDF文件到七牛云
+    
+    请求格式: multipart/form-data
+    参数:
+        file: PDF文件
+        
+    返回示例:
+        {
+            "code": 0,
+            "message": "上传成功",
+            "data": {
+                "url": "https://your-domain.com/neuink/pdf/12345678_abc123.pdf",
+                "key": "neuink/pdf/12345678_abc123.pdf",
+                "size": 1024000,
+                "contentType": "application/pdf",
+                "uploadedAt": "2023-12-01T10:00:00.000Z"
+            }
+        }
+    """
+    try:
+        # 检查七牛云服务是否可用
+        if not QINIU_AVAILABLE:
+            return bad_request_response("七牛云服务不可用，请检查安装和配置")
+        
+        # 检查七牛云是否已配置
+        if not is_qiniu_configured():
+            return bad_request_response("七牛云存储未配置，请联系管理员")
+        
+        # 检查是否有文件上传
+        if 'file' not in request.files:
+            return bad_request_response("没有选择文件")
+        
+        file = request.files['file']
+        
+        # 检查文件名是否为空
+        if file.filename == '':
+            return bad_request_response("没有选择文件")
+        
+        # 检查文件类型是否允许
+        allowed_extensions = {'pdf'}
+        if not allowed_file(file.filename, allowed_extensions):
+            return bad_request_response(f"不支持的文件类型，仅支持: {', '.join(allowed_extensions)}")
+        
+        # 获取文件扩展名
+        filename = secure_filename(file.filename)
+        file_extension = os.path.splitext(filename)[1].lower()
+        
+        # 读取文件数据
+        file_data = file.read()
+        
+        # 获取七牛云服务实例
+        qiniu_service = get_qiniu_service()
+        
+        # 验证文件
+        is_valid, error_message = qiniu_service.validate_file(file_data, file_extension)
+        if not is_valid:
+            return bad_request_response(error_message)
+        
+        # 上传文件到七牛云，使用PDF路径前缀
+        upload_result = qiniu_service.upload_file_data(file_data, file_extension, file_type="pdf")
+        
+        if upload_result["success"]:
+            return success_response(upload_result, "PDF文件上传成功")
+        else:
+            return internal_error_response(f"PDF文件上传失败: {upload_result['error']}")
+            
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/upload/document", methods=["POST"])
+@login_required
+def upload_document():
+    """
+    上传文档到七牛云（除PDF和Markdown外的其他文档类型）
+    
+    请求格式: multipart/form-data
+    参数:
+        file: 文档文件
+        
+    返回示例:
+        {
+            "code": 0,
+            "message": "上传成功",
+            "data": {
+                "url": "https://your-domain.com/neuink/document/12345678_abc123.docx",
+                "key": "neuink/document/12345678_abc123.docx",
+                "size": 1024000,
+                "contentType": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                "uploadedAt": "2023-12-01T10:00:00.000Z"
+            }
+        }
+    """
+    try:
+        # 检查七牛云服务是否可用
+        if not QINIU_AVAILABLE:
+            return bad_request_response("七牛云服务不可用，请检查安装和配置")
+        
+        # 检查七牛云是否已配置
+        if not is_qiniu_configured():
+            return bad_request_response("七牛云存储未配置，请联系管理员")
+        
+        # 检查是否有文件上传
+        if 'file' not in request.files:
+            return bad_request_response("没有选择文件")
+        
+        file = request.files['file']
+        
+        # 检查文件名是否为空
+        if file.filename == '':
+            return bad_request_response("没有选择文件")
+        
+        # 检查文件类型是否允许（排除PDF和Markdown，因为它们有专门的接口）
+        allowed_extensions = {'doc', 'docx', 'ppt', 'pptx', 'txt'}
+        if not allowed_file(file.filename, allowed_extensions):
+            return bad_request_response(f"不支持的文件类型，仅支持: {', '.join(allowed_extensions)}")
+        
+        # 获取文件扩展名
+        filename = secure_filename(file.filename)
+        file_extension = os.path.splitext(filename)[1].lower()
+        
+        # 读取文件数据
+        file_data = file.read()
+        
+        # 获取七牛云服务实例
+        qiniu_service = get_qiniu_service()
+        
+        # 验证文件
+        is_valid, error_message = qiniu_service.validate_file(file_data, file_extension)
+        if not is_valid:
+            return bad_request_response(error_message)
+        
+        # 上传文件到七牛云，使用文档路径前缀
+        upload_result = qiniu_service.upload_file_data(file_data, file_extension, file_type="document")
+        
+        if upload_result["success"]:
+            return success_response(upload_result, "文档上传成功")
+        else:
+            return internal_error_response(f"文档上传失败: {upload_result['error']}")
+            
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/upload/markdown", methods=["POST"])
+@login_required
+def upload_markdown():
+    """
+    上传Markdown文件到七牛云
+    
+    请求格式: multipart/form-data
+    参数:
+        file: Markdown文件
+        
+    返回示例:
+        {
+            "code": 0,
+            "message": "上传成功",
+            "data": {
+                "url": "https://your-domain.com/neuink/markdown/12345678_abc123.md",
+                "key": "neuink/markdown/12345678_abc123.md",
+                "size": 102400,
+                "contentType": "text/markdown",
+                "uploadedAt": "2023-12-01T10:00:00.000Z"
+            }
+        }
+    """
+    try:
+        # 检查七牛云服务是否可用
+        if not QINIU_AVAILABLE:
+            return bad_request_response("七牛云服务不可用，请检查安装和配置")
+        
+        # 检查七牛云是否已配置
+        if not is_qiniu_configured():
+            return bad_request_response("七牛云存储未配置，请联系管理员")
+        
+        # 检查是否有文件上传
+        if 'file' not in request.files:
+            return bad_request_response("没有选择文件")
+        
+        file = request.files['file']
+        
+        # 检查文件名是否为空
+        if file.filename == '':
+            return bad_request_response("没有选择文件")
+        
+        # 检查文件类型是否允许
+        allowed_extensions = {'md', 'markdown'}
+        if not allowed_file(file.filename, allowed_extensions):
+            return bad_request_response(f"不支持的文件类型，仅支持: {', '.join(allowed_extensions)}")
+        
+        # 获取文件扩展名
+        filename = secure_filename(file.filename)
+        file_extension = os.path.splitext(filename)[1].lower()
+        
+        # 读取文件数据
+        file_data = file.read()
+        
+        # 获取七牛云服务实例
+        qiniu_service = get_qiniu_service()
+        
+        # 验证文件
+        is_valid, error_message = qiniu_service.validate_file(file_data, file_extension)
+        if not is_valid:
+            return bad_request_response(error_message)
+        
+        # 上传文件到七牛云，使用Markdown路径前缀
+        upload_result = qiniu_service.upload_file_data(file_data, file_extension, file_type="markdown")
+        
+        if upload_result["success"]:
+            return success_response(upload_result, "Markdown文件上传成功")
+        else:
+            return internal_error_response(f"Markdown文件上传失败: {upload_result['error']}")
+            
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/upload/paper-image", methods=["POST"])
+@login_required
+def upload_paper_image():
+    """
+    上传论文图片到七牛云（专门用于论文中的图片）
+    
+    请求格式: multipart/form-data
+    参数:
+        file: 图片文件
+        paper_id: 论文ID（可选，用于分类存储）
+        
+    返回示例:
+        {
+            "code": 0,
+            "message": "上传成功",
+            "data": {
+                "url": "https://your-domain.com/papers/images/paper_123/12345678_abc123.jpg",
+                "key": "papers/images/paper_123/12345678_abc123.jpg",
+                "size": 102400,
+                "contentType": "image/jpeg",
+                "uploadedAt": "2023-12-01T10:00:00.000Z"
+            }
+        }
+    """
+    try:
+        # 检查七牛云服务是否可用
+        if not QINIU_AVAILABLE:
+            return bad_request_response("七牛云服务不可用，请检查安装和配置")
+        
+        # 检查七牛云是否已配置
+        if not is_qiniu_configured():
+            return bad_request_response("七牛云存储未配置，请联系管理员")
+        
+        # 检查是否有文件上传
+        if 'file' not in request.files:
+            return bad_request_response("没有选择文件")
+        
+        file = request.files['file']
+        
+        # 检查文件名是否为空
+        if file.filename == '':
+            return bad_request_response("没有选择文件")
+        
+        # 检查文件类型是否允许
+        if not allowed_file(file.filename):
+            return bad_request_response("不支持的文件类型，仅支持: png, jpg, jpeg, gif, webp")
+        
+        # 获取文件扩展名
+        filename = secure_filename(file.filename)
+        file_extension = os.path.splitext(filename)[1].lower()
+        
+        # 读取文件数据
+        file_data = file.read()
+        
+        # 获取七牛云服务实例
+        qiniu_service = get_qiniu_service()
+        
+        # 验证文件
+        is_valid, error_message = qiniu_service.validate_file(file_data, file_extension)
+        if not is_valid:
+            return bad_request_response(error_message)
+        
+        # 获取论文ID（可选）
+        paper_id = request.form.get('paper_id', '')
+        
+        # 构建存储路径前缀
+        if paper_id:
+            prefix = f"papers/images/{paper_id}/"
+        else:
+            prefix = "papers/images/"
+        
+        # 上传文件到七牛云，使用论文图片路径前缀
+        if paper_id:
+            # 如果有论文ID，使用统一目录结构
+            upload_result = qiniu_service.upload_file_data(
+                file_data=file_data,
+                file_extension=file_extension,
+                file_type="unified_paper",
+                filename=f"images/{filename}",
+                paper_id=paper_id
+            )
+        else:
+            upload_result = qiniu_service.upload_file_data(file_data, file_extension, file_type="paper_image")
+        
+        if upload_result["success"]:
+            return success_response(upload_result, "论文图片上传成功")
+        else:
+            return internal_error_response(f"论文图片上传失败: {upload_result['error']}")
+            
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/upload/token", methods=["GET"])
+@login_required
+def get_upload_token():
+    """
+    获取七牛云上传凭证（用于前端直传）
+    
+    参数:
+        key: 文件在七牛云中的存储路径
+        expires: 凭证有效期（秒），默认3600
+        
+    返回示例:
+        {
+            "code": 0,
+            "message": "获取成功",
+            "data": {
+                "token": "上传凭证字符串",
+                "key": "文件存储路径",
+                "expires": 3600,
+                "domain": "https://your-domain.com"
+            }
+        }
+    """
+    try:
+        # 检查七牛云服务是否可用
+        if not QINIU_AVAILABLE:
+            return bad_request_response("七牛云服务不可用，请检查安装和配置")
+        
+        # 检查七牛云是否已配置
+        if not is_qiniu_configured():
+            return bad_request_response("七牛云存储未配置，请联系管理员")
+        
+        # 获取参数
+        key = request.args.get('key')
+        expires = int(request.args.get('expires', 3600))
+        
+        if not key:
+            return bad_request_response("文件路径不能为空")
+        
+        # 获取七牛云服务实例
+        qiniu_service = get_qiniu_service()
+        
+        # 生成上传凭证
+        token = qiniu_service.generate_upload_token(key, expires)
+        
+        return success_response({
+            "token": token,
+            "key": key,
+            "expires": expires,
+            "domain": f"https://{qiniu_service.domain}"
+        }, "获取上传凭证成功")
+        
+    except Exception as exc:
+        return internal_error_response(f"服务器错误: {exc}")
+
+
+@bp.route("/upload/config", methods=["GET"])
+@login_required
+def get_upload_config():
+    """
+    获取上传配置信息
+    
+    返回示例:
+        {
+            "code": 0,
+            "message": "获取成功",
+            "data": {
+                "maxFileSize": 10485760,
+                "allowedImageTypes": ["png", "jpg", "jpeg", "gif", "webp"],
+                "allowedDocumentTypes": ["pdf", "doc", "docx", "ppt", "pptx", "txt", "md"],
+                "domain": "https://your-domain.com",
+                "isConfigured": true
+            }
+        }
+    """
+    try:
+        # 检查七牛云服务是否可用
+        configured = QINIU_AVAILABLE and is_qiniu_configured()
+        
+        config = {
+            "isConfigured": configured,
+            "maxFileSize": 52428800,  # 50MB (50 * 1024 * 1024)
+            "allowedImageTypes": ["png", "jpg", "jpeg", "gif", "webp"],
+            "allowedPdfTypes": ["pdf"],
+            "allowedDocumentTypes": ["doc", "docx", "ppt", "pptx", "txt"],
+            "allowedMarkdownTypes": ["md", "markdown"],
+        }
+        
+        if configured:
+            qiniu_service = get_qiniu_service()
+            config["domain"] = f"https://{qiniu_service.domain}"
+        
+        return success_response(config, "获取上传配置成功")
+        
+    except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
