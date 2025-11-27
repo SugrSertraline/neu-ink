@@ -10,7 +10,6 @@ from neuink.services.paperContentService import PaperContentService, get_parsed_
 from neuink.models.adminPaper import AdminPaperModel
 from neuink.models.section import get_section_model
 from neuink.models.parseBlocks import get_parse_blocks_model
-from neuink.models.parsingSession import get_parsing_session_model
 from neuink.utils.auth import login_required, admin_required
 from neuink.utils.common import (
     success_response,
@@ -178,32 +177,6 @@ def add_block_from_text_to_admin_section(paper_id, section_id):
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
 
-
-@bp.route("/admin/<paper_id>/sections/<section_id>", methods=["GET"])
-@login_required
-@admin_required
-def get_admin_section(paper_id, section_id):
-    """
-    管理员获取指定论文的指定section详情
-    """
-    try:
-        # 验证论文存在且有权限
-        service = get_paper_service()
-        paper = service.paper_model.find_by_id(paper_id)
-        if not paper:
-            return bad_request_response("论文不存在")
-
-        # 验证section存在
-        section_model = get_section_model()
-        section = section_model.find_by_id(section_id)
-        
-        if not section or section.get("paperId") != paper_id:
-            return bad_request_response("指定的section不存在或不属于该论文")
-
-        return success_response(section, "成功获取章节详情")
-
-    except Exception as exc:
-        return internal_error_response(f"服务器错误: {exc}")
 
 
 @bp.route("/admin/<paper_id>/sections/<section_id>", methods=["PUT"])
@@ -437,18 +410,8 @@ def add_user_section(entry_id):
         )
 
         if result["code"] == BusinessCode.SUCCESS:
-            updated_paper = result["data"]["paper"]
-            section_ids = [section.get("id") for section in updated_paper.get("sections", [])]
-            update_result = service.update_user_paper(
-                entry_id=entry_id,
-                user_id=g.current_user["user_id"],
-                update_data={"sectionIds": section_ids},
-            )
-
-            if update_result["code"] == BusinessCode.SUCCESS:
-                return success_response(result["data"], result["message"])
-            else:
-                return internal_error_response("更新用户论文库失败")
+            # 不需要更新sectionIds，因为已经在PaperContentService中处理了
+            return success_response(result["data"], result["message"])
 
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])
@@ -522,22 +485,9 @@ def add_block_to_user_section(entry_id, section_id):
             response_data = result["data"]
             if "blockId" not in response_data and "addedBlock" in response_data:
                 response_data["blockId"] = response_data["addedBlock"]["id"]
-
-            updated_paper = response_data.get("paper")
-            if updated_paper:
-                section_ids = [section.get("id") for section in updated_paper.get("sections", [])]
-                update_result = service.update_user_paper(
-                    entry_id=entry_id,
-                    user_id=g.current_user["user_id"],
-                    update_data={"sectionIds": section_ids},
-                )
-
-                if update_result["code"] == BusinessCode.SUCCESS:
-                    return success_response(response_data, result["message"])
-                else:
-                    return internal_error_response("更新用户论文库失败")
-            else:
-                return success_response(response_data, result["message"])
+            
+            # 不需要更新sectionIds，因为已经在PaperContentService中处理了
+            return success_response(response_data, result["message"])
 
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])
@@ -605,21 +555,8 @@ def add_block_from_text_to_user_section(entry_id, section_id):
         )
 
         if result["code"] == BusinessCode.SUCCESS:
-            updated_paper = result["data"].get("paper")
-            if updated_paper:
-                section_ids = [section.get("id") for section in updated_paper.get("sections", [])]
-                update_result = service.update_user_paper(
-                    entry_id=entry_id,
-                    user_id=g.current_user["user_id"],
-                    update_data={"sectionIds": section_ids},
-                )
-
-                if update_result["code"] == BusinessCode.SUCCESS:
-                    return success_response(result["data"], result["message"])
-                else:
-                    return internal_error_response("更新用户论文库失败")
-            else:
-                return success_response(result["data"], result["message"])
+            # 不需要更新sectionIds，因为已经在PaperContentService中处理了
+            return success_response(result["data"], result["message"])
 
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])
@@ -630,54 +567,6 @@ def add_block_from_text_to_user_section(entry_id, section_id):
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
 
-
-@bp.route("/user/<entry_id>/sections/<section_id>", methods=["GET"])
-@login_required
-def get_user_section(entry_id, section_id):
-    """
-    获取用户论文的指定section详情
-    """
-    try:
-        service = get_user_paper_service()
-        user_paper_result = service.get_user_paper_detail(
-            user_paper_id=entry_id,
-            user_id=g.current_user["user_id"],
-        )
-
-        if user_paper_result["code"] != BusinessCode.SUCCESS:
-            if user_paper_result["code"] == BusinessCode.PAPER_NOT_FOUND:
-                return bad_request_response(user_paper_result["message"])
-            elif user_paper_result["code"] == BusinessCode.PERMISSION_DENIED:
-                return (
-                    {
-                        "code": ResponseCode.FORBIDDEN,
-                        "message": user_paper_result["message"],
-                        "data": None,
-                    },
-                    ResponseCode.FORBIDDEN,
-                )
-            else:
-                return bad_request_response(user_paper_result["message"])
-
-        user_paper = user_paper_result["data"]
-        if not user_paper:
-            return bad_request_response("论文数据不存在")
-
-        paper_id = user_paper.get("id")
-        if not paper_id:
-            return bad_request_response("无效的论文ID")
-
-        # 验证section存在
-        section_model = get_section_model()
-        section = section_model.find_by_id(section_id)
-        
-        if not section or section.get("paperId") != paper_id:
-            return bad_request_response("指定的section不存在或不属于该论文")
-
-        return success_response(section, "成功获取章节详情")
-
-    except Exception as exc:
-        return internal_error_response(f"服务器错误: {exc}")
 
 
 @bp.route("/user/<entry_id>/sections/<section_id>", methods=["PUT"])
@@ -738,21 +627,8 @@ def update_user_section(entry_id, section_id):
         logger.info(f"章节更新结果: {result}")
 
         if result["code"] == BusinessCode.SUCCESS:
-            updated_paper = result["data"].get("paper")
-            if updated_paper:
-                section_ids = [section.get("id") for section in updated_paper.get("sections", [])]
-                update_result = service.update_user_paper(
-                    entry_id=entry_id,
-                    user_id=g.current_user["user_id"],
-                    update_data={"sectionIds": section_ids},
-                )
-
-                if update_result["code"] == BusinessCode.SUCCESS:
-                    return success_response(result["data"], result["message"])
-                else:
-                    return internal_error_response("更新用户论文库失败")
-            else:
-                return success_response(result["data"], result["message"])
+            # 不需要更新sectionIds，因为已经在PaperContentService中处理了
+            return success_response(result["data"], result["message"])
 
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])
@@ -793,29 +669,9 @@ def delete_user_section(entry_id, section_id):
         logger.info(f"删除章节结果: {result}")
 
         if result["code"] == BusinessCode.SUCCESS:
-            updated_paper = result["data"].get("paper")
-            if updated_paper:
-                section_ids = [section.get("id") for section in updated_paper.get("sections", [])]
-                logger.info(f"更新后的section_ids: {section_ids}")
-                
-                # 更新用户论文库的sectionIds
-                service = get_user_paper_service()
-                update_result = service.update_user_paper(
-                    entry_id=entry_id,
-                    user_id=g.current_user["user_id"],
-                    update_data={"sectionIds": section_ids},
-                )
-
-                logger.info(f"更新用户论文库结果: {update_result}")
-
-                if update_result["code"] == BusinessCode.SUCCESS:
-                    return success_response(result["data"], result["message"])
-                else:
-                    logger.error(f"更新用户论文库失败: {update_result['message']}")
-                    return internal_error_response("更新用户论文库失败")
-            else:
-                logger.info("删除章节成功，但没有返回更新后的论文数据")
-                return success_response(result["data"], result["message"])
+            # 不需要更新sectionIds，因为已经在PaperContentService中处理了
+            logger.info("删除章节成功")
+            return success_response(result["data"], result["message"])
 
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             logger.error(f"删除章节失败 - 论文不存在: {result['message']}")
@@ -885,21 +741,8 @@ def update_user_block(entry_id, section_id, block_id):
         )
 
         if result["code"] == BusinessCode.SUCCESS:
-            updated_paper = result["data"].get("paper")
-            if updated_paper:
-                section_ids = [section.get("id") for section in updated_paper.get("sections", [])]
-                update_result = service.update_user_paper(
-                    entry_id=entry_id,
-                    user_id=g.current_user["user_id"],
-                    update_data={"sectionIds": section_ids},
-                )
-
-                if update_result["code"] == BusinessCode.SUCCESS:
-                    return success_response(result["data"], result["message"])
-                else:
-                    return internal_error_response("更新用户论文库失败")
-            else:
-                return success_response(result["data"], result["message"])
+            # 不需要更新sectionIds，因为已经在PaperContentService中处理了
+            return success_response(result["data"], result["message"])
 
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])
@@ -959,27 +802,8 @@ def delete_user_block(entry_id, section_id, block_id):
         )
 
         if result["code"] == BusinessCode.SUCCESS:
-            paper_model = AdminPaperModel()
-            paper_result = paper_model.get_paper_by_id(
-                paper_id=paper_id,
-                user_id=g.current_user["user_id"],
-                is_admin=False,
-            )
-
-            if paper_result["code"] == BusinessCode.SUCCESS:
-                section_ids = [section.get("id") for section in paper_result["data"].get("sections", [])]
-                update_result = service.update_user_paper(
-                    entry_id=entry_id,
-                    user_id=g.current_user["user_id"],
-                    update_data={"sectionIds": section_ids},
-                )
-
-                if update_result["code"] == BusinessCode.SUCCESS:
-                    return success_response(result["data"], result["message"])
-                else:
-                    return internal_error_response("更新用户论文库失败")
-            else:
-                return success_response(result["data"], result["message"])
+            # 不需要更新sectionIds，因为已经在PaperContentService中处理了
+            return success_response(result["data"], result["message"])
 
         if result["code"] == BusinessCode.PAPER_NOT_FOUND:
             return bad_request_response(result["message"])

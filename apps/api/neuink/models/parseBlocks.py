@@ -4,7 +4,7 @@
 """
 import time
 from typing import Dict, Any, List, Optional
-from ..services.db import get_db_service
+from ..utils.db import get_db_service
 from ..utils.common import generate_id
 
 class ParseBlocksModel:

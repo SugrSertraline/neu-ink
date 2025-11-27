@@ -260,13 +260,26 @@ export function PaperBlock({
       }}
       onClick={
         !isEditingBlock && onBlockClick
-          ? () => {
+          ? (e) => {
               const selection = window.getSelection();
-              if (selection && selection.toString()) return;
+              // 如果有文本选择，不触发块点击事件，避免干扰文本选择
+              if (selection && selection.toString().trim()) {
+                e.preventDefault();
+                e.stopPropagation();
+                return;
+              }
               onBlockClick(block.id);
             }
           : undefined
       }
+      onMouseDown={(e) => {
+        // 在鼠标按下时检查是否有文本选择
+        const selection = window.getSelection();
+        if (selection && selection.toString().trim()) {
+          // 如果有文本选择，阻止默认行为，防止清除选择
+          e.preventDefault();
+        }
+      }}
     >
       {blockContent}
     </div>

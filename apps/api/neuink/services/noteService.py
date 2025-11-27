@@ -42,48 +42,10 @@ class NoteService(BaseNoteService):
     # ------------------------------------------------------------------
     # 创建笔记
     # ------------------------------------------------------------------
-    def create_note_legacy(
-        self,
-        user_id: str,
-        user_paper_id: str,
-        block_id: str,
-        content: List[Dict[str, Any]],
-        plain_text: Optional[str] = None,
-        note_id: Optional[str] = None,
-    ) -> Dict[str, Any]:
-        """创建笔记 - 兼容旧接口"""
-        # 创建上下文
-        context = create_paper_context(user_id, "user")
-        context.user_paper_id = user_paper_id
-        
-        # 调用新的创建笔记方法
-        result = super().create_note(context, block_id, content, plain_text, note_id)
-        if result[0]:  # 成功
-            return self._wrap_success(result[1], result[2])
-        else:  # 失败
-            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, result[1])
 
     # ------------------------------------------------------------------
     # 获取笔记列表
     # ------------------------------------------------------------------
-    def get_notes_by_paper_legacy(
-        self,
-        user_id: str,
-        user_paper_id: str,
-        page: int = 1,
-        page_size: int = 100,
-    ) -> Dict[str, Any]:
-        """获取某篇论文的所有笔记 - 兼容旧接口"""
-        # 创建上下文
-        context = create_paper_context(user_id, "user")
-        context.user_paper_id = user_paper_id
-        
-        # 调用新的获取笔记方法
-        result = super().get_notes_by_paper(context, page, page_size)
-        if result[0]:  # 成功
-            return self._wrap_success(result[1], result[2])
-        else:  # 失败
-            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, result[1])
 
     # 新增：支持统一路由的方法
     def get_notes_by_paper(
@@ -327,41 +289,10 @@ class NoteService(BaseNoteService):
     # ------------------------------------------------------------------
     # 更新笔记
     # ------------------------------------------------------------------
-    def update_note_legacy(
-        self,
-        note_id: str,
-        user_id: str,
-        update_data: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """更新笔记内容 - 兼容旧接口"""
-        # 创建上下文
-        context = create_paper_context(user_id, "user")
-        
-        # 调用新的更新笔记方法
-        result = super().update_note(note_id, context, update_data)
-        if result[0]:  # 成功
-            return self._wrap_success(result[1], result[2])
-        else:  # 失败
-            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, result[1])
 
     # ------------------------------------------------------------------
     # 删除笔记
     # ------------------------------------------------------------------
-    def delete_note_legacy(
-        self,
-        note_id: str,
-        user_id: str,
-    ) -> Dict[str, Any]:
-        """删除笔记 - 兼容旧接口"""
-        # 创建上下文
-        context = create_paper_context(user_id, "user")
-        
-        # 调用新的删除笔记方法
-        result = super().delete_note(note_id, context)
-        if result[0]:  # 成功
-            return self._wrap_success(result[1], None)
-        else:  # 失败
-            return self._wrap_failure(BusinessCode.PERMISSION_DENIED, result[1])
 
     # ------------------------------------------------------------------
     # 批量删除笔记

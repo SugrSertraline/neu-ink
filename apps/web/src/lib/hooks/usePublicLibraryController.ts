@@ -288,39 +288,11 @@ export function usePublicLibraryController() {
     void loadPapers();
   }, [loadPapers]);
 
-  // 检查论文是否在个人库中
-  const checkPapersInLibrary = useCallback(async () => {
-    if (!isAuthenticated || papers.length === 0) return;
-    
-    try {
-      const inLibrarySet = new Set<string>();
-      
-      // 批量检查所有论文是否在个人库中
-      const checkPromises = papers.map(async (paper) => {
-        try {
-          const result = await userPaperService.checkPaperInLibrary(paper.id);
-          if (result.data?.inLibrary) {
-            inLibrarySet.add(paper.id);
-          }
-        } catch (error) {
-          // 忽略单个论文的检查错误
-          console.warn(`检查论文 ${paper.id} 是否在个人库中失败:`, error);
-        }
-      });
-      
-      await Promise.all(checkPromises);
-      setPapersInLibrary(inLibrarySet);
-    } catch (error) {
-      console.error('批量检查论文是否在个人库中失败:', error);
-    }
-  }, [isAuthenticated, papers, userPaperService]);
-
-  // 当论文列表加载完成且用户已登录时，检查论文是否在个人库中
+  // 由于checkPaperInLibrary接口已删除，不再检查论文是否在个人库中
+  // 直接清空papersInLibrary状态
   useEffect(() => {
-    if (!loading && isAuthenticated && papers.length > 0) {
-      void checkPapersInLibrary();
-    }
-  }, [loading, isAuthenticated, papers, checkPapersInLibrary]);
+    setPapersInLibrary(new Set());
+  }, [papers]);
 
   const requestLogin = useCallback(() => setShowLoginHint(true), []);
   const dismissLoginHint = useCallback(() => setShowLoginHint(false), []);
@@ -352,20 +324,23 @@ export function usePublicLibraryController() {
         let detail: Paper | null = cached && isPaperEntity(cached) ? cached : null;
 
         if (!detail) {
-          const res = isAdmin
-            ? await adminPaperService.getAdminPaperDetail(paper.id)
-            : await publicPaperService.getPublicPaperDetail(paper.id);
+          // 由于公开论文详情接口已删除，只保留管理员论文详情接口
+          if (isAdmin) {
+            const res = await adminPaperService.getAdminPaperDetail(paper.id);
 
-          if (!isSuccess(res) || !res.data) {
-            throw new Error(res.bizMessage || res.topMessage || '获取论文详情失败');
+            if (!isSuccess(res) || !res.data) {
+              throw new Error(res.bizMessage || res.topMessage || '获取论文详情失败');
+            }
+
+            if (!isPaperEntity(res.data)) {
+              throw new Error('返回的论文数据结构不符合预期');
+            }
+
+            detail = res.data;
+            paperCache.set(paper.id, detail);
+          } else {
+            throw new Error('公开论文详情接口已删除，无法获取论文详情');
           }
-
-          if (!isPaperEntity(res.data)) {
-            throw new Error('返回的论文数据结构不符合预期');
-          }
-
-          detail = res.data;
-          paperCache.set(paper.id, detail);
         }
 
         addTab({

@@ -7,7 +7,7 @@ import uuid
 from datetime import datetime, timedelta
 from typing import Dict, Any, Optional, List
 
-from ..services.db import get_db
+from ..utils.db import get_db
 
 
 class PdfParseTaskModel:
@@ -47,8 +47,9 @@ class PdfParseTaskModel:
             "progress": 0,
             "message": "准备开始解析...",
             "mineruTaskId": None,  # MinerU API返回的任务ID
-            "markdownContent": None,  # 解析生成的Markdown内容
-            "markdownAttachment": None,  # 上传后的Markdown附件信息
+            # 移除以下字段以避免在数据库中存储大文件内容:
+            # "markdownContent": None,  # 解析生成的Markdown内容 - 不再存储在数据库中
+            # "markdownAttachment": None,  # 上传后的Markdown附件信息 - 不再存储在数据库中
             "error": None,
             "createdAt": current_time,
             "updatedAt": current_time,
@@ -82,7 +83,7 @@ class PdfParseTaskModel:
             return task
         return None
     
-    def update_task_status(self, task_id: str, status: str, progress: int = None, message: str = None, mineru_task_id: str = None, markdown_content: str = None, error: str = None) -> bool:
+    def update_task_status(self, task_id: str, status: str, progress: int = None, message: str = None, mineru_task_id: str = None, error: str = None) -> bool:
         """
         更新任务状态
         
@@ -92,7 +93,6 @@ class PdfParseTaskModel:
             progress: 进度百分比
             message: 状态消息
             mineru_task_id: MinerU任务ID
-            markdown_content: Markdown内容
             error: 错误信息
             
         Returns:
@@ -112,8 +112,7 @@ class PdfParseTaskModel:
         if mineru_task_id is not None:
             update_data["mineruTaskId"] = mineru_task_id
         
-        if markdown_content is not None:
-            update_data["markdownContent"] = markdown_content
+        # 移除markdown_content参数，不再存储Markdown内容到数据库中
         
         if error is not None:
             update_data["error"] = error
@@ -129,28 +128,8 @@ class PdfParseTaskModel:
         
         return result.modified_count > 0
     
-    def update_markdown_attachment(self, task_id: str, attachment_info: Dict[str, Any]) -> bool:
-        """
-        更新Markdown附件信息
-        
-        Args:
-            task_id: 任务ID
-            attachment_info: 附件信息
-            
-        Returns:
-            是否更新成功
-        """
-        update_data = {
-            "markdownAttachment": attachment_info,
-            "updatedAt": datetime.utcnow()
-        }
-        
-        result = self.db[self.collection_name].update_one(
-            {"_id": task_id},
-            {"$set": update_data}
-        )
-        
-        return result.modified_count > 0
+    # 移除update_markdown_attachment方法，因为不再存储markdownAttachment信息到数据库中
+    # Markdown附件信息直接存储在paper的attachments字段中
     
     def get_user_tasks(self, user_id: str, status: Optional[str] = None, limit: int = 50) -> List[Dict[str, Any]]:
         """

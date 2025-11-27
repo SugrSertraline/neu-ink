@@ -186,7 +186,7 @@ export const userPaperService = {
     updateData: UpdateSectionRequest
   ): Promise<UnifiedResult<UpdateSectionResult>> {
     return callAndNormalize<UpdateSectionResult>(
-      apiClient.put(`/sections/user/${userPaperId}/${sectionId}`, updateData)
+      apiClient.put(`/sections/user/${userPaperId}/sections/${sectionId}`, updateData)
     );
   },
 
@@ -198,7 +198,7 @@ export const userPaperService = {
     sectionId: string
   ): Promise<UnifiedResult<DeleteSectionResult>> {
     return callAndNormalize<DeleteSectionResult>(
-      apiClient.delete(`/sections/user/${userPaperId}/${sectionId}`)
+      apiClient.delete(`/sections/user/${userPaperId}/sections/${sectionId}`)
     );
   },
 
@@ -262,18 +262,7 @@ export const userPaperService = {
     blockId: string
   ): Promise<UnifiedResult<CheckBlockParsingStatusResult>> {
     return callAndNormalize<CheckBlockParsingStatusResult>(
-      apiClient.get(`/papers/user/${userPaperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
-    );
-  },
-
-  /**
-   * 检查论文是否已在个人论文库中
-   */
-  checkPaperInLibrary(
-    paperId: string
-  ): Promise<UnifiedResult<{ inLibrary: boolean; userPaperId: string | null }>> {
-    return callAndNormalize<{ inLibrary: boolean; userPaperId: string | null }>(
-      apiClient.get(`/papers/user/check-in-library?paperId=${paperId}`)
+      apiClient.get(`/sections/user/${userPaperId}/sections/${sectionId}/blocks/${blockId}/parsing-status`)
     );
   },
 
@@ -317,20 +306,6 @@ export const userPaperService = {
     const prefix = isAdmin ? '/admin/papers' : '/user/papers';
     return callAndNormalize<DiscardParseResultResult>(
       apiClient.post(`${prefix}/${paperId}/parse-results/${parseId}/discard`, {})
-    );
-  },
-
-  /**
-   * 保存所有解析结果
-   */
-  saveAllParseResult(
-    paperId: string,
-    parseId: string,
-    isAdmin: boolean = false
-  ): Promise<UnifiedResult<SaveAllParseResultResult>> {
-    const prefix = isAdmin ? '/admin/papers' : '/user/papers';
-    return callAndNormalize<SaveAllParseResultResult>(
-      apiClient.post(`${prefix}/${paperId}/parse-results/${parseId}/save-all`, {})
     );
   },
 

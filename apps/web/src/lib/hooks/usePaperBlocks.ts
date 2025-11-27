@@ -171,7 +171,7 @@ export function usePaperBlocks(
 
       if (isPersonalOwner && userPaperId) {
         // 个人论文
-        const { userPaperService } = await import('@/lib/services/paper');
+        const { userPaperService } = await import('@/lib/services/papers');
         const result = await userPaperService.addBlockToSection(userPaperId, sectionId, {
           blockData,
           ...(afterBlockId && { afterBlockId })
@@ -194,7 +194,7 @@ export function usePaperBlocks(
         }
       } else {
         // 管理员论文
-        const { adminPaperService } = await import('@/lib/services/paper');
+        const { adminPaperService } = await import('@/lib/services/papers');
         const result = await adminPaperService.addBlockToSection(paperId, sectionId, {
           blockData,
           ...(afterBlockId && { afterBlockId })
@@ -245,7 +245,7 @@ export function usePaperBlocks(
   ) => {
     try {
       if (isPersonalOwner && userPaperId) {
-        const { userPaperService } = await import('@/lib/services/paper');
+        const { userPaperService } = await import('@/lib/services/papers');
         const result = await userPaperService.updateBlock(userPaperId, sectionId, blockId, updateData);
         
         if (result.bizCode === 0) {
@@ -255,7 +255,7 @@ export function usePaperBlocks(
           return { success: false, error: result.bizMessage || '更新内容块失败' };
         }
       } else {
-        const { adminPaperService } = await import('@/lib/services/paper');
+        const { adminPaperService } = await import('@/lib/services/papers');
         const result = await adminPaperService.updateBlock(paperId, sectionId, blockId, updateData);
         
         if (result.bizCode === 0) {
@@ -282,7 +282,7 @@ export function usePaperBlocks(
   ) => {
     try {
       if (isPersonalOwner && userPaperId) {
-        const { userPaperService } = await import('@/lib/services/paper');
+        const { userPaperService } = await import('@/lib/services/papers');
         const result = await userPaperService.deleteBlock(userPaperId, sectionId, blockId);
         
         
@@ -293,7 +293,7 @@ export function usePaperBlocks(
           return { success: false, error: result.bizMessage || '删除内容块失败' };
         }
       } else {
-        const { adminPaperService } = await import('@/lib/services/paper');
+        const { adminPaperService } = await import('@/lib/services/papers');
         const result = await adminPaperService.deleteBlock(paperId, sectionId, blockId);
         
         
@@ -339,7 +339,7 @@ export function usePaperBlocks(
     ) => {
       try {
         // 首先尝试只更新特定的block
-        const { adminPaperService, userPaperService } = await import('@/lib/services/paper');
+        const { adminPaperService, userPaperService } = await import('@/lib/services/papers');
         
         const service = isPersonalOwner ? userPaperService : adminPaperService;
         const id = isPersonalOwner ? userPaperId : paperId;

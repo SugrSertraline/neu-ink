@@ -203,56 +203,6 @@ class QiniuService:
                 }
             }
     
-    def upload_file(self, file_path: str, file_extension: str, prefix: str = None) -> Dict[str, Any]:
-        """
-        上传本地文件到七牛云
-        
-        Args:
-            file_path: 本地文件路径
-            file_extension: 文件扩展名（如 .jpg, .png）
-            prefix: 文件路径前缀
-            
-        Returns:
-            上传结果，包含文件URL等信息
-        """
-        try:
-            # 导入七牛云模块
-            from qiniu import put_file
-            
-            # 生成文件存储路径
-            key = self.generate_file_key(file_extension, prefix)
-            
-            # 生成上传凭证
-            token = self.generate_upload_token(key)
-            
-            # 上传文件
-            ret, info = put_file(token, key, file_path)
-            
-            if info.status_code == 200:
-                # 构建文件访问URL
-                file_url = f"https://{self.domain}/{key}"
-                
-                return {
-                    "success": True,
-                    "key": key,
-                    "url": file_url,
-                    "hash": ret.get('hash', ''),
-                    "size": os.path.getsize(file_path),
-                    "contentType": self._get_content_type(file_extension),
-                    "uploadedAt": datetime.utcnow().isoformat()
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": f"上传失败，状态码: {info.status_code}",
-                    "errorBody": info.text_body
-                }
-                
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"上传异常: {str(e)}"
-            }
     
     def delete_file(self, key: str) -> Dict[str, Any]:
         """
@@ -294,48 +244,6 @@ class QiniuService:
                 "error": f"删除异常: {str(e)}"
             }
     
-    def get_file_info(self, key: str) -> Dict[str, Any]:
-        """
-        获取七牛云中文件的信息
-        
-        Args:
-            key: 文件在七牛云中的存储路径
-            
-        Returns:
-            文件信息
-        """
-        try:
-            # 确保认证已初始化
-            self._init_auth()
-            
-            from qiniu import BucketManager
-            
-            # 初始化资源管理器
-            bucket = BucketManager(self.auth)
-            
-            # 获取文件信息
-            ret, info = bucket.stat(self.bucket_name, key)
-            
-            if info.status_code == 200:
-                return {
-                    "success": True,
-                    "hash": ret.get('hash', ''),
-                    "size": ret.get('fsize', 0),
-                    "contentType": ret.get('mimeType', ''),
-                    "putTime": ret.get('putTime', 0)
-                }
-            else:
-                return {
-                    "success": False,
-                    "error": f"获取文件信息失败，状态码: {info.status_code}",
-                    "errorBody": info.text_body
-                }
-                
-        except Exception as e:
-            return {
-                "success": False,
-                "error": f"获取文件信息异常: {str(e)}"
-            }
     
     def fetch_file_content(self, url: str, max_retries: int = 3) -> Dict[str, Any]:
         """

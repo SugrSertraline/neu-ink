@@ -269,36 +269,3 @@ def get_note_detail(note_id):
     except Exception as exc:
         return internal_error_response(f"服务器错误: {exc}")
 
-
-@bp.route("/user/all", methods=["GET"])
-@login_required
-def get_user_all_notes():
-    """
-    获取用户的所有笔记（跨论文）
-    """
-    try:
-        page, page_size = _parse_pagination_args()
-        sort_by, sort_order = _parse_sort_args()
-        search = request.args.get("search")
-
-        # 创建上下文
-        context = create_paper_context(
-            user_id=g.current_user["user_id"],
-            paper_type="user"
-        )
-
-        service = get_note_service()
-        result = service.get_user_all_notes(
-            context=context,
-            page=page,
-            page_size=page_size,
-            sort_by=sort_by,
-            sort_order=sort_order,
-            search=search
-        )
-
-        if result["code"] == BusinessCode.SUCCESS:
-            return success_response(result["data"], result["message"])
-        return success_response(result["data"], result["message"], result["code"])
-    except Exception as exc:
-        return internal_error_response(f"服务器错误: {exc}")

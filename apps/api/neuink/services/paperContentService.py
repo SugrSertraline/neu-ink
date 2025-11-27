@@ -257,13 +257,7 @@ class PaperContentService:
             logger.info(f"添加章节结果 - success: {success}")
             
             if success:
-                # 获取更新后的论文数据
-                if is_user_paper:
-                    # 对于个人论文库，需要特殊处理
-                    updated_paper = self._get_user_paper_with_sections(paper_id)
-                else:
-                    updated_paper = self.paper_model.find_paper_with_sections(paper_id)
-                
+                # 不获取完整的论文数据，只返回添加结果
                 return self._wrap_success(
                     "成功添加章节",
                     {
@@ -271,7 +265,6 @@ class PaperContentService:
                         "addedSectionId": created_section["id"],
                         "parentSectionId": parent_section_id,
                         "position": position
-                        # 移除完整的论文数据，减少传输量
                     }
                 )
             else:
@@ -344,19 +337,12 @@ class PaperContentService:
             # 更新section
             if self.section_model.update(section_id, section_update_data):
                 updated_section = self.section_model.find_by_id(section_id)
-                # 获取更新后的论文数据
-                if is_user_paper:
-                    # 对于个人论文库，需要特殊处理
-                    updated_paper = self._get_user_paper_with_sections(paper_id)
-                else:
-                    updated_paper = self.paper_model.find_paper_with_sections(paper_id)
                 
                 return self._wrap_success(
                     "章节更新成功",
                     {
                         "updatedSection": updated_section,
                         "sectionId": section_id
-                        # 移除完整的论文数据，减少传输量
                     }
                 )
             else:
@@ -461,19 +447,9 @@ class PaperContentService:
                 logger.info(f"移除sectionId引用结果: {success}")
                 
                 if success:
-                    # 获取更新后的论文数据
-                    if is_user_paper:
-                        # 对于个人论文库，需要特殊处理
-                        logger.info(f"获取更新后的个人论文数据: {paper_id}")
-                        updated_paper = self._get_user_paper_with_sections(paper_id)
-                    else:
-                        logger.info(f"获取更新后的公共论文数据: {paper_id}")
-                        updated_paper = self.paper_model.find_paper_with_sections(paper_id)
-                   
-                    logger.info(f"获取更新后的论文数据成功")
+                    logger.info(f"章节删除成功，不返回完整论文数据")
                     return self._wrap_success("章节删除成功", {
-                        "deletedSectionId": section_id,
-                        "paper": updated_paper  # 添加完整的论文数据，确保前端能正确更新
+                        "deletedSectionId": section_id
                     })
                 else:
                     logger.error(f"移除sectionId引用失败")
@@ -586,19 +562,11 @@ class PaperContentService:
             
             # 执行原子更新 - 使用update_direct处理MongoDB操作符
             if self.section_model.update_direct(section_id, update_operation):
-                # 获取更新后的论文数据
-                if is_user_paper:
-                    # 对于个人论文库，需要特殊处理
-                    updated_paper = self._get_user_paper_with_sections(paper_id)
-                else:
-                    updated_paper = self.paper_model.find_paper_with_sections(paper_id)
-                
                 return self._wrap_success(
                     f"成功向section添加了{len(new_blocks)}个blocks",
                     {
                         "addedBlocks": new_blocks,
                         "sectionId": section_id
-                        # 移除完整的论文数据，减少传输量
                     }
                 )
             else:
@@ -673,20 +641,12 @@ class PaperContentService:
             # 更新section
             target_section["content"] = blocks
             if self.section_model.update(section_id, {"content": blocks}):
-                # 获取更新后的论文数据
-                if is_user_paper:
-                    # 对于个人论文库，需要特殊处理
-                    updated_paper = self._get_user_paper_with_sections(paper_id)
-                else:
-                    updated_paper = self.paper_model.find_paper_with_sections(paper_id)
-                
                 return self._wrap_success(
                     "block更新成功",
                     {
                         "updatedBlock": target_block,
                         "blockId": target_block["id"],
                         "sectionId": section_id
-                        # 移除完整的论文数据，减少传输量
                     }
                 )
             else:
@@ -755,17 +715,9 @@ class PaperContentService:
             # 更新section
             target_section["content"] = blocks
             if self.section_model.update(section_id, {"content": blocks}):
-                # 获取更新后的论文数据
-                if is_user_paper:
-                    # 对于个人论文库，需要特殊处理
-                    updated_paper = self._get_user_paper_with_sections(paper_id)
-                else:
-                    updated_paper = self.paper_model.find_paper_with_sections(paper_id)
-                
                 return self._wrap_success("block删除成功", {
                     "deletedBlockId": block_id,
                     "sectionId": section_id
-                    # 移除完整的论文数据，减少传输量
                 })
             else:
                 return self._wrap_error("更新章节失败")
@@ -918,20 +870,12 @@ class PaperContentService:
             
             # 执行原子更新 - 使用update_direct处理MongoDB操作符
             if self.section_model.update_direct(section_id, update_operation):
-                # 获取更新后的论文数据
-                if is_user_paper:
-                    # 对于个人论文库，需要特殊处理
-                    updated_paper = self._get_user_paper_with_sections(paper_id)
-                else:
-                    updated_paper = self.paper_model.find_paper_with_sections(paper_id)
-                
                 return self._wrap_success(
                     "成功添加block",
                     {
                         "addedBlock": new_block,
                         "blockId": new_block["id"],
                         "sectionId": section_id
-                        # 移除完整的论文数据，减少传输量
                     }
                 )
             else:
@@ -1272,7 +1216,7 @@ class PaperContentService:
 
     def _get_user_paper_with_sections(self, user_paper_id: str) -> Optional[Dict[str, Any]]:
         """
-        获取个人论文库中的论文并包含完整的sections数据
+        获取个人论文库中的论文，不包含完整的sections数据，只返回sectionIds
         """
         try:
             from ..models.userPaper import UserPaperModel
@@ -1282,9 +1226,9 @@ class PaperContentService:
             if not user_paper:
                 return None
                 
-            # 确保sections数据存在
-            if "sections" not in user_paper:
-                user_paper["sections"] = []
+            # 确保不包含sections字段，只保留sectionIds
+            if "sections" in user_paper:
+                del user_paper["sections"]
                 
             return user_paper
         except Exception as e:

@@ -83,7 +83,7 @@ const updateSections = useCallback(
   ) => {
     try {
       if (isPersonalOwner && userPaperId) {
-        const { userPaperService } = await import('@/lib/services/paper');
+        const { userPaperService } = await import('@/lib/services/papers');
         const result = await userPaperService.updateSection(userPaperId, sectionId, updateData);
         
         if (result.bizCode === 0) {
@@ -94,7 +94,7 @@ const updateSections = useCallback(
           return { success: false, error: result.bizMessage || '更新章节失败' };
         }
       } else {
-        const { adminPaperService } = await import('@/lib/services/paper');
+        const { adminPaperService } = await import('@/lib/services/papers');
         const result = await adminPaperService.updateSection(paperId, sectionId, updateData);
         
         if (result.bizCode === 0) {
@@ -129,7 +129,7 @@ const updateSections = useCallback(
   ) => {
     try {
       if (isPersonalOwner && userPaperId) {
-        const { userPaperService } = await import('@/lib/services/paper');
+        const { userPaperService } = await import('@/lib/services/papers');
         const result = await userPaperService.addSection(userPaperId, sectionData, options);
         
         if (result.bizCode === 0) {
@@ -140,7 +140,7 @@ const updateSections = useCallback(
           return { success: false, error: result.bizMessage || '添加章节失败' };
         }
       } else {
-        const { adminPaperService } = await import('@/lib/services/paper');
+        const { adminPaperService } = await import('@/lib/services/papers');
         const result = await adminPaperService.addSection(paperId, sectionData, options);
         
         if (result.bizCode === 0) {
@@ -171,7 +171,7 @@ const updateSections = useCallback(
       if (isPersonalOwner && userPaperId) {
         console.log('【API步骤2】使用用户论文服务删除章节');
         console.log('【API步骤2.1】准备导入 userPaperService');
-        const { userPaperService } = await import('@/lib/services/paper');
+        const { userPaperService } = await import('@/lib/services/papers');
         console.log('【API步骤2.2】userPaperService 导入成功:', typeof userPaperService);
         console.log('【API步骤2.3】即将调用 userPaperService.deleteSection:', userPaperId, sectionId);
         console.log('【API步骤2.4】userPaperService.deleteSection 方法:', typeof userPaperService.deleteSection);
@@ -210,7 +210,7 @@ const updateSections = useCallback(
         }
       } else {
         console.log('使用管理员论文服务删除章节');
-        const { adminPaperService } = await import('@/lib/services/paper');
+        const { adminPaperService } = await import('@/lib/services/papers');
         const result = await adminPaperService.deleteSection(paperId, sectionId);
         
         console.log('管理员论文服务删除章节结果:', result);
@@ -620,7 +620,7 @@ const updateSections = useCallback(
         try {
           if (isPersonalOwner && userPaperId) {
             // 个人论文
-            const { userPaperService } = await import('@/lib/services/paper');
+            const { userPaperService } = await import('@/lib/services/papers');
             const newBlock = createBlock(blockType, lang);
             
             // 构建blockData，确保所有必要字段都存在
@@ -740,7 +740,7 @@ const updateSections = useCallback(
             }
           } else {
             // 管理员论文
-            const { adminPaperService } = await import('@/lib/services/paper');
+            const { adminPaperService } = await import('@/lib/services/papers');
             const newBlock = createBlock(blockType, lang);
             
             // 构建blockData，确保所有必要字段都存在
@@ -889,7 +889,7 @@ const updateSections = useCallback(
     try {
       // 调用API创建加载块并开始异步解析
       if (isPersonalOwner && userPaperId) {
-        const { userPaperService } = await import('@/lib/services/paper');
+        const { userPaperService } = await import('@/lib/services/papers');
         const result = await userPaperService.addBlockFromTextToSection(userPaperId, sectionId, {
           text,
           afterBlockId
@@ -1084,7 +1084,7 @@ const updateSections = useCallback(
           return { success: false, error: result.bizMessage || '创建解析任务失败' };
         }
       } else {
-        const { adminPaperService } = await import('@/lib/services/paper');
+        const { adminPaperService } = await import('@/lib/services/papers');
         const result = await adminPaperService.addBlockFromTextToSection(paperId, sectionId, {
           text,
           afterBlockId

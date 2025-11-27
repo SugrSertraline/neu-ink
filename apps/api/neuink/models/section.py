@@ -4,7 +4,7 @@ Section 数据模型
 """
 from typing import Dict, Any, List, Optional, Tuple
 
-from ..services.db import get_db
+from ..utils.db import get_db
 from ..utils.common import generate_id, get_current_time
 from ..config.constants import Collections
 

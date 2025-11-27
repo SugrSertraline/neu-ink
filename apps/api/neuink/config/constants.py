@@ -98,7 +98,6 @@ class Collections:
     NOTE = "Note"
     SECTION = "Section"
     PARSE_BLOCKS = "ParseBlocks"
-    PARSING_SESSIONS = "ParsingSessions"
     PDF_PARSE_TASKS = "PdfParseTasks"  # PDF解析任务集合
 
 

@@ -25,8 +25,7 @@ import {
   ParseResult,
   ConfirmParseResultRequest,
   ConfirmParseResultResult,
-  DiscardParseResultResult,
-  SaveAllParseResultResult
+  DiscardParseResultResult
 } from '@/types/paper/index';
 import { apiClient, callAndNormalize } from '../../http';
 import type { UnifiedResult } from '@/types/api';
@@ -191,7 +190,7 @@ export const adminPaperService = {
     updateData: UpdateSectionRequest
   ): Promise<UnifiedResult<UpdateSectionResult>> {
     return callAndNormalize<UpdateSectionResult>(
-      apiClient.put(`/sections/admin/${paperId}/${sectionId}`, updateData)
+      apiClient.put(`/sections/admin/${paperId}/sections/${sectionId}`, updateData)
     );
   },
 
@@ -203,7 +202,7 @@ export const adminPaperService = {
     sectionId: string
   ): Promise<UnifiedResult<DeleteSectionResult>> {
     return callAndNormalize<DeleteSectionResult>(
-      apiClient.delete(`/sections/admin/${paperId}/${sectionId}`)
+      apiClient.delete(`/sections/admin/${paperId}/sections/${sectionId}`)
     );
   },
 
@@ -338,19 +337,6 @@ export const adminPaperService = {
     );
   },
 
-  /**
-   * 保存所有管理员论文解析结果
-   */
-  saveAllParseResult(
-    paperId: string,
-    parseId: string,
-    isAdmin: boolean = true
-  ): Promise<UnifiedResult<SaveAllParseResultResult>> {
-    const prefix = isAdmin ? '/admin/papers' : '/user/papers';
-    return callAndNormalize<SaveAllParseResultResult>(
-      apiClient.post(`${prefix}/${paperId}/parse-results/${parseId}/save-all`, {})
-    );
-  },
 
   /**
    * 更新管理员论文附件

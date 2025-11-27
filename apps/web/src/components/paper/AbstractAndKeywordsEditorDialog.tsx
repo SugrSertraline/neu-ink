@@ -7,7 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Badge } from '@/components/ui/badge';
-import { userPaperService } from '@/lib/services/paper';
+import { userPaperService } from '@/lib/services/papers';
 import {
   FileText,
   Globe,
@@ -34,6 +34,7 @@ export interface AbstractAndKeywordsEditorDialogProps {
   isSubmitting?: boolean;
   externalError?: string | null;
   userPaperId?: string;
+  paperId?: string; // 论文ID
   autoSave?: boolean;
   autoSaveDelay?: number; // ms
 }

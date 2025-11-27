@@ -4,7 +4,7 @@ BasePaper 数据模型抽象基类
 """
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional, Tuple
-from ..services.db import get_db
+from ..utils.db import get_db
 from ..utils.common import generate_id, get_current_time
 
 

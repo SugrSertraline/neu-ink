@@ -39,16 +39,45 @@ export default function TextSelectionToolbar(props: ToolbarProps) {
       className="flex gap-1 p-2 bg-white border border-gray-300 rounded shadow-lg min-w-fit"
       style={style}
       onMouseDown={(e) => e.preventDefault()}
+      onMouseUp={(e) => e.preventDefault()}
       onClick={(e) => e.stopPropagation()}
-      data-text-selection-toolbar
+      data-text-selection-toolbar="true"
     >
-      <button onClick={(e) => { e.stopPropagation(); onBold(); }} className="px-2 py-1 text-sm hover:bg-gray-100 rounded font-bold">B</button>
-      <button onClick={(e) => { e.stopPropagation(); onItalic(); }} className="px-2 py-1 text-sm hover:bg-gray-100 rounded italic">I</button>
-      <button onClick={(e) => { e.stopPropagation(); onUnderline(); }} className="px-2 py-1 text-sm hover:bg-gray-100 rounded underline">U</button>
-      <button onClick={(e) => { e.stopPropagation(); onColor('#d92d20'); }} className="px-2 py-1 text-sm hover:bg-gray-100 rounded text-red-600">Text</button>
-      <button onClick={(e) => { e.stopPropagation(); onBackgroundColor('#fde68a'); }} className="px-2 py-1 text-sm hover:bg-gray-100 rounded bg-yellow-200">Bg</button>
-      <button onClick={(e) => { e.stopPropagation(); onClearStyles(); }} className="px-2 py-1 text-sm hover:bg-gray-100 rounded">Clear</button>
-      <button onClick={(e) => { e.stopPropagation(); onClose(); }} className="px-2 py-1 text-sm hover:bg-gray-100 rounded text-gray-500 hover:text-gray-700">×</button>
+      <button
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onBold(); }}
+        className="px-2 py-1 text-sm hover:bg-gray-100 rounded font-bold"
+      >B</button>
+      <button
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onItalic(); }}
+        className="px-2 py-1 text-sm hover:bg-gray-100 rounded italic"
+      >I</button>
+      <button
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onUnderline(); }}
+        className="px-2 py-1 text-sm hover:bg-gray-100 rounded underline"
+      >U</button>
+      <button
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onColor('#d92d20'); }}
+        className="px-2 py-1 text-sm hover:bg-gray-100 rounded text-red-600"
+      >Text</button>
+      <button
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onBackgroundColor('#fde68a'); }}
+        className="px-2 py-1 text-sm hover:bg-gray-100 rounded bg-yellow-200"
+      >Bg</button>
+      <button
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClearStyles(); }}
+        className="px-2 py-1 text-sm hover:bg-gray-100 rounded"
+      >Clear</button>
+      <button
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onClose(); }}
+        className="px-2 py-1 text-sm hover:bg-gray-100 rounded text-gray-500 hover:text-gray-700"
+      >×</button>
     </div>
   );
 

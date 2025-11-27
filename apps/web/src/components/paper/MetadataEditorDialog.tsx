@@ -15,7 +15,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import type { PaperMetadata } from '@/types/paper';
-import { userPaperService } from '@/lib/services/paper';
+import { userPaperService } from '@/lib/services/papers';
 import { FileText, Plus, X, Hash } from 'lucide-react';
 
 // ====== 类型定义 ======
@@ -63,6 +63,7 @@ interface MetadataEditorDialogProps {
   isSubmitting?: boolean;
   externalError?: string | null;
   userPaperId?: string; // 用于自动保存
+  paperId?: string; // 论文ID
   autoSave?: boolean;
   autoSaveDelay?: number;
 }

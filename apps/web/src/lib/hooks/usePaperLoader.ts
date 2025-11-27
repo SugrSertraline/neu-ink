@@ -7,7 +7,7 @@ import {
   adminPaperService,
   publicPaperService,
   userPaperService,
-} from '../services/paper';
+} from '../services/papers';
 import { PaperAttachments } from '@/types/paper/models';
 
 type UserPaperMeta = UserPaper;
@@ -164,24 +164,28 @@ export function usePaperLoader(
             return;
           }
 
-          const res =
-            candidate === 'public-admin'
-              ? await adminPaperService.getAdminPaperDetail(id)
-              : await publicPaperService.getPublicPaperDetail(id);
+          // 由于公开论文详情接口已删除，这里只保留管理员论文详情接口
+          if (candidate === 'public-admin') {
+            const res = await adminPaperService.getAdminPaperDetail(id);
+            
+            if (!isSuccess(res.topCode, res.bizCode) || !res.data) {
+              lastError = res.bizMessage || res.topMessage || '获取论文失败';
+              continue;
+            }
 
-          if (!isSuccess(res.topCode, res.bizCode) || !res.data) {
-            lastError = res.bizMessage || res.topMessage || '获取论文失败';
-            continue;
+            if (!cancelled) {
+              setPaper(res.data);
+              setUserPaperMeta(null);
+              setActiveSource(candidate);
+              setError(null);
+              setLoading(false);
+            }
+            return;
           }
-
-          if (!cancelled) {
-            setPaper(res.data);
-            setUserPaperMeta(null);
-            setActiveSource(candidate);
-            setError(null);
-            setLoading(false);
-          }
-          return;
+          
+          // 跳过公开论文详情接口，因为已删除
+          lastError = '公开论文详情接口已删除';
+          continue;
         } catch (err: any) {
           lastError = err?.message ?? '网络错误';
         }

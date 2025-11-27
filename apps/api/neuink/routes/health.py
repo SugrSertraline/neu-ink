@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify
-from neuink.services.db import ping
+from neuink.utils.db import ping
 
 bp = Blueprint("health", __name__)
 

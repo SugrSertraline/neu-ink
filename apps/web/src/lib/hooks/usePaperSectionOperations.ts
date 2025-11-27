@@ -33,7 +33,7 @@ export function usePaperSectionOperations({
 
     const addSectionAsync = async () => {
       try {
-        const { userPaperService, adminPaperService } = await import('@/lib/services/paper');
+        const { userPaperService, adminPaperService } = await import('@/lib/services/papers');
 
         let result;
         if (isPersonalOwner && resolvedUserPaperId) {
@@ -118,7 +118,7 @@ export function usePaperSectionOperations({
       // 异步保存到服务器
       const saveHeadingAsync = async () => {
         try {
-          const { userPaperService, adminPaperService } = await import('@/lib/services/paper');
+          const { userPaperService, adminPaperService } = await import('@/lib/services/papers');
           const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
 
           // 构建标题块数据
@@ -241,7 +241,7 @@ export function usePaperSectionOperations({
       // 异步保存到服务器
       const saveSectionAsync = async () => {
         try {
-          const { userPaperService, adminPaperService } = await import('@/lib/services/paper');
+          const { userPaperService, adminPaperService } = await import('@/lib/services/papers');
 
           let result;
           if (isPersonalOwner && resolvedUserPaperId) {
@@ -330,7 +330,7 @@ export function usePaperSectionOperations({
       // 异步保存到服务器
       const saveParagraphAsync = async () => {
         try {
-          const { userPaperService, adminPaperService } = await import('@/lib/services/paper');
+          const { userPaperService, adminPaperService } = await import('@/lib/services/papers');
           const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
 
           // 构建段落块数据
@@ -447,7 +447,7 @@ export function usePaperSectionOperations({
       // 异步保存到服务器
       const saveOrderedListAsync = async () => {
         try {
-          const { userPaperService, adminPaperService } = await import('@/lib/services/paper');
+          const { userPaperService, adminPaperService } = await import('@/lib/services/papers');
           const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
 
           // 构建有序列表块数据
@@ -564,7 +564,7 @@ export function usePaperSectionOperations({
       // 异步保存到服务器
       const saveUnorderedListAsync = async () => {
         try {
-          const { userPaperService, adminPaperService } = await import('@/lib/services/paper');
+          const { userPaperService, adminPaperService } = await import('@/lib/services/papers');
           const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
 
           // 构建无序列表块数据
@@ -677,7 +677,7 @@ export function usePaperSectionOperations({
       // 异步保存到服务器
       const saveMathAsync = async () => {
         try {
-          const { userPaperService, adminPaperService } = await import('@/lib/services/paper');
+          const { userPaperService, adminPaperService } = await import('@/lib/services/papers');
           const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
 
           // 构建公式块数据
@@ -798,7 +798,7 @@ export function usePaperSectionOperations({
       // 异步保存到服务器
       const saveFigureAsync = async () => {
         try {
-          const { userPaperService, adminPaperService } = await import('@/lib/services/paper');
+          const { userPaperService, adminPaperService } = await import('@/lib/services/papers');
           const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
 
           // 构建图片块数据
@@ -935,7 +935,7 @@ export function usePaperSectionOperations({
       // 异步保存到服务器
       const saveTableAsync = async () => {
         try {
-          const { userPaperService, adminPaperService } = await import('@/lib/services/paper');
+          const { userPaperService, adminPaperService } = await import('@/lib/services/papers');
           const userPaperId = isPersonalOwner ? resolvedUserPaperId : null;
 
           // 构建表格块数据（简化版，只包含content字段）

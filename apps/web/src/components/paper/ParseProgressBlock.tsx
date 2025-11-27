@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState, useRef } from 'react';
-import { CheckCircle, XCircle, Loader2, AlertCircle } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, AlertCircle, RefreshCw } from 'lucide-react';
 import { userPaperService, adminPaperService } from '@/lib/services/paper';
 
 interface ParsingProgressData {
@@ -62,168 +62,131 @@ export default function ParseProgressBlock({
     };
   });
 
-  const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
   const hasNotifiedRef = useRef(false);
-  const progressRef = useRef<ParsingProgressData>(progress);
+  const [isCheckingStatus, setIsCheckingStatus] = useState(false);
   
   // 将blocksCount移到组件顶层,避免违反Hooks规则
   const [blocksCount, setBlocksCount] = useState<number>(0);
-  
-  // 同步 progress 到 ref
-  useEffect(() => {
-    progressRef.current = progress;
-  }, [progress]);
 
-  const clearPolling = () => {
-    if (pollingTimerRef.current) {
-      clearInterval(pollingTimerRef.current);
-      pollingTimerRef.current = null;
-    }
-  };
-
-  useEffect(() => () => clearPolling(), []);
-
-  // 5s 轮询解析状态
-  useEffect(() => {
-    // 使用 ref 来避免依赖 progress.status 导致的循环
-    const currentStatus = progressRef.current.status;
+  // 手动查询解析状态
+  const checkParsingStatus = async () => {
+    if (isCheckingStatus) return;
     
-    if (currentStatus === 'completed' || currentStatus === 'failed') {
-      clearPolling();
-      return;
-    }
+    setIsCheckingStatus(true);
+    try {
+      const result = isPersonalOwner && userPaperId
+        ? await userPaperService.checkBlockParsingStatus(userPaperId, sectionId, blockId)
+        : await adminPaperService.checkBlockParsingStatus(paperId, sectionId, blockId);
 
-    let cancelled = false;
-
-    const fetchStatus = async () => {
-      if (cancelled) return;
-      try {
-        const result = isPersonalOwner && userPaperId
-          ? await userPaperService.checkBlockParsingStatus(userPaperId, sectionId, blockId)
-          : await adminPaperService.checkBlockParsingStatus(paperId, sectionId, blockId);
-
-        if (cancelled) return;
-
-        if (result.bizCode !== 0 || !result.data) {
-          const message = result.bizMessage || result.topMessage || '解析状态获取失败';
-          setProgress(prev => ({ ...prev, status: 'failed', message, error: message }));
-          if (!hasNotifiedRef.current) {
-            hasNotifiedRef.current = true;
-            onCompleted({
-              status: 'failed',
-              message,
-              error: message,
-              blockId,
-              sectionId,
-              sessionId: sessionId || progressRef.current.sessionId || blockId,
-            });
-          }
-          clearPolling();
-          return;
-        }
-
-        const data = result.data;
-        const normalizedStatus: 'pending' | 'processing' | 'completed' | 'failed' | 'pending_confirmation' =
-          data.status === 'processing'
-            ? 'processing'
-            : data.status === 'completed'
-            ? 'completed'
-            : data.status === 'failed'
-            ? 'failed'
-            : data.status === 'pending_confirmation'
-            ? 'pending_confirmation'
-            : 'pending';
-
-        setProgress(prev => {
-          const newProgress = {
-            ...prev,
-            status: normalizedStatus,
-            progress: typeof data.progress === 'number' ? data.progress : prev.progress,
-            message: data.message || prev.message,
-            error: data.error,
-            // 注意：当 addedBlocks 存在时，paper 字段不会返回，避免数据冗余
-            paper: data.addedBlocks ? prev.paper : (data.paper ?? prev.paper),
-            blocks: data.addedBlocks ?? prev.blocks,
-            parsedBlocks: data.parsedBlocks ?? prev.parsedBlocks,
-            sessionId: prev.sessionId || sessionId,
-            parseId: data.parseId || prev.parseId || parseId, // 确保parseId被更新
-          };
-          
-          // 更新 ref
-          progressRef.current = newProgress;
-          return newProgress;
-        });
-
-        if (normalizedStatus === 'completed' || normalizedStatus === 'pending_confirmation') {
-          clearPolling();
-          if (!hasNotifiedRef.current) {
-            hasNotifiedRef.current = true;
-            // 检查是否有已确认的blocks，如果有则不再显示parsing状态
-            const hasConfirmedBlocks = data.addedBlocks && data.addedBlocks.length > 0;
-            const shouldShowParsingBlock = !hasConfirmedBlocks;
-            
-            onCompleted({
-              status: normalizedStatus,
-              progress: 100,
-              message: data.message || '解析完成',
-              // 注意：当 addedBlocks 存在时，paper 字段不会返回，避免数据冗余
-              paper: data.addedBlocks ? undefined : data.paper,
-              blocks: data.addedBlocks || [],
-              addedBlocks: data.addedBlocks || [],
-              sessionId: sessionId || blockId,
-              blockId,
-              sectionId,
-              parseId: data.parseId || parseId,
-              tempBlockId: data.tempBlockId,
-              // 新增字段，指示是否应继续显示parsing block
-              shouldShowParsingBlock,
-              parsedBlocks: data.parsedBlocks,
-            });
-            
-            // 不再自动弹出对话框，等待用户点击"管理解析结果"按钮
-          }
-        } else if (normalizedStatus === 'failed') {
-          clearPolling();
-          if (!hasNotifiedRef.current) {
-            hasNotifiedRef.current = true;
-            onCompleted({
-              status: 'failed',
-              progress: 0,
-              message: data.error || data.message || '解析失败',
-              error: data.error || data.message,
-              sessionId: sessionId || blockId,
-              blockId,
-              sectionId,
-            });
-          }
-        }
-      } catch (error) {
-        if (cancelled) return;
-        const message = error instanceof Error ? error.message : '解析状态获取失败';
+      if (result.bizCode !== 0 || !result.data) {
+        const message = result.bizMessage || result.topMessage || '解析状态获取失败';
         setProgress(prev => ({ ...prev, status: 'failed', message, error: message }));
-        clearPolling();
         if (!hasNotifiedRef.current) {
           hasNotifiedRef.current = true;
           onCompleted({
             status: 'failed',
             message,
             error: message,
-            sessionId: sessionId || progressRef.current.sessionId || blockId,
+            blockId,
+            sectionId,
+            sessionId: sessionId || progress.sessionId || blockId,
+          });
+        }
+        return;
+      }
+
+      const data = result.data;
+      const normalizedStatus: 'pending' | 'processing' | 'completed' | 'failed' | 'pending_confirmation' =
+        data.status === 'processing'
+          ? 'processing'
+          : data.status === 'completed'
+          ? 'completed'
+          : data.status === 'failed'
+          ? 'failed'
+          : data.status === 'pending_confirmation'
+          ? 'pending_confirmation'
+          : 'pending';
+
+      setProgress(prev => ({
+        ...prev,
+        status: normalizedStatus,
+        progress: typeof data.progress === 'number' ? data.progress : prev.progress,
+        message: data.message || prev.message,
+        error: data.error,
+        // 注意：当 addedBlocks 存在时，paper 字段不会返回，避免数据冗余
+        paper: data.addedBlocks ? prev.paper : (data.paper ?? prev.paper),
+        blocks: data.addedBlocks ?? prev.blocks,
+        parsedBlocks: data.parsedBlocks ?? prev.parsedBlocks,
+        sessionId: prev.sessionId || sessionId,
+        parseId: data.parseId || prev.parseId || parseId, // 确保parseId被更新
+      }));
+
+      if (normalizedStatus === 'completed' || normalizedStatus === 'pending_confirmation') {
+        if (!hasNotifiedRef.current) {
+          hasNotifiedRef.current = true;
+          // 检查是否有已确认的blocks，如果有则不再显示parsing状态
+          const hasConfirmedBlocks = data.addedBlocks && data.addedBlocks.length > 0;
+          const shouldShowParsingBlock = !hasConfirmedBlocks;
+          
+          onCompleted({
+            status: normalizedStatus,
+            progress: 100,
+            message: data.message || '解析完成',
+            // 注意：当 addedBlocks 存在时，paper 字段不会返回，避免数据冗余
+            paper: data.addedBlocks ? undefined : data.paper,
+            blocks: data.addedBlocks || [],
+            addedBlocks: data.addedBlocks || [],
+            sessionId: sessionId || blockId,
+            blockId,
+            sectionId,
+            parseId: data.parseId || parseId,
+            tempBlockId: data.tempBlockId,
+            // 新增字段，指示是否应继续显示parsing block
+            shouldShowParsingBlock,
+            parsedBlocks: data.parsedBlocks,
+          });
+          
+          // 不再自动弹出对话框，等待用户点击"管理解析结果"按钮
+        }
+      } else if (normalizedStatus === 'failed') {
+        if (!hasNotifiedRef.current) {
+          hasNotifiedRef.current = true;
+          onCompleted({
+            status: 'failed',
+            progress: 0,
+            message: data.error || data.message || '解析失败',
+            error: data.error || data.message,
+            sessionId: sessionId || blockId,
             blockId,
             sectionId,
           });
         }
       }
-    };
+    } catch (error) {
+      const message = error instanceof Error ? error.message : '解析状态获取失败';
+      setProgress(prev => ({ ...prev, status: 'failed', message, error: message }));
+      if (!hasNotifiedRef.current) {
+        hasNotifiedRef.current = true;
+        onCompleted({
+          status: 'failed',
+          message,
+          error: message,
+          sessionId: sessionId || progress.sessionId || blockId,
+          blockId,
+          sectionId,
+        });
+      }
+    } finally {
+      setIsCheckingStatus(false);
+    }
+  };
 
-    fetchStatus();
-    pollingTimerRef.current = setInterval(fetchStatus, 8000);
-
-    return () => {
-      cancelled = true;
-      clearPolling();
-    };
-  }, [paperId, sectionId, blockId, isPersonalOwner, userPaperId, sessionId, onCompleted]);
+  // 初始加载时检查一次状态
+  useEffect(() => {
+    if (progress.status === 'pending' || progress.status === 'processing') {
+      checkParsingStatus();
+    }
+  }, []); // 只在组件挂载时执行一次
 
   // 关键：外部进度优先
   useEffect(() => {
@@ -420,19 +383,33 @@ export default function ParseProgressBlock({
 
   return (
     <div className={containerClass}>
-      <div className="flex items-center gap-3">
-        {statusInfo.icon}
-        <div>
-          <p className={`font-medium ${
-            statusInfo.color === 'blue' ? 'text-blue-600' :
-            statusInfo.color === 'green' ? 'text-green-600' :
-            statusInfo.color === 'red' ? 'text-red-600' :
-            'text-gray-600'
-          }`}>
-            {statusInfo.message}
-          </p>
-          {progress.error && <p className="text-xs text-red-500 mt-1">{progress.error}</p>}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          {statusInfo.icon}
+          <div>
+            <p className={`font-medium ${
+              statusInfo.color === 'blue' ? 'text-blue-600' :
+              statusInfo.color === 'green' ? 'text-green-600' :
+              statusInfo.color === 'red' ? 'text-red-600' :
+              'text-gray-600'
+            }`}>
+              {statusInfo.message}
+            </p>
+            {progress.error && <p className="text-xs text-red-500 mt-1">{progress.error}</p>}
+          </div>
         </div>
+        
+        {/* 手动查询按钮 - 只在pending或processing状态显示 */}
+        {(progress.status === 'pending' || progress.status === 'processing') && (
+          <button
+            onClick={checkParsingStatus}
+            disabled={isCheckingStatus}
+            className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <RefreshCw className={`h-4 w-4 ${isCheckingStatus ? 'animate-spin' : ''}`} />
+            {isCheckingStatus ? '查询中...' : '查询状态'}
+          </button>
+        )}
       </div>
     </div>
   );

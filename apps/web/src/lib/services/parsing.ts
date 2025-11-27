@@ -9,8 +9,7 @@ import type {
   ParseResult,
   ConfirmParseResultRequest,
   ConfirmParseResultResult,
-  DiscardParseResultResult,
-  SaveAllParseResultResult
+  DiscardParseResultResult
 } from '@/types/paper/index';
 
 // —— 解析服务 —— //
@@ -133,19 +132,6 @@ export const parseResultsService = {
     );
   },
 
-  /**
-   * 保存所有解析结果
-   */
-  saveAllParseResult(
-    paperId: string,
-    parseId: string,
-    isAdmin: boolean = false
-  ): Promise<UnifiedResult<SaveAllParseResultResult>> {
-    const prefix = isAdmin ? '/admin/papers' : '/user/papers';
-    return callAndNormalize<SaveAllParseResultResult>(
-      apiClient.post(`${prefix}/${paperId}/parse-results/${parseId}/save-all`, {})
-    );
-  },
 };
 
 // —— Hook 风格导出 —— //

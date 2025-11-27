@@ -167,14 +167,6 @@ export const noteService = {
     );
   },
 
-  /**
-   * 获取用户所有笔记
-   */
-  getUserNotes(filters: NoteFilters = {}): Promise<UnifiedResult<NoteListData>> {
-    return callAndNormalize<NoteListData>(
-      apiClient.get(`/notes/user/default${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
-    );
-  },
 
   /**
    * 搜索笔记

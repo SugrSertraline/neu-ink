@@ -13,7 +13,7 @@ import {
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import BlockRenderer from './BlockRenderer';
-import { CheckCircle, XCircle, Loader2, Check, X, Save } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Check, X, Save, RefreshCw } from 'lucide-react';
 import { userPaperService, adminPaperService } from '@/lib/services/paper';
 import { cn } from '@/lib/utils';
 
@@ -64,7 +64,6 @@ export default function ParseResultsManager({
   const [isLoading, setIsLoading] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [isDiscarding, setIsDiscarding] = useState(false);
-  const [isSavingAll, setIsSavingAll] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // 获取解析结果
@@ -101,61 +100,37 @@ export default function ParseResultsManager({
     }
   };
 
-  // 轮询解析状态
-  const pollParseStatus = async () => {
+  // 手动刷新解析状态
+  const refreshParseStatus = async () => {
     if (!parseId) return;
     
     try {
+      setIsLoading(true);
+      setError(null);
+      
       const service = userPaperId ? userPaperService : adminPaperService;
+      const result = await service.getParseResult(paperId, parseId);
       
-      // 先尝试获取解析结果
-      try {
-        const result = await service.getParseResult(paperId, parseId);
-        
-        if (result.bizCode === BusinessCode.SUCCESS && result.data) {
-          // 处理后端返回的数据结构，将 blocks 字段映射为 parsedBlocks
-          const parseData = result.data as any;
-          if (parseData.blocks && !parseData.parsedBlocks) {
-            parseData.parsedBlocks = parseData.blocks;
-          }
-          
-          setParseResult(parseData);
-          
-          // 默认选择所有blocks
-          if (parseData.parsedBlocks) {
-            setSelectedBlockIds(new Set(parseData.parsedBlocks.map((b: BlockContent) => b.id)));
-          }
-          
-          // 如果解析完成，停止轮询
-          if (parseData.status === 'completed') {
-            return;
-          }
-        }
-      } catch (err) {
-        // 获取解析结果失败，继续尝试通过parsing-status获取状态
+      if (result.bizCode !== BusinessCode.SUCCESS) {
+        throw new Error(result.bizMessage || '获取解析结果失败');
       }
       
-      // 如果获取解析结果失败，尝试通过parsing-status获取状态
-      const tempBlockId = parseResult?.tempBlockId || '';
-      if (tempBlockId) {
-        try {
-          const statusService = userPaperId ? userPaperService : adminPaperService;
-          const statusResult = await statusService.checkBlockParsingStatus(paperId, sectionId, tempBlockId);
-          
-          if (statusResult.bizCode === BusinessCode.SUCCESS && statusResult.data) {
-            const status = statusResult.data.status;
-            
-            // 如果解析完成，重新获取解析结果
-            if (status === 'completed') {
-              setTimeout(fetchParseResult, 1000);
-            }
-          }
-        } catch (err) {
-          console.error('获取解析状态失败:', err);
-        }
+      // 处理后端返回的数据结构，将 blocks 字段映射为 parsedBlocks
+      const parseData = result.data as any;
+      if (parseData.blocks && !parseData.parsedBlocks) {
+        parseData.parsedBlocks = parseData.blocks;
       }
-    } catch (err) {
-      console.error('轮询解析状态失败:', err);
+      
+      setParseResult(parseData);
+      
+      // 默认选择所有blocks
+      if (parseData.parsedBlocks) {
+        setSelectedBlockIds(new Set(parseData.parsedBlocks.map((b: BlockContent) => b.id)));
+      }
+    } catch (err: any) {
+      setError(err.message || '获取解析结果失败');
+    } finally {
+      setIsLoading(false);
     }
   };
 
@@ -234,49 +209,6 @@ export default function ParseResultsManager({
     }
   };
 
-  // 保存所有blocks
-  const handleSaveAll = async () => {
-    if (!parseId) return;
-    
-    try {
-      setIsSavingAll(true);
-      setError(null);
-      
-      const service = userPaperId ? userPaperService : adminPaperService;
-      const result = await service.saveAllParseResult(
-        userPaperId || paperId,
-        parseId
-      );
-      
-      if (result.bizCode !== BusinessCode.SUCCESS) {
-        throw new Error(result.bizMessage || '保存解析结果失败');
-      }
-      
-      console.log('[ParseResultsManager] 保存所有解析结果成功', result.data);
-      
-      // 获取所有blocks数据
-      const allBlocks = parseResult?.parsedBlocks || [];
-      
-      console.log('[ParseResultsManager] 所有blocks:', allBlocks);
-      
-      // 通知父组件blocks已添加，不再刷新整个页面
-      // 只传递blocks数据，不传递完整的paper对象，避免页面刷新
-      if (onBlocksAdded && allBlocks.length > 0) {
-        onBlocksAdded(allBlocks);
-      }
-      
-      // 成功保存，关闭对话框
-      onOpenChange(false);
-      // 注意：不调用onConfirm和onSuccess，避免触发页面刷新
-      // onConfirm?.();
-      // onClose?.();
-      // onSuccess?.();
-    } catch (err: any) {
-      setError(err.message || '保存解析结果失败');
-    } finally {
-      setIsSavingAll(false);
-    }
-  };
 
   // 切换block选择状态
   const toggleBlock = (blockId: string, event?: React.MouseEvent) => {
@@ -314,13 +246,8 @@ export default function ParseResultsManager({
     }
   }, [isOpen, parseId]);
 
-  // 轮询解析状态
-  useEffect(() => {
-    if (isOpen && parseId && parseResult?.status === 'processing') {
-      const interval = setInterval(pollParseStatus, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [isOpen, parseId, parseResult?.status === 'processing' ? 'processing' : null, sectionId, paperId, userPaperId]);
+  // 移除轮询逻辑，改为手动刷新
+  // 当对话框打开时，如果解析状态是 processing，显示提示信息
 
   const glowButtonFilled =
     'rounded-xl bg-gradient-to-r from-[#28418A]/92 via-[#28418A]/88 to-[#28418A]/92 ' +
@@ -378,11 +305,29 @@ export default function ParseResultsManager({
                     </span>
                   </div>
                    
-                  {parseResult.status === 'completed' && (
-                    <div className="text-sm text-slate-600">
-                      已选择 {selectedBlockIds.size} / {parseResult.parsedBlocks?.length || 0} 个段落
-                    </div>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {parseResult.status === 'processing' && (
+                      <div className="text-sm text-blue-600">
+                        解析中，请稍后手动刷新查看结果
+                      </div>
+                    )}
+                    
+                    {parseResult.status === 'completed' && (
+                      <div className="text-sm text-slate-600">
+                        已选择 {selectedBlockIds.size} / {parseResult.parsedBlocks?.length || 0} 个段落
+                      </div>
+                    )}
+                    
+                    {/* 手动刷新按钮 */}
+                    <button
+                      onClick={refreshParseStatus}
+                      disabled={isLoading}
+                      className="flex items-center gap-2 px-3 py-1.5 text-sm bg-blue-100 text-blue-700 rounded-md hover:bg-blue-200 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+                      {isLoading ? '刷新中...' : '刷新状态'}
+                    </button>
+                  </div>
                 </div>
                
                 {parseResult.error && (
@@ -475,27 +420,14 @@ export default function ParseResultsManager({
           </Button>
            
           {parseResult?.status === 'completed' && (parseResult.parsedBlocks?.length || 0) > 0 && (
-            <>
-              <Button
-                variant="outline"
-                onClick={handleSaveAll}
-                disabled={isSavingAll || isLoading}
-                className={glowButtonGhost}
-              >
-                {isSavingAll && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                <Save className="h-4 w-4 mr-2" />
-                保存全部
-              </Button>
-                
-              <Button
-                onClick={handleConfirm}
-                disabled={isConfirming || isLoading || selectedBlockIds.size === 0}
-                className={cn(glowButtonFilled, 'min-w-[110px]')}
-              >
-                {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
-                确认保留 ({selectedBlockIds.size})
-              </Button>
-            </>
+            <Button
+              onClick={handleConfirm}
+              disabled={isConfirming || isLoading || selectedBlockIds.size === 0}
+              className={cn(glowButtonFilled, 'min-w-[110px]')}
+            >
+              {isConfirming && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+              确认保留 ({selectedBlockIds.size})
+            </Button>
           )}
         </DialogFooter>
       </DialogContent>

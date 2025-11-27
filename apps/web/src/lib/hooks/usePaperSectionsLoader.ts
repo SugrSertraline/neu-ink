@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react';
 import { isSuccess } from '@/lib/http';
 import type { Section } from '@/types/paper';
-import { adminPaperService, userPaperService } from '../services/paper';
+import { adminPaperService, userPaperService } from '../services/papers';
 
 /**
  * 用于从 sectionIds 加载 sections 数据的 hook

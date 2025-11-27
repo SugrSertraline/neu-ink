@@ -98,42 +98,6 @@ def logout():
         return success_response(None, "登出成功")
 
 
-@bp.route("/refresh", methods=["POST"])
-def refresh_token():
-    """刷新JWT token"""
-    try:
-        token = get_token_from_request()
-        if not token:
-            return unauthorized_response("未提供token")
-        
-        # 验证当前token（即使过期也要尝试解析）
-        try:
-            secret_key = os.getenv("JWT_SECRET_KEY", "default-secret")
-            payload = jwt.decode(token, secret_key, algorithms=[JWT_ALGORITHM], options={"verify_exp": False})
-        except jwt.InvalidTokenError:
-            return unauthorized_response("无效的token")
-        
-        # 检查用户是否仍然存在且有效
-        user_service = get_user_service()
-        user = user_service.get_user_by_id(payload["user_id"])
-        
-        if not user:
-            return unauthorized_response("用户不存在")
-        
-        # 生成新的token
-        new_token = generate_token({
-            "id": user["id"],
-            "username": user["username"]
-        })
-        
-        return success_response({
-            "token": new_token,
-            "user": user
-        }, "Token刷新成功")
-        
-    except Exception as e:
-        return internal_error_response(f"刷新token失败: {str(e)}")
-
 
 @bp.route("/current", methods=["GET"])
 @login_required

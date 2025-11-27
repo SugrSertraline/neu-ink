@@ -65,7 +65,7 @@ export default function InlineTextParserEditor({
         setError(null);
         setHasUnsavedChanges(false);
 
-        // 调用完成回调 - 传递空数组,因为实际blocks会通过轮询获取
+        // 调用完成回调 - 传递空数组,因为实际blocks会通过手动查询获取
         if (onParseComplete) {
           onParseComplete([], null);
         }

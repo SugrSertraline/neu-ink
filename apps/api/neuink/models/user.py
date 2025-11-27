@@ -1,5 +1,5 @@
 from typing import Dict, Any, Optional, List
-from neuink.services.db import get_user_col
+from neuink.utils.db import get_user_col
 from neuink.utils.common import generate_id, get_current_time
 from neuink.utils.password_utils import hash_password, verify_password, migrate_plain_password
 from neuink.config.constants import ADMIN_USERNAME

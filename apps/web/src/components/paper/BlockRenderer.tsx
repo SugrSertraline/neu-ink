@@ -516,10 +516,17 @@ function BlockRenderer({
     }
   }, [draftBlock, block, onBlockUpdate, setHasUnsavedChanges, clearCurrentEditing, onSaveToServer, sectionId]);
 
+  // 保存当前选择范围，以便在应用样式后恢复
+  const savedSelectionRef = useRef<Range | null>(null);
+
   const handleTextSelection = useCallback(
-    (_e: MouseEvent<HTMLElement>) => {
+    (e: MouseEvent<HTMLElement>) => {
       if (block.type !== 'paragraph' && block.type !== 'heading') return;
       if (!inlineEditingEnabled || !onBlockUpdate || isEditing) return;
+
+      // 阻止事件冒泡，防止父组件的事件处理干扰文本选择
+      e.preventDefault();
+      e.stopPropagation();
 
       setTimeout(() => {
         const selection = window.getSelection();
@@ -529,6 +536,7 @@ function BlockRenderer({
           setShowToolbar(false);
           setToolbarPos(null);
           setSelectedText('');
+          savedSelectionRef.current = null;
           return;
         }
 
@@ -537,6 +545,7 @@ function BlockRenderer({
           setShowToolbar(false);
           setToolbarPos(null);
           setSelectedText('');
+          savedSelectionRef.current = null;
           return;
         }
 
@@ -545,6 +554,7 @@ function BlockRenderer({
           setShowToolbar(false);
           setToolbarPos(null);
           setSelectedText('');
+          savedSelectionRef.current = null;
           return;
         }
 
@@ -558,6 +568,8 @@ function BlockRenderer({
               y: rect.top,
             });
             setShowToolbar(true);
+            // 保存当前选择范围
+            savedSelectionRef.current = currentRange.cloneRange();
           }
         }
       }, 10);
@@ -569,25 +581,43 @@ function BlockRenderer({
     setShowToolbar(false);
     setToolbarPos(null);
     setSelectedText('');
+    savedSelectionRef.current = null;
   }, []);
 
   useEffect(() => {
-    if (!showToolbar || isEditing) return; // 在编辑状态下不显示工具栏
+    if (!showToolbar || isEditing) {
+      return; // 在编辑状态下不显示工具栏
+    }
 
     const handleGlobalClick = (event: Event) => {
       const mouseEvent = event as unknown as MouseEvent;
       const target = mouseEvent.target as HTMLElement;
 
+      // 如果点击在工具栏内，不处理
       if (target.closest('[data-text-selection-toolbar]')) {
         return;
       }
 
-      const selection = window.getSelection();
-      const currentText = selection?.toString().trim();
-      if (currentText && currentText === selectedText) {
-        return;
+      // 检查点击是否在当前块内
+      const blockElement = blockRef.current;
+      if (blockElement && blockElement.contains(target)) {
+        // 如果点击在块内，检查选择状态
+        const selection = window.getSelection();
+        const currentText = selection?.toString().trim();
+        
+        // 如果仍有文本选中且与之前选中的文本相同，不关闭工具栏
+        if (currentText && currentText === selectedText) {
+          return;
+        }
+        
+        // 如果点击在块内但没有选择任何文本，也关闭工具栏
+        if (!currentText) {
+          handleToolbarClose();
+          return;
+        }
       }
 
+      // 其他情况，关闭工具栏
       handleToolbarClose();
     };
 
@@ -659,8 +689,20 @@ function BlockRenderer({
       onBlockUpdate(updatedBlock);
 
       setTimeout(() => {
-        handleToolbarClose();
-        window.getSelection()?.removeAllRanges();
+        // 尝试恢复之前保存的选择
+        if (savedSelectionRef.current) {
+          const selection = window.getSelection();
+          if (selection) {
+            try {
+              selection.removeAllRanges();
+              selection.addRange(savedSelectionRef.current);
+            } catch (e) {
+              console.warn('Failed to restore text selection:', e);
+            }
+          }
+        }
+        // 不关闭工具栏，让用户可以继续应用其他样式
+        // handleToolbarClose();
       }, 100);
     },
     [block, inlineEditingEnabled, onBlockUpdate, selectedText, handleToolbarClose]
@@ -683,7 +725,8 @@ function BlockRenderer({
     const numberPart = null;
 
     // 在编辑状态下禁用文本选择，避免冲突
-    const shouldHandleTextSelection = inlineEditingEnabled && !isEditing && !showToolbar;
+    // 修复：即使工具栏显示也应该允许文本选择，这样用户可以继续选择文本
+    const shouldHandleTextSelection = inlineEditingEnabled && !isEditing;
 
     const renderContent = () => {
       if (lang === 'both') {
@@ -765,7 +808,8 @@ function BlockRenderer({
           }[block.align || 'left'] ?? 'text-left';
 
         // 在编辑状态下禁用文本选择，避免冲突
-        const shouldHandleTextSelection = inlineEditingEnabled && !isEditing && !showToolbar;
+        // 修复：即使工具栏显示也应该允许文本选择，这样用户可以继续选择文本
+        const shouldHandleTextSelection = inlineEditingEnabled && !isEditing;
 
         if (lang === 'both') {
           const enContent = block.content?.en ?? [];

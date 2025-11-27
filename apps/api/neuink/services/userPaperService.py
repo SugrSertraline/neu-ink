@@ -159,15 +159,6 @@ class UserPaperService(BasePaperService):
     # ------------------------------------------------------------------
     # 用户上传论文（预留接口）
     # ------------------------------------------------------------------
-    def upload_private_paper(
-        self,
-        user_id: str,
-        request: Any,
-    ) -> Dict[str, Any]:
-        """
-        用户上传私有论文（功能已移除）
-        """
-        return self._wrap_failure(BusinessCode.INVALID_PARAMS, "论文上传功能已移除")
 
     def create_user_paper(
         self,

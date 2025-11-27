@@ -39,8 +39,7 @@ import {
   ParseResult,
   ConfirmParseResultRequest,
   ConfirmParseResultResult,
-  DiscardParseResultResult,
-  SaveAllParseResultResult
+  DiscardParseResultResult
 } from '@/types/paper/index';
 import { apiClient, callAndNormalize } from '../http';
 import type { UnifiedResult } from '@/types/api';
@@ -59,23 +58,6 @@ export const publicPaperService = {
     );
   },
 
-  /**
-   * 获取公共论文详情
-   */
-  getPublicPaperDetail(paperId: string): Promise<UnifiedResult<Paper>> {
-    return callAndNormalize<Paper>(
-      apiClient.get(`/public-papers/${paperId}`)
-    );
-  },
-
-  /**
-   * 获取公共论文阅读内容
-   */
-  getPublicPaperContent(paperId: string): Promise<UnifiedResult<PaperContent>> {
-    return callAndNormalize<PaperContent>(
-      apiClient.get(`/public-papers/${paperId}/content`)
-    );
-  },
 };
 
 // —— 个人论文库服务 —— //
@@ -320,16 +302,6 @@ export const userPaperService = {
     );
   },
 
-  /**
-   * 检查论文是否已在个人论文库中
-   */
-  checkPaperInLibrary(
-    paperId: string
-  ): Promise<UnifiedResult<{ inLibrary: boolean; userPaperId: string | null }>> {
-    return callAndNormalize<{ inLibrary: boolean; userPaperId: string | null }>(
-      apiClient.get(`/papers/user/check-in-library?paperId=${paperId}`)
-    );
-  },
 
   /**
    * 获取解析结果
@@ -374,19 +346,6 @@ export const userPaperService = {
     );
   },
 
-  /**
-   * 保存所有解析结果
-   */
-  saveAllParseResult(
-    paperId: string,
-    parseId: string,
-    isAdmin: boolean = false
-  ): Promise<UnifiedResult<SaveAllParseResultResult>> {
-    const prefix = isAdmin ? '/admin/papers' : '/user/papers';
-    return callAndNormalize<SaveAllParseResultResult>(
-      apiClient.post(`${prefix}/${paperId}/parse-results/${parseId}/save-all`, {})
-    );
-  },
 
   /**
    * 更新个人论文附件
@@ -554,14 +513,6 @@ export const noteService = {
     );
   },
 
-  /**
-   * 获取用户所有笔记
-   */
-  getUserNotes(filters: NoteFilters = {}): Promise<UnifiedResult<NoteListData>> {
-    return callAndNormalize<NoteListData>(
-      apiClient.get(`/notes/user/default${buildSearchParams(filters) ? '?' + buildSearchParams(filters) : ''}`)
-    );
-  },
 
   /**
    * 搜索笔记
@@ -913,19 +864,6 @@ export const adminPaperService = {
     );
   },
 
-  /**
-   * 保存所有管理员论文解析结果
-   */
-  saveAllParseResult(
-    paperId: string,
-    parseId: string,
-    isAdmin: boolean = true
-  ): Promise<UnifiedResult<SaveAllParseResultResult>> {
-    const prefix = isAdmin ? '/admin/papers' : '/user/papers';
-    return callAndNormalize<SaveAllParseResultResult>(
-      apiClient.post(`${prefix}/${paperId}/parse-results/${parseId}/save-all`, {})
-    );
-  },
 
   /**
    * 更新管理员论文附件
